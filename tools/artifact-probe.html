@@ -1,0 +1,66 @@
+<!doctype html>
+<!--
+  The sandbox probe behind ADR-0010's validation table. It is an artifact that
+  tries to escape its own sandbox and reports what happened, so the claim "an
+  artifact cannot reach the network or the surface" is something a fresh session
+  can re-check in ten seconds instead of taking on trust:
+
+      agentbox daemon &
+      agentbox show --artifact tools/artifact-probe.html
+
+  Every line should read "blocked", "null" or "empty", except window.agentbox.emit,
+  which must be available - that is the one way out. Anything reading "(bad)" is
+  a regression in the policy or the sandbox attributes
+  (frontend/src/lib/artifact-runtime.js).
+-->
+<html>
+<body>
+<h2 style="font:600 15px system-ui;margin:12px">sandbox probe</h2>
+<ul id="out" style="font:12px ui-monospace,monospace;line-height:1.9"></ul>
+<script>
+const out = document.getElementById("out");
+const line = (label, text) => {
+  const li = document.createElement("li");
+  li.textContent = label + " -> " + text;
+  out.append(li);
+};
+
+try { line("parent.document", parent.document ? "READABLE (bad)" : "null"); }
+catch (e) { line("parent.document", "blocked: " + e.name); }
+try { line("parent.location.href", String(parent.location.href)); }
+catch (e) { line("parent.location.href", "blocked: " + e.name); }
+line("location.origin", String(location.origin));
+line("document.cookie", document.cookie === "" ? "empty" : "PRESENT (bad): " + document.cookie);
+
+fetch("https://example.com").then(() => line("fetch", "REACHED (bad)")).catch((e) => line("fetch", "blocked: " + e.message));
+try {
+  const x = new XMLHttpRequest();
+  x.open("GET", "https://example.com");
+  x.onerror = () => line("xhr", "blocked");
+  x.onload = () => line("xhr", "REACHED (bad)");
+  x.send();
+} catch (e) { line("xhr", "blocked: " + e.message); }
+try { new WebSocket("wss://example.com"); line("websocket", "CONSTRUCTED (bad)"); }
+catch (e) { line("websocket", "blocked: " + (e.message || e.name)); }
+
+const img = new Image();
+img.onload = () => line("remote image", "LOADED (bad)");
+img.onerror = () => line("remote image", "blocked");
+img.src = "https://example.com/x.png";
+
+const s = document.createElement("script");
+s.onload = () => line("remote script", "LOADED (bad)");
+s.onerror = () => line("remote script", "blocked");
+s.src = "https://example.com/x.js";
+document.head.append(s);
+
+try { localStorage.setItem("k", "1"); line("localStorage", "WRITABLE (bad)"); }
+catch (e) { line("localStorage", "blocked: " + e.name); }
+try { const w = window.open("https://example.com"); line("window.open", w ? "OPENED (bad)" : "null"); }
+catch (e) { line("window.open", "blocked: " + e.name); }
+
+line("agentbox.emit", typeof window.agentbox?.emit === "function" ? "available" : "MISSING");
+line("React global", typeof window.React === "undefined" ? "absent (not asked for)" : "present");
+</script>
+</body>
+</html>
