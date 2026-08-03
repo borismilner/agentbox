@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- img-src alone, with no default-src, so this restricts images and nothing
+         else. Go inlines every image it accepts as a data: URI and refuses to
+         emit a remote one (internal/webui/images.go); this is a second, independent
+         check on the same rule, so a future edit there cannot quietly turn an agent's
+         prose into a request to a host you never saw. -->
+    <meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:" />
+    <title>agentbox</title>
+    <script type="module" crossorigin src="/assets/index-CGauSYZF.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-QTnfLwEv.js">
+    <link rel="modulepreload" crossorigin href="/assets/board-B-x5W72l.js">
+    <link rel="modulepreload" crossorigin href="/assets/diagrams-CqpBAtd6.js">
+    <link rel="stylesheet" crossorigin href="/assets/board-Pq7FRqCP.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-BbE78Lrq.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

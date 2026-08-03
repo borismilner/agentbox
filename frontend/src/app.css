@@ -1,0 +1,1002 @@
+@import "tailwindcss";
+
+/* agentbox's design system.
+ *
+ * Two rules hold the whole thing together:
+ *   1. The chrome carries no hue. Greys have a deliberate bias toward the
+ *      ground's temperature, never a pure neutral, but they are never a
+ *      colour you would name.
+ *   2. Saturation is rationed to two jobs - agent identity and severity.
+ *      When three agents are running, who is talking has to read instantly,
+ *      and nothing else on screen is allowed to compete for that.
+ *
+ * Every --k-* token below is a *default*. The daemon overwrites the ones the
+ * user has configured by setting them on :root at runtime (internal/webui
+ * tokens.go), so a theme change is a variable write, not a rebuild.
+ */
+
+:root {
+  /* ground: graphite, dark */
+  --k-ground: #0f1116;
+  --k-surface: #161920;
+  --k-surface-2: #1c2028;
+  --k-surface-3: #22262f;
+  --k-edge: #272c36;
+  --k-edge-soft: #1f242c;
+  --k-ink: #e5e8ee;
+  --k-ink-2: #98a0ad;
+  --k-ink-3: #69717e;
+
+  --k-info: #4fa3e3;
+  --k-success: #4fb286;
+  --k-warning: #d9a441;
+  --k-error: #e05c5c;
+  --k-urgent: #e05c5c;
+
+  --k-accent: #7c8cf8;
+
+  --k-code-kw: #93a4e8;
+  --k-code-str: #8fbf9f;
+  --k-code-num: #d9a441;
+  --k-code-fn: #7fb3d5;
+  --k-code-com: #69717e;
+  --k-code-typ: #63b8ab;
+  --k-code-cons: #b995dd;
+  --k-code-attr: #c99578;
+  --k-code-esc: #e3b968;
+  --k-code-op: #94a3b2;
+  --k-code-punct: #65737f;
+
+  --k-font-ui: "Cantarell", "Ubuntu Sans", system-ui, sans-serif;
+  --k-font-read: "Bitstream Charter", Charter, Georgia, serif;
+  --k-font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --k-size: 16px;
+
+  --k-radius: 10px;
+  --k-pad: 16px;
+  --k-gap: 14px;
+
+  --k-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 18px 44px -12px rgb(0 0 0 / 0.72);
+  --k-motion: 1;
+
+  color-scheme: dark;
+}
+
+:root[data-mode="light"] {
+  --k-ground: #edeff3;
+  --k-surface: #ffffff;
+  --k-surface-2: #f5f6f9;
+  --k-surface-3: #edf0f4;
+  --k-edge: #dce0e7;
+  --k-edge-soft: #e7eaf0;
+  --k-ink: #171a20;
+  --k-ink-2: #555d6a;
+  --k-ink-3: #828a97;
+
+  --k-info: #2c7fbf;
+  --k-success: #2e8b62;
+  --k-warning: #a9761b;
+  --k-error: #c4444b;
+  --k-urgent: #c4444b;
+
+  --k-accent: #5566e0;
+
+  --k-code-kw: #4453a8;
+  --k-code-str: #35704a;
+  --k-code-num: #8a6212;
+  --k-code-fn: #2c6a94;
+  --k-code-com: #828a97;
+  --k-code-typ: #22766c;
+  --k-code-cons: #6d4a9e;
+  --k-code-attr: #935a36;
+  --k-code-esc: #a85f22;
+  --k-code-op: #555d6a;
+  --k-code-punct: #828a97;
+
+  --k-shadow: 0 1px 2px rgb(16 20 28 / 0.1), 0 16px 40px -14px rgb(16 20 28 / 0.28);
+
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-ground: var(--k-ground);
+  --color-surface: var(--k-surface);
+  --color-surface-2: var(--k-surface-2);
+  --color-surface-3: var(--k-surface-3);
+  --color-edge: var(--k-edge);
+  --color-edge-soft: var(--k-edge-soft);
+  --color-ink: var(--k-ink);
+  --color-ink-2: var(--k-ink-2);
+  --color-ink-3: var(--k-ink-3);
+  --color-info: var(--k-info);
+  --color-success: var(--k-success);
+  --color-warning: var(--k-warning);
+  --color-error: var(--k-error);
+  --color-accent: var(--k-accent);
+
+  --font-ui: var(--k-font-ui);
+  --font-read: var(--k-font-read);
+  --font-mono: var(--k-font-mono);
+
+  --radius-k: var(--k-radius);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  color: var(--k-ink);
+  font-family: var(--k-font-ui);
+  font-size: var(--k-size);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+}
+
+/* The webview has no business showing a text caret or selection handles on
+ * chrome. Content areas opt back in. */
+body {
+  user-select: none;
+  cursor: default;
+}
+.selectable,
+input,
+textarea {
+  user-select: text;
+  cursor: auto;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--k-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--k-ink-3) 32%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--k-ink-3) 55%, transparent);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner,
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Chroma emits classes, not inline colours (internal/webui/mdhtml.go), so a
+ * code block re-themes with everything else instead of carrying a second,
+ * separately-configured palette. */
+.chroma {
+  background: transparent;
+}
+.k-code {
+  border: 1px solid var(--k-edge);
+  border-radius: calc(var(--k-radius) * 0.8);
+  background: var(--k-surface-2);
+  overflow: hidden;
+  position: relative;
+}
+.k-code::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 4px;
+  right: 9px;
+  font-family: var(--k-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: var(--k-ink-3);
+  pointer-events: none;
+}
+.k-code pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-family: var(--k-font-mono);
+  font-size: 0.78rem;
+  line-height: 1.62;
+}
+/* Eleven roles, not five (2026-07-28): types, constants, attributes, string
+ * escapes, operators and punctuation each get their own token, the
+ * preprocessor stops masquerading as a comment, and chroma's generic classes
+ * (diff fences, shell transcripts) ride the status colours. */
+.chroma .k,
+.chroma .kd,
+.chroma .kn,
+.chroma .kp,
+.chroma .kr {
+  color: var(--k-code-kw);
+}
+.chroma .kt,
+.chroma .nc,
+.chroma .nn,
+.chroma .ne {
+  color: var(--k-code-typ);
+}
+.chroma .kc,
+.chroma .no,
+.chroma .nb,
+.chroma .bp,
+.chroma .vm {
+  color: var(--k-code-cons);
+}
+.chroma .nt,
+.chroma .na,
+.chroma .nd,
+.chroma .ni,
+.chroma .nl {
+  color: var(--k-code-attr);
+}
+.chroma .s,
+.chroma .s1,
+.chroma .s2,
+.chroma .sb,
+.chroma .sc,
+.chroma .sd,
+.chroma .sh,
+.chroma .sa {
+  color: var(--k-code-str);
+}
+.chroma .se,
+.chroma .si,
+.chroma .sx,
+.chroma .sr,
+.chroma .ss {
+  color: var(--k-code-esc);
+}
+.chroma .m,
+.chroma .mb,
+.chroma .mf,
+.chroma .mh,
+.chroma .mi,
+.chroma .il,
+.chroma .mo {
+  color: var(--k-code-num);
+}
+.chroma .nf,
+.chroma .fm {
+  color: var(--k-code-fn);
+}
+.chroma .o,
+.chroma .ow {
+  color: var(--k-code-op);
+}
+.chroma .p {
+  color: var(--k-code-punct);
+}
+.chroma .c,
+.chroma .ch,
+.chroma .cm,
+.chroma .c1,
+.chroma .cs {
+  color: var(--k-code-com);
+  font-style: italic;
+}
+/* The preprocessor is an instruction, not a remark: #include, //go:build,
+ * shebangs. Keyword colour, upright. The file it names reads as the string
+ * it is. */
+.chroma .cp {
+  color: var(--k-code-kw);
+}
+.chroma .cpf {
+  color: var(--k-code-str);
+}
+.chroma .err {
+  color: var(--k-error);
+}
+/* Generic tokens: what a diff fence and a captured shell session are made of. */
+.chroma .gd {
+  color: var(--k-error);
+  background: color-mix(in srgb, var(--k-error) 11%, transparent);
+}
+.chroma .gi {
+  color: var(--k-success);
+  background: color-mix(in srgb, var(--k-success) 11%, transparent);
+}
+.chroma .ge {
+  font-style: italic;
+}
+.chroma .gs {
+  font-weight: 600;
+}
+.chroma .gh,
+.chroma .gu {
+  color: var(--k-code-fn);
+  font-weight: 600;
+}
+.chroma .gp {
+  color: var(--k-ink-3);
+  user-select: none;
+}
+.chroma .go {
+  color: var(--k-ink-2);
+}
+.chroma .gt {
+  color: var(--k-error);
+}
+
+/* ---------------------------------------------------------------------------
+ * .k-md - the rendered-markdown stylesheet.
+ *
+ * One Go renderer feeds a card body, an agent turn and the viewer, so there is
+ * one stylesheet for all three rather than three that drift. Anything that reads
+ * differently per surface (the reading measure, the font size) is set by the
+ * surface on the container; everything a table, a list or an alert looks like is
+ * decided here, once.
+ * ------------------------------------------------------------------------- */
+
+.k-md {
+  overflow-wrap: anywhere;
+}
+.k-md > :first-child {
+  margin-top: 0;
+}
+.k-md > :last-child {
+  margin-bottom: 0;
+}
+.k-md p {
+  margin: 0 0 0.9em;
+}
+.k-md h1,
+.k-md h2,
+.k-md h3,
+.k-md h4,
+.k-md h5,
+.k-md h6 {
+  font-family: var(--k-font-ui);
+  font-weight: 680;
+  line-height: 1.25;
+  letter-spacing: -0.012em;
+  margin: 1.6em 0 0.5em;
+}
+.k-md h1 {
+  font-size: 1.55em;
+}
+.k-md h2 {
+  font-size: 1.28em;
+  padding-bottom: 0.24em;
+  border-bottom: 1px solid var(--k-edge-soft);
+}
+.k-md h3 {
+  font-size: 1.1em;
+}
+.k-md h4 {
+  font-size: 1em;
+}
+.k-md h5,
+.k-md h6 {
+  font-size: 0.92em;
+  color: var(--k-ink-2);
+}
+.k-md a {
+  color: var(--k-accent);
+  text-underline-offset: 2px;
+}
+.k-md strong {
+  font-weight: 680;
+  color: var(--k-ink);
+}
+.k-md del {
+  color: var(--k-ink-3);
+}
+/* Markers are set explicitly: Tailwind's preflight strips list styling, so a
+ * bulleted list would render as indented prose with nothing to mark the items. */
+.k-md ul,
+.k-md ol {
+  margin: 0 0 0.9em;
+  padding-left: 1.45em;
+}
+.k-md ul {
+  list-style: disc outside;
+}
+.k-md ul ul {
+  list-style: circle outside;
+}
+.k-md ol {
+  list-style: decimal outside;
+}
+.k-md ol ol {
+  list-style: lower-alpha outside;
+}
+.k-md li {
+  margin: 0.22em 0;
+}
+.k-md li::marker {
+  color: var(--k-ink-3);
+}
+.k-md li > p {
+  margin: 0 0 0.4em;
+}
+/* Task lists: display, not editable (03-ui-ux.md). The box is drawn rather than
+ * left to the platform, so a checked item reads as done at a glance. */
+.k-md li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.25em;
+}
+.k-md input[type="checkbox"] {
+  appearance: none;
+  width: 0.92em;
+  height: 0.92em;
+  margin: 0 0.5em 0 0;
+  vertical-align: -0.08em;
+  border: 1.5px solid var(--k-edge);
+  border-radius: 4px;
+  background: var(--k-surface-2);
+  pointer-events: none;
+}
+.k-md input[type="checkbox"]:checked {
+  border-color: color-mix(in srgb, var(--k-success) 60%, transparent);
+  background:
+    color-mix(in srgb, var(--k-success) 22%, var(--k-surface-2))
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.6l2.8 2.8L12.5 5' fill='none' stroke='%234fb286' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+      center / 84% no-repeat;
+}
+.k-md blockquote {
+  margin: 0 0 0.9em;
+  padding: 0.1em 0 0.1em 1em;
+  border-left: 3px solid var(--k-edge);
+  color: var(--k-ink-2);
+}
+.k-md hr {
+  border: 0;
+  border-top: 1px solid var(--k-edge-soft);
+  margin: 1.6em 0;
+}
+.k-md img {
+  max-width: 100%;
+  border-radius: calc(var(--k-radius) * 0.6);
+}
+/* Inline code is a WORD, not a widget. It had a background, a border and padding,
+ * which is fine for one span and a wall of chips for a paragraph that names three
+ * filenames and two functions - which is what agent prose does constantly. A tint
+ * and the mono face are enough to say "this is a literal"; the border was doing the
+ * same job twice and cutting the line's rhythm while it did it. */
+.k-md code {
+  font-family: var(--k-font-mono);
+  font-size: 0.88em;
+  background: color-mix(in srgb, var(--k-surface-2) 70%, transparent);
+  border-radius: 3px;
+  padding: 0 3px;
+  /* A long literal (a path, a command) breaks rather than pushing the column
+   * sideways: the reading measure is fixed and a horizontal scrollbar in prose is
+   * worse than a wrapped path. */
+  overflow-wrap: break-word;
+}
+.k-md kbd {
+  font-family: var(--k-font-mono);
+  font-size: 0.8em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--k-edge);
+  background: var(--k-surface-3);
+}
+
+/* Tables: real columns, GFM alignment honoured, header set apart. */
+.k-md table {
+  width: 100%;
+  margin: 0 0 1.1em;
+  border-collapse: collapse;
+  font-family: var(--k-font-ui);
+  font-size: 0.92em;
+}
+.k-md th,
+.k-md td {
+  padding: 6px 10px;
+  border: 1px solid var(--k-edge-soft);
+  text-align: left;
+}
+.k-md th {
+  background: var(--k-surface-2);
+  font-weight: 640;
+}
+.k-md tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--k-surface-2) 45%, transparent);
+}
+
+/* Definition lists (goldmark's DefinitionList extension). */
+.k-md dt {
+  font-weight: 640;
+  margin-top: 0.6em;
+}
+.k-md dd {
+  margin: 0.15em 0 0.5em 1.2em;
+  color: var(--k-ink-2);
+}
+
+/* Footnotes: the reference jumps, the note sits apart at the end. */
+.k-md sup a,
+.k-md .footnote-ref {
+  font-family: var(--k-font-mono);
+  font-size: 0.74em;
+  text-decoration: none;
+  padding: 0 2px;
+}
+.k-md .footnotes {
+  margin-top: 1.6em;
+  padding-top: 0.7em;
+  border-top: 1px solid var(--k-edge-soft);
+  font-size: 0.92em;
+  color: var(--k-ink-2);
+}
+.k-md .footnote-backref {
+  text-decoration: none;
+}
+
+/* Code blocks. The badge names the language, the button copies the block, and
+ * long blocks carry line numbers (chroma renders them as a table column). */
+.k-md .k-code {
+  margin: 0 0 1.1em;
+}
+.k-md .k-copy {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  z-index: 1;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-family: var(--k-font-mono);
+  font-size: 0.62rem;
+  color: var(--k-ink-3);
+  background: color-mix(in srgb, var(--k-surface-3) 82%, transparent);
+  opacity: 0;
+  transition: opacity 110ms ease;
+}
+.k-md .k-code:hover .k-copy,
+.k-md .k-copy:focus-visible {
+  opacity: 1;
+}
+.k-md .k-copy:hover {
+  color: var(--k-ink);
+}
+.k-md .k-copy[data-copied] {
+  opacity: 1;
+  color: var(--k-success);
+}
+/* With a copy button in the corner, the language badge moves out of its way. */
+.k-md .k-code:hover::before {
+  opacity: 0;
+}
+.k-md .k-code::before {
+  transition: opacity 110ms ease;
+}
+.k-md .chroma .lntable {
+  width: 100%;
+  border: 0;
+  margin: 0;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.k-md .chroma .lntable td {
+  border: 0;
+  padding: 0;
+  background: none;
+  vertical-align: top;
+}
+.k-md .chroma .lntd:first-child {
+  width: 1%;
+  white-space: nowrap;
+  user-select: none;
+}
+.k-md .chroma .lnt,
+.k-md .chroma .ln {
+  color: color-mix(in srgb, var(--k-ink-3) 62%, transparent);
+  padding-right: 4px;
+}
+
+/* GitHub alerts as tinted panels. The tone comes from Go (mdhtml.go) so
+ * "caution" is an error everywhere and nowhere is it a styling accident. */
+.k-md .k-alert {
+  --tone: var(--k-info);
+  margin: 0 0 1.1em;
+  padding: 9px 13px 10px;
+  border: 1px solid color-mix(in srgb, var(--tone) 34%, var(--k-edge));
+  border-left: 3px solid var(--tone);
+  border-radius: calc(var(--k-radius) * 0.7);
+  background: color-mix(in srgb, var(--tone) 9%, transparent);
+}
+.k-md .k-alert[data-tone="success"] {
+  --tone: var(--k-success);
+}
+.k-md .k-alert[data-tone="warning"] {
+  --tone: var(--k-warning);
+}
+.k-md .k-alert[data-tone="error"] {
+  --tone: var(--k-error);
+}
+.k-md .k-alert[data-tone="accent"] {
+  --tone: var(--k-accent);
+}
+.k-md .k-alert-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 0.15em;
+  font-family: var(--k-font-ui);
+  font-weight: 640;
+  font-size: 0.92em;
+  color: var(--tone);
+}
+.k-md .k-alert-head svg {
+  width: 1.05em;
+  height: 1.05em;
+  flex: 0 0 auto;
+}
+.k-md .k-alert-body > :last-child {
+  margin-bottom: 0;
+}
+.k-md .k-alert-body {
+  color: var(--k-ink-2);
+}
+
+/* Charts (FR38) and diagrams. Both are drawn from the same tokens as the text
+ * around them, so they follow a theme change with nothing to re-render. */
+.k-md .k-chart,
+.k-md .k-mermaid {
+  margin: 0 0 1.2em;
+  padding: 10px 12px;
+  border: 1px solid var(--k-edge);
+  border-radius: calc(var(--k-radius) * 0.8);
+  background: var(--k-surface-2);
+  overflow-x: auto;
+}
+.k-md .k-chart svg,
+.k-md .k-mermaid svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+.k-md .k-ch-title {
+  fill: var(--k-ink);
+  font-family: var(--k-font-ui);
+  font-size: 13px;
+  font-weight: 620;
+}
+.k-md .k-ch-tick,
+.k-md .k-ch-legend,
+.k-md .k-ch-slice {
+  fill: var(--k-ink-3);
+  font-family: var(--k-font-mono);
+  font-size: 10.5px;
+}
+.k-md .k-ch-legend {
+  fill: var(--k-ink-2);
+  font-family: var(--k-font-ui);
+  font-size: 11px;
+}
+.k-md .k-ch-slice {
+  fill: var(--k-ground);
+  font-family: var(--k-font-ui);
+  font-size: 11px;
+  font-weight: 640;
+}
+.k-md .k-ch-grid {
+  stroke: var(--k-edge-soft);
+  stroke-width: 1;
+}
+.k-md .k-ch-axis {
+  stroke: var(--k-edge);
+  stroke-width: 1.4;
+}
+.k-md .k-ch-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.k-md .k-ch-area {
+  opacity: 0.16;
+  stroke: none;
+}
+.k-md .k-ch-bar,
+.k-md .k-ch-slice-shape {
+  rx: 2;
+}
+.k-md .k-ch-slice-shape {
+  stroke: var(--k-surface-2);
+  stroke-width: 1.5;
+}
+/* The diagram's own source stays in the DOM until mermaid replaces it, so a
+ * failed render degrades to something readable instead of a blank panel. */
+.k-md .k-mermaid-src {
+  margin: 0;
+  font-family: var(--k-font-mono);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: var(--k-ink-3);
+  white-space: pre;
+}
+.k-md .k-mermaid[data-state="drawn"] .k-mermaid-src {
+  display: none;
+}
+.k-md .k-mermaid[data-state="failed"] {
+  border-color: color-mix(in srgb, var(--k-warning) 40%, var(--k-edge));
+}
+
+/* Math (M10 slice 4). KaTeX draws in currentColor and brings its own metrics, so
+ * the only work here is placement and size: a display equation is a block that
+ * scrolls sideways rather than one that widens the reading column, and inline
+ * math sits on the line it was written in. KaTeX's own 1.21em is loud next to
+ * agentbox's prose, hence the step down. */
+.k-md .k-math[data-display="1"] {
+  display: block;
+  margin: 0 0 1.2em;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.k-md .k-math .katex {
+  font-size: 1.08em;
+}
+.k-md .k-math[data-display="1"] .katex-display {
+  margin: 0;
+}
+/* The TeX stays in the DOM as the fallback and only surfaces when KaTeX refuses
+ * the formula - the same bargain the mermaid source strikes above. */
+.k-md .k-math-src {
+  display: none;
+}
+.k-md .k-math[data-state="failed"] .k-math-src {
+  display: inline;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--k-warning) 12%, transparent);
+  color: var(--k-ink-2);
+  font-family: var(--k-font-mono);
+  font-size: 0.86em;
+  white-space: pre-wrap;
+}
+
+/* Images (M10 slice 4). Anything that reaches the DOM is already a data: URI
+ * (internal/webui/images.go), so there is no loading or error state to style:
+ * either the bytes are here, or a placeholder says why they are not.
+ * inline-block rather than block so an image written mid-sentence stays in the
+ * sentence, while one written on its own line still sits on its own line. */
+.k-md .k-img {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--k-edge);
+  border-radius: calc(var(--k-radius) * 0.8);
+  background: var(--k-surface-2);
+  vertical-align: middle;
+}
+.k-md .k-img-blocked {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px dashed color-mix(in srgb, var(--k-warning) 40%, var(--k-edge));
+  border-radius: calc(var(--k-radius) * 0.8);
+  background: color-mix(in srgb, var(--k-warning) 7%, var(--k-surface-2));
+  font-size: 0.86em;
+  vertical-align: middle;
+}
+.k-md .k-img-blocked svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--k-warning);
+}
+.k-md .k-img-alt {
+  color: var(--k-ink-2);
+}
+.k-md .k-img-why {
+  color: var(--k-ink-3);
+  font-family: var(--k-font-mono);
+  font-size: 0.9em;
+}
+.k-md .k-img-why::before {
+  content: "· ";
+}
+
+/* Artifacts (M10). An artifact is a program in the middle of a document, so it
+ * gets a frame that says so: a bar naming what it is and letting you read it
+ * before you trust it, and a stage that is only ever an iframe. Nothing here
+ * styles the artifact's own content - that lives inside an opaque origin and
+ * cannot see this stylesheet, which is the point. */
+.k-md .k-artifact {
+  margin: 0 0 1.2em;
+  border: 1px solid var(--k-edge);
+  border-radius: calc(var(--k-radius) * 0.8);
+  background: var(--k-surface-2);
+  overflow: hidden;
+}
+.k-md .k-artifact-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 9px;
+  border-bottom: 1px solid var(--k-edge-soft);
+  background: color-mix(in srgb, var(--k-surface-3) 60%, transparent);
+  font-size: 0.68rem;
+}
+.k-md .k-artifact-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--k-accent) 18%, transparent);
+  color: color-mix(in srgb, var(--k-accent) 78%, var(--k-ink));
+  font-family: var(--k-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+}
+.k-md .k-artifact-title {
+  color: var(--k-ink);
+  font-weight: 600;
+}
+.k-md .k-artifact-runtime {
+  color: var(--k-ink-3);
+  font-family: var(--k-font-mono);
+  font-size: 0.62rem;
+}
+/* The note is where a blocked CDN, a compile error or a thrown exception lands.
+ * It takes the space that is left, and truncates rather than wrapping the bar
+ * onto a second line. */
+.k-md .k-artifact-note {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-warning);
+  font-size: 0.66rem;
+}
+.k-md .k-artifact-note:empty {
+  flex: 1;
+}
+.k-md .k-artifact-tabs {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--k-ground) 40%, transparent);
+}
+.k-md .k-artifact-tab,
+.k-md .k-artifact-run {
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--k-ink-3);
+  font-family: var(--k-font-mono);
+  font-size: 0.64rem;
+  cursor: pointer;
+}
+.k-md .k-artifact-run {
+  color: var(--k-ink-3);
+  opacity: 0;
+  transition: opacity 110ms ease;
+}
+.k-md .k-artifact:hover .k-artifact-run,
+.k-md .k-artifact-run:focus-visible {
+  opacity: 1;
+}
+.k-md .k-artifact-tab:hover,
+.k-md .k-artifact-run:hover {
+  color: var(--k-ink);
+}
+.k-md .k-artifact[data-view="preview"] .k-artifact-tab[data-artifact-view="preview"],
+.k-md .k-artifact[data-view="code"] .k-artifact-tab[data-artifact-view="code"] {
+  background: var(--k-surface);
+  color: var(--k-ink);
+}
+.k-md .k-artifact[data-view="preview"] .k-artifact-code,
+.k-md .k-artifact[data-view="code"] .k-artifact-stage {
+  display: none;
+}
+.k-md .k-artifact-code .k-code {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.k-md .k-artifact-frame {
+  display: block;
+  width: 100%;
+  height: 220px;
+  border: 0;
+  background: var(--k-surface);
+}
+/* Nothing in the stage until the frame is in it: a bare stage would be a gap
+ * with no explanation while the runtime chunk loads. */
+.k-md .k-artifact-stage:empty::after {
+  content: "preparing…";
+  display: block;
+  padding: 14px 12px;
+  color: var(--k-ink-3);
+  font-size: 0.7rem;
+}
+.k-md .k-artifact[data-clipped="1"] .k-artifact-stage::after {
+  content: "this artifact is taller than the space it has ([artifact] max_height_px)";
+  display: block;
+  padding: 4px 9px;
+  border-top: 1px solid var(--k-edge-soft);
+  color: var(--k-ink-3);
+  font-size: 0.64rem;
+}
+.k-md .k-artifact[data-state="error"] {
+  border-color: color-mix(in srgb, var(--k-warning) 40%, var(--k-edge));
+}
+.k-md .k-artifact-refused {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--k-edge-soft);
+  color: var(--k-ink-3);
+  font-size: 0.7rem;
+}
+/* On its own in the reader (`show_artifact`, `agentbox show --artifact`) an
+ * artifact is the document, not a block inside one: it takes the window.
+ * The block chrome loses its context here too (owner, 2026-07-28): the
+ * window's own bar already names the thing, and a working surface is not
+ * flipped to source or reloaded from inside itself - so the tabs and the
+ * reload control render only when the artifact sits inside a conversation.
+ * The bar itself stays: the note span is where a compile error lands. */
+.k-md.k-md-artifact .k-artifact-tabs,
+.k-md.k-md-artifact .k-artifact-run {
+  display: none;
+}
+.k-md.k-md-artifact,
+.k-md.k-md-artifact .k-artifact {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+}
+.k-md.k-md-artifact .k-artifact-stage {
+  flex: 1;
+  min-height: 0;
+  /* The scaled frame is compensated to land exactly on this box; hide the
+   * sub-pixel rounding rather than growing a scrollbar over it. */
+  overflow: hidden;
+}
+.k-md.k-md-artifact .k-artifact-frame {
+  /* A+/A- does not touch the frame's box at all: the zoom travels into the
+   * sandbox as a rule in its injected base style (artifact.svelte.js
+   * setArtifactZoom), so the document re-renders crisp at the new size.
+   * Scaling the frame from out here was tried twice and failed twice - see
+   * that function's comment for the archaeology. */
+  height: 100%;
+}
+.k-md.k-md-artifact .k-artifact-code {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+:root[data-motion="none"] * {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}

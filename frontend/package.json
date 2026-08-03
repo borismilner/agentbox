@@ -1,0 +1,32 @@
+{
+  "name": "agentbox-frontend",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "node tools/build-runtime.mjs && vite build",
+    "build:runtime": "node tools/build-runtime.mjs",
+    "dev": "node tools/build-runtime.mjs && vite"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "esbuild": "^0.28.1",
+    "sucrase": "^3.35.1",
+    "svelte": "^5.56.7",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.1.5"
+  },
+  "dependencies": {
+    "@tailwindcss/browser": "^4.3.3",
+    "@wailsio/runtime": "^3.0.0-alpha.97",
+    "katex": "^0.16.47",
+    "mermaid": "^11.16.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "private": true
+}
