@@ -148,7 +148,7 @@ inherits auto-spawn. Tools (descriptions matter - the model reads them):
 | `request_review` | diff (result: approved + optional comment) |
 | `show_document` | viewer (markdown content or file path) |
 
-The shipped set has grown past this design table - `agentbox mcp` serves 23 tools
+The shipped set has grown past this design table - `agentbox mcp` serves 30 tools
 today (speech, desktop driving, artifacts, walkthroughs);
 [agent-manual.md](agent-manual.md) is the current reference.
 

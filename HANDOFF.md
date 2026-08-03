@@ -74,9 +74,10 @@ that message is lifted into the run's `data` column.
 
 - **Background jobs:** none. **PRs:** none, ever (this repo pushes `main`).
 - **Git:** clean and pushed; `origin/main` is this handoff's own commit.
-- **Deployed:** `aa39a4e`, clean, from a committed tree. Everything newer is
-  docs, so the running daemon has all of this session's code. `make deployed`
-  checks it by asking the daemon, never the file.
+- **Deployed:** `1898d37`, clean, from a committed tree (the fresh history's
+  head at deploy time). Everything newer is docs, so the running daemon has
+  all of this session's code. `make deployed` checks it by asking the
+  daemon, never the file.
 - **How to exercise the MCP tools from a fresh session:** you cannot call
   `mcp__agentbox__*` for a tool added after your own `agentbox mcp` child started. Speak
   stdio JSON-RPC to a new `agentbox mcp` instead - the recipe is under "Mechanics
@@ -97,8 +98,9 @@ that message is lifted into the run's `data` column.
 - **The session-34 watch item** (a `make deploy` test-gate failure with the
   output truncated) did NOT recur once in about a dozen full gate runs. Keep
   watching; do not close it yet.
-- **Not in git:** `CLAUDE.md` (ignored by `~/.gitignore_global`), so the one-UI
-  trap lives on this machine only. The same warning is in `docs/history.md`.
+- **CLAUDE.md is in git since the rename** (force-added past
+  `~/.gitignore_global`, which ignores it by default), so the one-UI trap now
+  travels with the repo. The same warning is in `docs/history.md`.
 
 ## Blocked on you (Boris)
 
@@ -162,4 +164,4 @@ Nothing blocking. Two things to look at when convenient:
 3. [docs/history.md](docs/history.md) - session-by-session record; this session is "Thirty-fifth".
 4. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in commits; FR82 is now shipped.
 5. [docs/agent-manual.md](docs/agent-manual.md) - the agent-facing reference, now covering the seven assignment tools. `internal/manual/agent.md` is the embedded short version; `internal/manual/assignment.md` is the brief a run is spawned with.
-6. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions; read before touching the build or the daemon (not in git).
+6. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions; read before touching the build or the daemon.

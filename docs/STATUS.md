@@ -23,7 +23,7 @@ The resume brief with live state and exact commands is [../HANDOFF.md](../HANDOF
 
 AgentBox is not only a repo. `~/.local/bin/agentbox` holds the current build, and it is
 registered as a **user-scope** MCP server named `agentbox` in `~/.claude.json`, so
-all 23 tools are available in every Claude Code session in every project -
+all 30 tools are available in every Claude Code session in every project -
 not just in this one. Sessions that were running at the rename hold dead
 tools from the old registration and must restart. `~/.claude/CLAUDE.md`
 carries an AgentBox section telling an agent what the tools are for and when an
@@ -54,7 +54,8 @@ still on disk as a fallback; delete them once a few quiet days pass.
   authoritative in handleSubmit so it fires even while away/DND; daemon
   fills `[veto] default_window_s` (15) when the caller omits `--in`.
 - Agent integration (M4): `agentbox mcp` is an MCP stdio server (official
-  modelcontextprotocol/go-sdk v1.6.1) exposing 23 tools; each proxies to
+  modelcontextprotocol/go-sdk v1.6.1) exposing 30 tools (the seven
+  assignment tools included since M12); each proxies to
   the daemon over the socket (auto-spawn). `agentbox docs` / `docs agent` /
   `docs setup` serve the embedded manual; `agentbox schema` prints the wire JSON
   Schema. Recipes in docs/recipes.md.
@@ -474,10 +475,10 @@ agentbox webui-demo panel                  # the drop-down console with a canned
 
 ## Tests
 
-`make check` = gofmt + vet + `go test ./... -race`; **20 packages** (incl.
+`make check` = gofmt + vet + `go test ./... -race`; **21 packages** (incl.
 `internal/hand`, `internal/session`, `internal/webui`, `internal/speech` and
-`frontend`), **498 tests**, all green as of the last code commit (session 33;
-the count is `grep -c "^func Test"` top-level tests, 2026-08-01). There is no
+`frontend`), **564 tests**, all green as of the rename (session 36;
+the count is `grep -c "^func Test"` top-level tests, 2026-08-03). There is no
 automated *visual* check (see "Known gaps"); what a surface is *allowed to
 do* is tested, and so is the HTML Go hands it.
 
@@ -755,10 +756,6 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
-(Superseded 2026-08-01 by the reset below. The 2026-07-31 priority was the two
-desktop-sharing field requests, "since it will keep biting us all the way until
-it is there"; FR77 shipped and FR74's marker is now built but unexercised.)
-
 **Priority reset by Boris on 2026-08-01 (session 34):** the main panel and
 recurring AI assignments (FR81/FR82) come first. M12 finished in session 35
 (slices 3, 4 and 5, all exercised live). The FR74 fullscreen marker is built but
@@ -805,7 +802,7 @@ still unexercised; the rest of the old queue is behind these.
    to slide 1 in the rehearsal - the TTS spells out the product name where
    the narration names it. Before the camera rolls, refresh the tool count in
    `tools/showcase/deck.py` and the one-page argument in `docs/showcase.md`:
-   both still say "fourteen tools" and the binary serves twenty.
+   both still say "fourteen tools" and the binary serves thirty.
 5. **Resize affordance for frameless surfaces** (owner, 2026-07-28, from the
    FR58 mock round): a maximized artifact window can only be resized through
    WM chords (Alt+F8, Super+middle-drag), which is undiscoverable. Wanted:
@@ -860,12 +857,13 @@ GNOME Shell 46.0 on X11 (Ubuntu 24.04, HiDPI), GTK 4.14.5, WebKitGTK 2.52.3,
 PipeWire via pipewire-pulse, Go 1.26.1, node/npm for the frontend, Cantarell
 fonts at /usr/share/fonts/opentype/cantarell, module
 github.com/borismilner/agentbox, origin git@gitlab.com:fu-bar/agentbox.git (path
-renamed on GitLab 2026-07-26; the old URL redirects).
+renamed on GitLab 2026-08-03; the old URL redirects), public mirror
+github.com/borismilner/agentbox.
 
 Git: everything is on `main`, pushed and in sync with `origin`. There is no
 CI and there are no PRs; Boris pushes to `main` directly. The history was
-condensed into nine era commits on 2026-07-26 (same tree; history.md keeps
-the lineage), so hashes recorded before that date no longer resolve.
+restarted as fifteen subsystem commits at the rename (2026-08-03; history.md
+keeps the lineage), so hashes recorded before that no longer resolve.
 
 `~/.config/agentbox/config.toml` exists (moved from the old config dir at the
 rename), which it did not for the first fifteen sessions. It turns speech on

@@ -38,6 +38,15 @@ compatibility symlink covers the old binary name, and the old config, state
 and cache dirs were left on disk as a fallback - delete them once a few
 days pass quietly.
 
+The docs were decluttered the same day, nothing lost: the roadmap's M8-M11
+slice narratives were folded into this file's "What M9/M10/M11 shipped"
+sections (the three cutover defects moved with them) and the roadmap keeps
+plan, acceptance and pointers; STATUS lost its superseded queue preamble
+(the 2026-07-31 priority quote moved to session 31's entry above) and had
+its stale counts refreshed - the MCP server serves 30 tools since M12, the
+suite is 564 tests across 21 packages, and the git notes now describe the
+fresh history.
+
 ## Thirty-fifth session (2026-08-01): assignments, running
 
 Session 34 built the assignment engine and wired it to nothing. This session
@@ -352,6 +361,11 @@ never the problem. Second, this session lost four interruptions to cards that
 closed before he could read them, and the two features he asked for - a body he
 can read back, and a sign that stays up - are both the same complaint. A tool
 whose purpose is that a message is not lost had two ways to lose one.
+
+Before the session closed Boris set the priority: the two desktop-sharing
+field requests come first, "since it will keep biting us all the way until
+it is there". (Reset 2026-08-01, session 34, in favour of FR81/FR82; the
+queue in STATUS.md carries the current order.)
 
 ## Thirtieth session (2026-07-30): teaching, not just rendering (FR68-71)
 
@@ -1241,7 +1255,20 @@ it.
   plus a gsettings read, no toolkit in it) so the daemon depends on a
   presence signal rather than on a UI package. `make build` gained a
   `frontend` prerequisite: editing a `.svelte` file and running `make build`
-  used to embed the old `frontend/dist` with no warning.
+  used to embed the old `frontend/dist` with no warning. Three defects the
+  cutover surfaced, each fixed with a test: any daemon start with an
+  unresolved item in the store died on SIGSEGV - `daemon.New` re-presents
+  the restored item before `Run`, and `application.InvokeSync` dereferenced
+  a platform application that did not exist yet, so window work arriving
+  early is now queued and replayed when the loop starts, keyed so a repeat
+  replaces its predecessor (a cold-start `agentbox show`, `agentbox app` and
+  `agentbox progress` all landed in the same hole). `agentbox show FILE --watch`
+  silently dropped `--watch` - Go's flag package stops at the first
+  positional, and flag-last is the order the docs used; `show`, `mute` and
+  `unmute` now parse flags around their positionals. And Wails quits when
+  the last window closes, which for a tray-resident daemon whose windows
+  are transient meant answering the first question killed AgentBox;
+  `DisableQuitOnLastWindowClosed` is set.
 - `internal/webui` - Wails v3 app; the `Bridge` service (the only thing the
   webview can call); `tokens.go` turning config into CSS custom properties;
   `mdhtml.go` (goldmark + chroma with class-based highlighting, so code
@@ -1395,7 +1422,8 @@ keep their own window and only session-tagged questions land inline.
 
 258 tests before the cutover; 231 after it (the Gio offscreen screenshot
 harness, 30 tests, and the markdown Document goldens, 4, went with their
-packages); 330 after the sixteenth session; 362 as of the rename. The
+packages); 330 after the sixteenth session; 362 as of the 2026-07-26
+rename; 564 as of the AgentBox rename (2026-08-03, session 36). The
 M8-era ui-package tests (tab-switch wrap/clamp/select, the stats->markdown
 builder, session add/switch/mode, settings descriptor mapping) and every
 offscreen `TestShot*` screenshot went with `internal/ui`; the
@@ -1409,4 +1437,7 @@ build (2026-07-04) through the whole `wails-v3` lineage - a clean
 fast-forward, no merge commit - with the M10 work landing via
 `m10-math-images`; both working branches are deleted. On 2026-07-26 the
 197-commit history was condensed into nine era commits with the same final
-tree, so commit hashes recorded before that date no longer resolve.
+tree, so commit hashes recorded before that date no longer resolve. On
+2026-08-03 the history was restarted outright for the AgentBox rename -
+fifteen subsystem commits, same tree - and the era hashes went the same
+way.
