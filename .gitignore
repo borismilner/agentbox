@@ -1,0 +1,17 @@
+/agentbox
+/dist/
+*.test
+*.out
+.idea/
+/frontend/node_modules/
+
+# Office editors drop a lock file beside the document they have open; one of
+# these was committed with the deck.
+.~lock.*#
+
+# A throwaway venv for the one script that needs python-pptx (make deck).
+/.venv-deck/
+
+# Python bytecode from the showcase tools; one of these was committed once.
+__pycache__/
+*.pyc
