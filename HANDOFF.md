@@ -1,28 +1,20 @@
-# Handoff - AgentBox: assignments run, and the one piece M12 left open
+# Handoff - AgentBox: renamed, decluttered, and the one piece M12 left open
 
-**Written:** 2026-08-01 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
-
-**Renamed 2026-08-03 (session 36):** the project is AgentBox now - binary
-`agentbox`, tools `mcp__agentbox__*`, fresh git history (fifteen subsystem
-commits; every hash below this line belongs to the retired history), mirrors
-renamed. Claude sessions started before the rename hold dead MCP tools until
-they restart. Names and paths below were updated in place; the work queue
-itself is unchanged.
+**Written:** 2026-08-03 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
 ## Do this next
 
 ```bash
 cd ~/me/projects/agentbox
-git log --oneline           # fresh history: the tree in subsystem commits, docs last
-make deployed               # must answer the commit at head
+git log --oneline -3        # head: this handoff; then 5a39f31 declutter, 1898d37 fresh-history head
+make deployed               # must answer 1898d37 (everything newer is docs)
 agentbox control state      # "no run: the desktop is the human's"
 git status -sb              # expect clean, in sync with origin/main
 ```
 
-M12 (assignments, FR82) is finished and exercised live - scheduler, MCP tools,
-runner and surface. **Ask Boris what he wants next before starting item 1**: the
-queue below is the pre-M12 order, and he has reset priorities twice in two
-sessions. If he is not there, item 1 is the honest continuation.
+Then pick up the queue. **Ask Boris what he wants next before starting item 1**
+if he is around - he has reset priorities twice in three sessions. If he is
+not, item 1 is the honest continuation.
 
 **1. M12's last piece - the custom HTML panel.** An assignment's `panel_html`
 stores, edits and round-trips through both the MCP tools and the editor, and the
@@ -60,56 +52,62 @@ window at all.
 
 ## Where we are
 
-Session 34 built the assignment engine and wired it to nothing - `SetRunner` and
-`StartAssignments` were called from nowhere, so the tick loop had never started.
-This session finished all three remaining slices and demonstrated each one
-against the deployed daemon rather than reading the diff.
+Session 36 (2026-08-03) renamed the project to AgentBox at Boris's request,
+totally: module `github.com/borismilner/agentbox`, binary/CLI `agentbox`, wire
+`agentbox.v1.*`, env `AGENTBOX_*`, unit, desktop entry, icons, MCP registration,
+the logo's bubble lettering, the recorded takes, and the live deployment
+(config/state/cache copied with the daemon stopped; nothing lost - stats
+answered 311 interruptions right after). The git history was restarted as
+fifteen subsystem commits (his call), force-pushed to GitLab
+(`fu-bar/agentbox`, path renamed by Boris) and to the public GitHub mirror
+(`borismilner/agentbox`, renamed; old URL redirects). His GitHub profile README
+and borismilner.github.io were migrated too. The same session decluttered the
+docs (see the ledger below). The work queue itself is untouched since session
+35: M12 runs end to end, the custom HTML panel is its one open piece.
 
 Read [docs/08-assignments.md](docs/08-assignments.md) before touching
-assignments. Two conventions were decided while building and are now in it: a
-run's last assistant message is its summary, and a fenced ```agentbox-data block in
-that message is lifted into the run's `data` column.
+assignments. Two conventions are in it: a run's last assistant message is its
+summary, and a fenced ```agentbox-data block in that message is lifted into the
+run's `data` column.
 
 ## Live state (volatile - verify on resume)
 
 - **Background jobs:** none. **PRs:** none, ever (this repo pushes `main`).
-- **Git:** clean and pushed; `origin/main` is this handoff's own commit.
-- **Deployed:** `1898d37`, clean, from a committed tree (the fresh history's
-  head at deploy time). Everything newer is docs, so the running daemon has
-  all of this session's code. `make deployed` checks it by asking the
-  daemon, never the file.
+- **Git:** clean; `main` pushed and in sync with `origin` (GitLab) and
+  `github` (mirror remote). Head is this handoff's own commit, on top of
+  `5a39f31` (docs declutter).
+- **Deployed:** `1898d37`, clean stamp, daemon answering `make deployed`.
+  Everything newer is docs, so the running daemon has all shipped code.
+- **In-flight edits:** none.
+- **Rename fallout still on disk, on purpose:** `~/.config/qq`,
+  `~/.local/state/qq`, `~/.cache/qq`, `~/.local/share/qq` are fallback copies
+  (delete after a quiet few days); `~/.local/bin/qq` is a compat symlink to
+  `agentbox`. Claude sessions started before the rename hold dead
+  `mcp__qq__*` tools until they restart; new sessions get
+  `mcp__agentbox__*` from the user-scope registration in `~/.claude.json`.
+- **On Boris's live machine (carried from session 35, not re-checked):** one
+  ad-hoc assignment **"Claude usage check"** (`a0eff4b720959`), never run;
+  schedule-or-delete is his call. Three saved run transcripts under
+  `~/.local/state/agentbox/sessions/` (real run output; leave them).
 - **How to exercise the MCP tools from a fresh session:** you cannot call
-  `mcp__agentbox__*` for a tool added after your own `agentbox mcp` child started. Speak
-  stdio JSON-RPC to a new `agentbox mcp` instead - the recipe is under "Mechanics
-  discovered" in [docs/07-field-requests.md](docs/07-field-requests.md).
-- **On Boris's live machine, created by this session:** one assignment, **"Claude
-  usage check"** (`a0eff4b720959`), **ad-hoc so it never fires by itself**, knobs
-  window=7d and warn_at=90%. It was written through the editor to exercise it,
-  and it is his worked example from the design doc, so it was left rather than
-  deleted. It has never run. Delete it or give it a schedule - that is his call,
-  not the next session's.
-- **Store changed:** rows in `assignments` / `assignment_runs` only (migration
-  0007 already existed). The smoke-test assignment and its four runs were
-  deleted at the end.
-- **His sessions directory** has three saved conversations from assignment runs
-  (`~/.local/state/agentbox/sessions/`, 2026-08-01 15:45 onward). They are real run
-  transcripts, which is the point of a run being a session; leave them.
-- **The app window** was opened for the live pass and closed to the tray again.
-- **The session-34 watch item** (a `make deploy` test-gate failure with the
-  output truncated) did NOT recur once in about a dozen full gate runs. Keep
-  watching; do not close it yet.
+  `mcp__agentbox__*` for a tool added after your own `agentbox mcp` child
+  started. Speak stdio JSON-RPC to a new `agentbox mcp` instead - the recipe
+  is under "Mechanics discovered" in
+  [docs/07-field-requests.md](docs/07-field-requests.md).
 - **CLAUDE.md is in git since the rename** (force-added past
   `~/.gitignore_global`, which ignores it by default), so the one-UI trap now
-  travels with the repo. The same warning is in `docs/history.md`.
+  travels with the repo.
+- **The session-34 `-race` flake watch item** did not recur through this
+  session's many full gate runs either. Keep watching; do not close it yet.
 
 ## Blocked on you (Boris)
 
-Nothing blocking. Two things to look at when convenient:
+Nothing - proceed autonomously. Two things when convenient:
 
-- **"Claude usage check" is sitting in Assignments, ad-hoc.** Give it a schedule
-  (`daily 09:00`) if you want it, or delete it.
-- **What next?** The queue above is the old order. If assignments should grow
-  instead (a run answering its own cards, more than one at a time), say so.
+- **Delete the old-name fallback dirs** once a few quiet days pass (one line:
+  `rm -rf ~/.config/qq ~/.local/state/qq ~/.cache/qq ~/.local/share/qq`).
+- **"Claude usage check"** is still sitting in Assignments, ad-hoc. Give it a
+  schedule (`daily 09:00`) or delete it.
 
 ## I can do solo (no input needed)
 
@@ -119,49 +117,48 @@ Nothing blocking. Two things to look at when convenient:
 
 ## Facts - verified vs assumed
 
-- [verified] An assignment created through the real MCP stdio server against the
-  deployed daemon, run by an agent in 3.3s, with summary and `agentbox-data` both
-  landing in the right columns.
-- [verified] **The scheduler fires by itself.** Armed `every 1m`, left alone,
-  and it ran: `trigger: "schedule"`, using the stored parameter rather than the
-  earlier override - the rule the whole overrides design rests on.
-- [verified] On the real desktop, with the hands-off strip up: the surface on
-  live data; an enum, a text field and a slider each written through and read
-  back from the database; Run now watched live (button disabled, running chip,
-  the list refreshing itself when it finished); a run expanded to its recorded
-  data and the values it used; a new assignment written in the editor; the smoke
-  test deleted through the confirm.
-- [verified] `make check` green at every commit (gofmt + vet + `go test ./...
-  -race`, 21 packages).
-- [verified] A run does not take the human's selection, stops its child while
-  keeping the transcript, and reports a wordless exit as a failure - all three
-  by test, against a stub `claude` that speaks stream-json.
-- [verified] `TestManualListsEveryTool` now scans the whole `internal/mcp`
-  package, so a tool family in its own file cannot ship undocumented.
+- [verified] The deployed daemon is the fresh-history build: `make deployed`
+  answered `1898d37`, clean stamp, after the rename migration.
+- [verified] `make check` green after every change this session (gofmt + vet +
+  `go test ./... -race`; 21 packages, 564 top-level tests as of 2026-08-03).
+- [verified] Post-rename live pass: a success card rendered over the desktop,
+  the app window opened on Home with brand casing correct (screenshotted),
+  `agentbox control state` answers, the compat symlink runs the new binary,
+  `org.wails.agentbox` is on the session bus, `stats --since 30d` reads 311
+  interruptions (history survived the state move).
+- [verified] Mirrors live: GitHub repo renamed with the fresh history at head
+  (old URL 301-redirects), profile README shows AgentBox, and
+  borismilner.github.io rebuilt with zero old-name matches.
+- [verified] The declutter lost nothing: every removal is in the ledger below
+  or in history.md's session-36 entry, and the stale counts (30 tools, 564
+  tests, fresh-history git notes) were corrected against the code.
 - [assumed] The FR74 marker's behaviour over a fullscreen window (unchanged
-  since session 34: the mechanism is proven, this window has never been mapped).
+  since session 34: mechanism proven, the marker window never mapped).
 - [assumed] That `claude --model <id>` accepts whatever id Boris types into an
   assignment. The flag is still passed through unvalidated.
 - [assumed] Home in the LIGHT theme, and the Assignments surface in it - both
   exercised in his dark theme only.
-- [assumed] boris-vm was not used this session and is presumed off; `gcloud` in
-  this shell is not authenticated.
+- [assumed] The "Claude usage check" assignment still exists and is still
+  ad-hoc (not re-read from the store this session).
+- [assumed] The spoken lines played audibly (`agentbox say` exited clean;
+  nobody could hear it from here).
 
 ## Declutter ledger
 
 | Removed / condensed | Where its knowledge now lives |
 |---|---|
-| The previous HANDOFF.md (session 34: the tray robot, Home, the assignment engine) | `docs/history.md` "Thirty-fourth session"; FR79-FR82 in `docs/07-field-requests.md` |
-| "M12 slices 3, 4 and 5" as the do-next list | Shipped: `98e3547`, `b1ed1e4`, `d46efff`, `84d4267` |
-| Session 34's note that Home's click-throughs were unexercised | Exercised: the Assignments door and the rail were both clicked through on the live desktop |
-| The session-25 / session-34 `-race` flake watch item | Still open but quiet; moved to Live state with the run count |
-| The stdio MCP driver script used to exercise the new tools (a scratchpad file, now gone) | The recipe it encoded is "Mechanics discovered" in `docs/07-field-requests.md` |
+| The session-35 HANDOFF (M12 shipped, live-state details) | `docs/history.md` "Thirty-fifth session"; still-live facts carried above |
+| Roadmap M8-M11 slice narratives (269 lines) | `docs/history.md` "What M9/M10/M11 shipped" sections + "Session UI decisions (M8)"; plan/acceptance stay in `docs/05-roadmap.md` |
+| The three M9 cutover defects (SIGSEGV replay, `--watch` flag order, quit-on-last-window) - roadmap was their only home | `docs/history.md`, M9 detail, cutover bullet |
+| STATUS's superseded 2026-07-31 priority preamble | The quote in `docs/history.md` "Thirty-first session"; the 2026-08-01 reset stays in STATUS "Do this next" |
+| Stale counts (23/20 tools, 498 tests/20 packages, "nine era commits", GitLab date) | Corrected in place: 30 tools, 564 tests/21 packages, fresh-history notes in STATUS "Environment facts" + history "Git archaeology" |
+| The old-name lineage (banned from repo docs) | Agent memory `renamed-to-agentbox` (`~/.claude/projects/-home-boris-milner-me-projects-agentbox/memory/`) |
 
 ## Map
 
 1. [docs/STATUS.md](docs/STATUS.md) - current state, what works, known gaps, the queue.
-2. [docs/08-assignments.md](docs/08-assignments.md) - the M12 design, every decision behind it, and how a run hands something back. Read before touching assignments.
-3. [docs/history.md](docs/history.md) - session-by-session record; this session is "Thirty-fifth".
-4. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in commits; FR82 is now shipped.
-5. [docs/agent-manual.md](docs/agent-manual.md) - the agent-facing reference, now covering the seven assignment tools. `internal/manual/agent.md` is the embedded short version; `internal/manual/assignment.md` is the brief a run is spawned with.
+2. [docs/08-assignments.md](docs/08-assignments.md) - the M12 design and how a run hands something back. Read before touching assignments.
+3. [docs/history.md](docs/history.md) - session-by-session record; this session is "Thirty-sixth".
+4. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in commits; FR82 shipped.
+5. [docs/agent-manual.md](docs/agent-manual.md) - the agent-facing reference. `internal/manual/agent.md` is the embedded short version; `internal/manual/assignment.md` is the brief a run is spawned with.
 6. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions; read before touching the build or the daemon.
