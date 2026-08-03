@@ -75,7 +75,10 @@ run's `data` column.
 - **Background jobs:** none. **PRs:** none, ever (this repo pushes `main`).
 - **Git:** clean; `main` pushed and in sync with `origin` (GitLab) and
   `github` (mirror remote). Head is this handoff's own commit, on top of
-  `5a39f31` (docs declutter).
+  `5a39f31` (docs declutter). **GitLab push-mirrors to GitHub on its own**
+  (survived the rename): a direct `git push github` can lose the race to the
+  mirror and be rejected with "cannot lock ref"; fetch and compare heads
+  before treating that as a real failure. Pushing `origin` is enough.
 - **Deployed:** `1898d37`, clean stamp, daemon answering `make deployed`.
   Everything newer is docs, so the running daemon has all shipped code.
 - **In-flight edits:** none.
