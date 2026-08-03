@@ -1,0 +1,691 @@
+# AgentBox: the agent manual
+
+This is the complete reference for an AI agent (Claude Code or any LLM with tool
+use or shell access) driving **AgentBox**. Read it once and you know everything
+needed to interrupt a human well: when to ask, which tool to use, what comes
+back, and what never to do.
+
+For a short in-binary version run `agentbox docs agent`. For the machine-readable
+wire contract run `agentbox schema`. Config knobs (the human's side) are in
+[06-configuration.md](06-configuration.md); integration snippets in
+[recipes.md](recipes.md).
+
+## What AgentBox is
+
+AgentBox is a desktop interaction hub. An agent uses it to reach the human at the
+keyboard: post a result, ask a blocking question, get a secret, show a diff for
+approval, report progress. AgentBox renders these as calm desktop cards/toasts
+(centered card for decisions, top toast for glances), plays a quiet earcon,
+keeps an inbox and history, and returns the human's answer to the agent. A
+background daemon owns the windows; your call auto-spawns it if it is not up.
+
+**The one rule: interrupt sparingly.** A blocking question pulls a human out of
+flow. Only ask for a decision you cannot make safely yourself. Use
+`notify_user` for things to glance at, `report_progress` for long work, and a
+blocking tool only when you genuinely need an answer to proceed.
+
+## Two ways in (use MCP)
+
+AgentBox has two equal-rank interfaces (ADR-0004):
+
+1. **MCP** (`agentbox mcp`, a stdio server) - the primary path for an LLM agent.
+   The model calls tools directly. Identity is filled in automatically.
+2. **CLI** (`agentbox <command>`) - for shell scripts, hooks, cron, and manual use.
+   Same daemon, same behavior; the answer comes back as exit code + stdout.
+
+If you are an LLM with tool use, prefer MCP. If you are running shell commands,
+use the CLI.
+
+### Setup (one time, per project)
+
+Register AgentBox's MCP server in the project's `.mcp.json`:
+
+```json
+{"mcpServers": {"agentbox": {"command": "agentbox", "args": ["mcp"]}}}
+```
+
+`agentbox docs setup` prints a ready-to-paste version (and a Claude Code hooks
+alternative for Stop/Notification if you cannot use MCP). The first tool call
+auto-spawns the daemon; nothing else to start.
+
+## Decision guide: which tool, when
+
+| You want to... | MCP tool | CLI | Blocks? |
+| --- | --- | --- | --- |
+| Tell the human something (result, FYI) | `notify_user` | `agentbox notify` | no |
+| Ask a single choice (2-9 options) | `ask_user` (with `options`) | `agentbox ask` | yes |
+| Ask for free text | `ask_user` (no `options`) | `agentbox input` | yes |
+| Get a yes/no | `confirm_action` | `agentbox confirm` | yes |
+| Do something unless stopped (countdown) | `act_unless_stopped` | `agentbox veto` | yes |
+| Collect several fields at once | `ask_user_form` | `agentbox form` | yes |
+| Get a secret/credential | `request_secret` | `agentbox secret` | yes |
+| Get a diff approved before applying | `request_review` | `agentbox review` | yes |
+| Show rich markdown (report, plan, table) | `show_document` | `agentbox show` | no |
+| Report progress on a long task | `report_progress` | `agentbox progress` | no |
+| Give the human something to use, not read | `show_artifact` | `agentbox show --artifact` | no |
+| Wait for them to use it | `await_artifact_event` | `agentbox artifact wait` | yes |
+| See what they have already done in it | `read_artifact_events` | `agentbox artifact read` | no |
+| Hand a change over for a step-by-step review | `create_walkthrough` | `agentbox walkthrough create` | no |
+| Wait for that review to come back, whole | `await_walkthrough` | `agentbox walkthrough await` | yes |
+| Pick up a review submitted after its agent left | `read_walkthrough` (`ack`) | `agentbox walkthrough read --ack` | no |
+| See the work AgentBox runs on its own | `list_assignments` | - | no |
+| Write or improve one of those | `create_assignment` / `update_assignment` | - | no |
+| Try it now and read the result | `run_assignment`, `assignment_runs` | - | no |
+| Take the desktop for a while (hands off) | `request_control` | `agentbox control request` | yes |
+| Say what you are doing while you hold it | `set_activity` | `agentbox control activity` | no |
+| Give the desktop back | `release_control` | `agentbox control release` | no |
+
+Picking between the close ones:
+
+- **confirm_action vs act_unless_stopped**: if proceeding is the expected
+  outcome and you just want a chance to be stopped, use `act_unless_stopped`
+  (it proceeds on timeout). If you genuinely need a yes before acting, use
+  `confirm_action`.
+- **ask_user vs ask_user_form**: one decision -> `ask_user`; several related
+  inputs in one go -> `ask_user_form`.
+- **notify_user vs report_progress**: a single event -> `notify_user`;
+  incremental progress on one task -> `report_progress` (do not spam notifies).
+- **request_review vs create_walkthrough**: one diff, one approve/reject ->
+  `request_review` (a card, gone when answered). A change worth walking -
+  steps, citations, questions, a verdict per step, comments anchored to lines
+  -> `create_walkthrough` (a durable board review the human hands back in one
+  turn, and a library record afterwards).
+
+## MCP tools (full reference)
+
+Every blocking tool waits for the human and returns their answer. `title` is
+always required; `body` is optional markdown shown under it.
+
+**Every tool that puts something on screen also takes `speak`**: one short line
+read out loud after the item's earcon, when the human has speech turned on. It is
+your sentence, not the title - AgentBox never reads a screen aloud. Write what you
+would say to somebody in the next room, and leave it out when there is nothing
+worth saying: omitting it means the chime alone, which is the default.
+
+    notify_user(level="error", title="migration failed on staging",
+                speak="The staging migration failed and rolled back. Nothing was lost.")
+
+Do not restate the title, do not read a diff or a table out, and do not narrate
+every step - the same restraint that applies to interrupting at all applies here,
+more so, because a voice cannot be glanced past.
+
+### notify_user  (non-blocking)
+Post a desktop notification. Returns immediately.
+- Args: `title` (req), `body`, `level` (`info`|`success`|`warning`|`error`|`urgent`, default `info`), `actions` (array of `{label, exec}`, max 3 - buttons that run a shell command in your cwd on click; the verbatim command shows on hover).
+- Returns: `{id}`.
+- Use for progress and results, never for questions.
+
+### ask_user  (blocking)
+Ask a question. Give 2-9 `options` for a single choice, or omit them for free
+text.
+- Args: `title` (req), `body`, `options` (2-9 strings), `timeout_s` (int; 0 = wait forever), `default` (applied on timeout).
+- Returns: `{answered, answer, reply, default_applied}`. `answer` is the chosen option; `reply` is set instead when the human typed free text (the "/" reply hatch); `default_applied=true` if the timeout default was used.
+
+### confirm_action  (blocking)
+Yes/no.
+- Args: `title` (req), `body`.
+- Returns: `{answered, confirmed, reply}`. `confirmed` is the boolean.
+
+### act_unless_stopped  (blocking)
+Announce an action with a live countdown; it proceeds when the window elapses
+unless the human stops it.
+- Args: `title` (req), `body`, `window_s` (countdown seconds, default 15).
+- Returns: `{vetoed}`. `vetoed=false` means proceed; `true` means the human stopped you.
+
+### ask_user_form  (blocking)
+A small form, up to 6 typed fields, answered in one card.
+- Args: `title` (req), `body`, `fields` (req array), `timeout_s`.
+- Each field: `{key (req), label, type ("choice"|"text"|"bool") (req), options (2-9, for choice), default}`.
+- Returns: `{answered, values}` where `values` is a `{key: value}` map.
+
+### request_secret  (blocking)
+Masked credential entry. The value is written to a 0600 file and is NEVER
+returned over the wire.
+- Args: `title` (req), `body`, `timeout_s`.
+- Returns: `{provided, path}`. Read the file at `path` when you need the value; never print or echo it; delete it when done.
+
+### show_document  (non-blocking)
+Open markdown in AgentBox's reading window (rich headings, code, tables, alerts,
+charts, math, images) - far better than dumping into a terminal.
+- Args: `path` (a file) or `content` (inline markdown), `title`.
+- Returns: `{shown}`.
+
+#### Math
+
+Write TeX however you normally would: `$E = mc^2$` or `\(E = mc^2\)` inline,
+`$$...$$` or `\[...\]` for display, or a ```math fence if you would rather be
+explicit. Prices are safe - `$5 and $10` renders as money, not as a formula.
+A formula AgentBox cannot typeset shows your TeX instead of disappearing, so a typo
+is visible rather than silent.
+
+#### Images
+
+`![alt](/absolute/path/to/plot.png)` always works. AgentBox reads the file itself
+and hands the window the bytes, so:
+
+- **Use an absolute path** in anything you send over the socket - a card body, a
+  notification, prose in a session turn. A relative one is refused there:
+  AgentBox's working directory is not yours, and guessing would be wrong more often
+  than right.
+- **In a file you ask AgentBox to show**, a relative path works and is the better
+  spelling. `agentbox show report.md` reads `![](out/chart.png)` against the
+  document's own directory, so the file stays portable and reads correctly in an
+  editor too.
+- **PNG, JPEG, GIF or WebP**, checked by content and not by extension. For a
+  vector picture use a ```chart or ```mermaid fence, which AgentBox draws itself.
+- **2 MB per image.**
+- **A URL is never fetched.** `![x](https://...)` renders as a placeholder saying
+  so. Rendering your prose must not make a request to a host the human never saw,
+  and it will not. If you need a remote image, download it first and reference
+  the file.
+
+Anything refused still shows its alt text and the reason, so write alt text worth
+reading.
+
+### speak  (non-blocking, or blocking with `wait`)
+Say one line out loud, if the human turned speech on. No card, no notification, no
+inbox entry - just a voice.
+- Args: `text`, `wait`.
+- Returns: `{spoken, waited}` - it reached the daemon; it is still silent if speech
+  is off.
+- Use it when something is worth hearing but not worth interrupting for, or to talk
+  somebody through a long job they are only half watching. For anything that also
+  needs a card, put the sentence in that tool's `speak` field instead, so the chime
+  and the voice arrive together rather than as two separate events.
+- **`wait` is for narration.** It returns when the line has finished playing rather
+  than when it was queued, so the next thing you do lands on its last word: a
+  sequence of lines that reads as speech, or a sentence that has to be heard before
+  a card appears. AgentBox measures the audio to answer that (it counts the PCM), so
+  it is the real end of the sound, not an estimate from the word count. Leave it off
+  for an ordinary aside - an aside should not cost you the seconds it takes to read.
+- A timeout bounds the **wait**, not the line: `agentbox say --wait --timeout 1` on a
+  four-second sentence returns exit 4 after a second and the sentence still finishes
+  out loud. AgentBox does not truncate its own speech.
+
+### drive_desktop  (blocks while the script runs)
+Move the pointer, click, drag, scroll and type on the human's desktop - real
+synthetic input, so any application accepts it. Use it to do the thing rather
+than describe it: open a menu, fill a field, click the button in a window you
+just showed, demonstrate a workflow while they watch.
+- Args: `script` (req, one step per line - `window TITLE` / `screen`,
+  `move X Y`, `click [button|X Y [button]]`, `double`, `drag X1 Y1 X2 Y2`,
+  `scroll N`, `type TEXT`, `key ctrl+alt+t`, `wait MS`, `speed N`, `wpm N`),
+  `speed` (1 = a hand's pace), `wpm` (typing speed, default 300).
+- Returns: `{steps}` - how many ran.
+- Coordinates: `400` from the near edge, `-46` from the far edge, `60%`
+  across, `center`, `~` the pointer, `~+30` relative to it. The whole script
+  is validated before the first event fires; movements follow a human curve.
+- **Name the window you mean.** `window TITLE` is a target lock, not just a
+  coordinate frame: it raises that window, follows it if it moves, and then
+  checks, before every single click, that the pointer really is over it, and
+  before every `type` and `key` that the keyboard really is in it. A mismatch
+  raises the window and looks once more; if that does not fix it the step fails
+  and says what was there instead:
+
+      line 4 (type deploy to prod): the keyboard is in "notes.txt" (gedit.Gedit),
+      not "Terminal" - refusing to type into it
+
+  A window that closed, moved or ended up behind something else now stops the
+  script, where it used to send the rest of your keystrokes into whatever had
+  taken its place. `screen` gives the lock up, and enforces nothing - there is
+  nothing to compare against - so reach for it only when you really do mean the
+  desktop itself. A menu, a tooltip or the target's own dialog counts as the
+  target, so driving a menu works as it always did.
+- It is the human's own desktop - drive it as sparingly as you would interrupt
+  them, and announce it (a `speak` line) before taking the wheel.
+- For anything longer than a step or two, ask for the desktop properly first:
+  `request_control`, below. A spoken line is heard once and then it is over; the
+  strip stays on screen for as long as you hold the wheel.
+
+### request_control  (blocking) / set_activity / release_control  (non-blocking)
+The desktop handover (FR74). `request_control` asks for the human's desktop and
+blocks until they allow it; `set_activity` says what you are doing now;
+`release_control` gives it back. Full rules in **Taking the desktop** below -
+read them before your first handover, because the whole feature rests on the
+strip being on screen for exactly as long as you are driving.
+- Args: `reason` (req, what you are about to do in their terms), `window_s`
+  (seconds of silence that count as consent, default 20) on request;
+  `activity` (req) on set_activity; release takes none.
+- Returns: `{granted, denied, live, state, activity, held_by, reason}`. Read
+  `granted` / `denied` / `held_by` apart before touching anything.
+
+### show_artifact  (non-blocking)
+Run interactive HTML in a window: a chart to hover, a slider to drag, a control
+panel to click. Write a self-contained document, or a React component module with
+an `export default` - React 19 and Tailwind v4 are already in the page, so
+`import React from "react"`, JSX and utility classes work as written.
+- Args: `html` (inline) or `path` (a file, with `watch` to re-run it on every
+  save), `title`.
+- Returns: `{shown, artifact_id}`. Keep the id: it is what you wait on.
+- Two absolute rules. **No CDN and no other package**: the artifact runs with no
+  network at all, so a script tag or an import of anything but react/react-dom is
+  a missing library, and AgentBox will tell you which in the artifact's own bar.
+  **`window.agentbox.emit(name, data)` is the only way out**: it cannot fetch, reach
+  AgentBox, or store anything. Everything else about the sandbox is in
+  [decisions/ADR-0010-artifact-sandbox.md](decisions/ADR-0010-artifact-sandbox.md).
+
+### await_artifact_event  (blocking)
+Wait for the human to do something in an artifact and return it.
+- Args: `artifact_id` (omit for any artifact), `names` (omit for any event),
+  `timeout_s` (0 waits as long as you do).
+- Returns: `{received, event: {artifact_id, name, data, at_ms}, timed_out}`.
+- This is the loop worth building: show a panel, wait on it, do the work they
+  asked for by clicking, then show the result. Prefer it over a card when the
+  answer is a number, a shape or a selection rather than one of nine options.
+
+### read_artifact_events  (non-blocking)
+Take everything they have done since you last looked.
+- Args: `artifact_id`, `names`.
+- Returns: `{events: [...]}`, newest value per event name - a slider dragged for a
+  while is one number, not forty. Use it while you are working; use
+  `await_artifact_event` when you have nothing to do but wait.
+
+### request_review  (blocking)
+Show a unified diff to approve or request changes. Use before applying a patch
+the human should see.
+- Args: `title` (req), `diff` (unified diff text) or `path` (a diff file), `body`.
+- Returns: `{answered, approved, comment}`.
+
+### report_progress  (non-blocking)
+A live progress bar that never steals focus.
+- Args: `id` (omit on the first call, pass the returned id on every later call), `title` (set on the first call), `status`, `percent` (0-100), `indeterminate` (bool, spinner when there is no known fraction), `done` (bool), `error` (string, to report failure).
+- Returns: `{id}` - reuse it.
+- Pattern: start without `id` -> get `id` -> update with `id` + `percent` -> finish with `id` + `done=true` (or `error`). Prefer this over repeated `notify_user`.
+
+### create_walkthrough  (non-blocking)
+Create a durable, step-by-step code review and open it on the review board.
+The human walks it whole - verdicts, notes, line-anchored comments - and
+hands everything back in one turn; the review persists in AgentBox's store past
+both your sessions.
+- Args: `spec` (req, the version-1 spec object below), `no_show` (store
+  without opening the board).
+- Returns: `{walkthrough_id, rev, warnings}`. Warnings are non-blocking
+  teaching notes; hard failures come back as tool errors with directions.
+- **Creating one captures the source it cites**, from the working tree you were
+  reading, so the review survives the next checkout. Without that a walkthrough
+  keeps only line numbers, and the board reads whatever the file says later - a
+  deleted file breaks the step, and an edited one silently shows different code
+  under your prose and your margin notes. A citation AgentBox could not read comes
+  back as a warning naming it; the review is still created, and that block falls
+  back to reading the file. Reviews stored before this existed are repaired from
+  the pinned commit with `agentbox walkthrough repair` (one id, or all of them).
+
+The spec, in short:
+
+```json
+{"version": 1, "title": "...", "repo_root": "/abs/path", "pinned": "commit sha",
+ "base": "sha?", "diff": "the change's unified diff",
+ "out_of_scope": [{"paths": "glob", "reason": "..."}],
+ "steps": [{"id": "kebab-id", "kind": "ground|code|none|check",
+   "title": "...", "purpose": "Serves: which requirement. Decided by: what.",
+   "prose": [{"t": "text"}, {"t": "a bound phrase", "bind": "name"}, {"code": "chip"}],
+   "code": [{"path": "repo/relative.go", "lines": [10, 40],
+             "notes": [{"at": [12, 14], "text": "why this matters"}]}],
+   "binds": {"name": {"block": 0, "lines": [12, 18]}},
+   "checks": [{"q": "...", "a": "hidden until revealed"}],
+   "cmds": [{"cmd": "make check", "expect": "...", "recorded": "YYYY-MM-DD"}]}]}
+```
+
+A prose segment carries `"p": true` to start a new paragraph at it. Segments
+are inline by necessity - a bound phrase sits mid-sentence - so without it a
+step renders as one wall of text with sentences fused at the seams.
+
+`notes` on a block are the annotation channel: each renders as a numbered
+badge on its first line and its text in the margin beside the code, outside
+the block. Put the "why" there rather than in the prose above the block.
+
+`binds` are how prose points at code: a segment `{"t": "...", "bind": "name"}`
+lights that region while the reader is on the phrase.
+
+Three rules, all validated with directions: a file-backed block never states
+added/removed (the diff manifest is the only carrier - AgentBox derives every
+marking); prose never contains literal line numbers (bind a phrase to a code
+region instead - numbers in sentences go stale silently); a diff-carrying
+review should end with a `check` step (finishing is an observation, not a
+feeling).
+
+**The authoring standard** - structure, annotation, coverage, the gate - is
+served as the MCP resource `agentbox://standards/walkthrough` and printed by
+`agentbox docs walkthrough`. Read it before authoring a walkthrough; it is the part
+that decides whether the review is worth the human's time. Blocks cite at most 400 lines each; a snippet block
+(`{"snippet": {"lang", "text", "added", "del"}}`) carries content that lives
+in no file.
+
+### await_walkthrough  (blocking)
+Wait until the human submits their review, and receive the whole handback.
+- Args: `walkthrough_id` (omit to take the next submission from any
+  walkthrough), `timeout_s` (0 waits as long as you do).
+- Returns: `{submitted, review, timed_out, gone}`. `review` leads with the
+  unclear steps (each with the note saying what is unclear - answer these
+  first), then every step's verdict/note/comments/checks, `not_reviewed`
+  (always present), and the tally. `gone=true` means the walkthrough was
+  deleted while you waited.
+- A submission made while nobody waited is claimed here too, exactly once -
+  await after the fact is the same as await before it.
+
+### read_walkthrough  (non-blocking)
+Fetch a walkthrough's full stored state: spec, the human's marks and
+comments so far, and the last submission payload if any.
+- Args: `walkthrough_id` (req), `ack` (take a waiting submission, exactly
+  once).
+- Returns: `{walkthrough}` - the stored review.
+- `ack:true` is the fresh-session pattern: a review submitted after its
+  agent was gone moves to `delivered` for exactly one caller.
+
+### list_walkthroughs  (non-blocking)
+The review library, most recently touched first.
+- Args: `find` (matches title, step content, cited paths), `state`
+  (`open`|`submitted`|`delivered`), `limit`.
+- Returns: `{walkthroughs: [{id, title, state, counted_steps, understood, unclear, comments, ...}]}`.
+
+### amend_walkthrough  (refuses in this build)
+Revising a stored walkthrough by step id is designed but not built yet; this
+tool refuses with directions. Create a fresh walkthrough for revised
+content. A submitted, unread review is never overwritten either way - take
+the handback first.
+
+### delete_walkthrough  (non-blocking)
+Remove a walkthrough permanently, marks and comments included.
+- Args: `walkthrough_id` (req).
+- Returns: `{deleted}`. An agent awaiting it is released with `gone=true`.
+- Prefer leaving finished reviews in the library - they are the human's
+  record too.
+
+### list_assignments  (non-blocking)
+The human's assignments: work AgentBox carries out by launching a Claude agent, on
+a schedule or on demand.
+- Args: none.
+- Returns: `{assignments: [{id, name, description, kind, schedule, enabled,
+  model, dir, running, last_run_ms, next_run_ms, last_state, last_summary}]}`.
+- `kind` is `ad-hoc` | `periodic` | `scheduled`. Open with this before
+  creating anything - an assignment that already exists usually wants
+  editing, not a twin.
+
+### read_assignment  (non-blocking)
+One assignment whole, plus AgentBox's own diagnosis of it.
+- Args: `assignment_id` (req), `runs` (recent runs to include, default 5).
+- Returns: `{assignment: {assignment, kind, running, placeholders, unfilled,
+  unused, problems, runs}}`.
+- `unfilled` are `{{placeholders}}` no parameter fills; `unused` are knobs the
+  prompt never reads; `problems` are faults in the stored spec. Read before
+  you improve one, so you start from the same picture the human sees.
+
+### create_assignment  (non-blocking)
+Create an assignment. It starts enabled.
+- Args: `name` (req), `prompt` (req), `description`, `spec`, `params`,
+  `panel_html`, `model`, `mode` (`plan`|`full`), `dir`, `schedule`,
+  `enabled`.
+- Returns: `{assignment_id, created, kind, next_run_ms, warnings}`.
+- Refuses a spec that would render wrong (every fault at once) and a
+  schedule it cannot parse. Warns about the merely unfinished.
+
+### update_assignment  (non-blocking)
+Change one. **Only the fields you send change** - send a prompt and the
+schedule, knobs and values stay exactly as the human left them.
+- Args: `assignment_id` (req), then any of `create_assignment`'s fields.
+- Returns: the same shape as create.
+- `params` merges over the stored values, so setting one knob does not clear
+  the others. A `spec` replaces the knobs entirely: values whose knob
+  survives are kept, values whose knob is gone are dropped and named in
+  `warnings`.
+- `enabled:false` is the pause switch. Prefer it over deleting.
+
+### delete_assignment  (non-blocking)
+Remove an assignment and its whole run history.
+- Args: `assignment_id` (req). Returns `{deleted}`.
+
+### run_assignment  (non-blocking)
+Run one now, outside its schedule.
+- Args: `assignment_id` (req), `overrides` (parameter values for this run
+  only; the stored values are untouched).
+- Returns: `{run_id}` at once - a run is a whole conversation, so poll
+  `assignment_runs` for the outcome.
+- Refuses if a run of the same assignment is already in flight.
+
+### assignment_runs  (non-blocking)
+The run history, newest first.
+- Args: `assignment_id` (req), `limit` (default 50).
+- Returns: `{runs: [{id, started_ms, ended_ms, state, trigger, params,
+  summary, error, session_id, data}]}`.
+- `state` is `running` | `ok` | `failed` | `skipped`. `params` is what the run
+  actually used, not what the definition says now. `data` is whatever the run
+  recorded for later analysis.
+
+## Assignments (work AgentBox gives you)
+
+An assignment inverts the usual direction: instead of you summoning AgentBox, AgentBox
+summons an agent - on a schedule, or when somebody asks - with the whole
+toolbox available while it runs. A run is an ordinary session, so the human
+can open it, read it and take it over.
+
+You are the one who writes them. The seven tools above are the authoring
+surface: propose a prompt and its knobs, `run_assignment` once so the human
+sees it work, read the run back, and keep updating until they are satisfied.
+
+Three triggers, one field:
+
+| `schedule` | Runs |
+| --- | --- |
+| empty | only when a human or an agent asks (ad-hoc) |
+| `every 30m`, `every 4h`, `every 1d` | on an interval from the last run |
+| `daily 09:00`, `weekly mon 09:00` | at a wall-clock time |
+
+A missed slot is skipped and recorded, never caught up - a laptop shut for the
+weekend must not wake and fire three checks at once. One minute is the floor
+on an interval.
+
+The prompt is a template. `{{key}}` is substituted from the parameters at run
+time, literally and non-recursively, and a placeholder nothing fills is left
+verbatim in the prompt rather than silently dropped. Declare a knob for each
+one in `spec`:
+
+```json
+[{"key": "window", "type": "enum", "values": ["24h", "7d"], "default": "7d"},
+ {"key": "threshold", "type": "slider", "min": 0, "max": 100, "unit": "%", "default": 80},
+ {"type": "markdown", "body": "Above the threshold this warns; above 95 it goes urgent."}]
+```
+
+`type` is `text` | `number` | `slider` | `toggle` | `enum` | `path` |
+`markdown`. AgentBox renders them as a form. A `markdown` block carries `body`
+instead of a key and sits between the controls, which is what makes a
+generated panel read as something somebody designed. `panel_html` is the
+escape hatch - a React/Tailwind panel in the artifact sandbox, reporting
+values through `window.agentbox.emit` - and it does not replace the spec: the
+values live in the database either way, so a panel that fails to load can
+never make an assignment uneditable.
+
+Write the prompt for an agent nobody is watching. Say what to do, what counts
+as worth interrupting for, and how to report - `notify_user` for something
+worth knowing, `level="urgent"` when the number is bad, `show_document` for a
+summary worth reading.
+
+## Taking the desktop (the hands-off strip)
+
+When you are about to drive the desktop for more than a step or two - a demo, a
+screenshot run, a browser you are clicking through - ask for it with this, not
+with a card of your own: `request_control` (blocks), then `set_activity` as you
+go, then `release_control`. From a shell, the same three verbs:
+
+```bash
+agentbox control request "photographing the review board" --window 20   # blocks
+agentbox control activity "scrolling to the second block"               # while driving
+agentbox control release                                                # when done
+agentbox control state                                                  # who holds it
+```
+
+One always-on-top strip appears at the top centre and stays there for the whole
+run: first asking (your reason, a countdown, Deny and Now), then driving (the
+activity line and how long it has been that way). **Presence is the entire
+signal** - on screen means the desktop is yours, gone means it is the human's
+again. So the strip must live exactly as long as your run does: keep it up until
+you are finished, move `activity` along as you go, and release it the moment you
+stop. Never let it close while you are still driving, and never leave it up after
+you are.
+
+Requesting blocks. Silence for `window_s` seconds counts as consent (default 20;
+`Now` grants it early, `Deny` refuses immediately). One desktop cannot be shared,
+so a second requester is refused with the holder's name rather than queued -
+`held_by` (CLI exit 3) means wait and ask again, not drive anyway. A queue would
+be worse: it would hand you the wheel at a moment you had stopped watching for it.
+
+Why not `confirm_action` for this: a card is answered and gone, which leaves
+nothing on screen for the minutes you then spend driving. That gap is what makes
+a human reach for the mouse mid-run, and it killed three drive sequences in ten
+minutes before this existed.
+
+## CLI reference
+
+For shell/hook use. Common flags on every command: `--agent NAME`,
+`--project NAME`, `--session ID`, and `--json` (print the full result object
+instead of the bare answer).
+
+| Command | Purpose | Key flags |
+| --- | --- | --- |
+| `agentbox notify` | fire-and-forget event | `--title` (req), `--body`, `--level`, `--action "Label::cmd"` (x3) |
+| `agentbox ask` | blocking choice (2-9) | `--title` (req), `--option` (x2-9, req), `--body`, `--level`, `--timeout`, `--default`, `--strict` |
+| `agentbox input` | blocking free text | `--title` (req), `--body`, `--timeout`, `--default`, `--multiline` |
+| `agentbox confirm` | blocking yes/no | `--title` (req), `--body`, `--timeout`, `--default`, `--strict` |
+| `agentbox veto` | act-unless-stopped | `--title` (req), `--in SEC`, `--body`, `--level` |
+| `agentbox secret` | masked secret | `--title` (req), `--to-file PATH` and/or `--stdout`, `--timeout` |
+| `agentbox form` | multi-field form (1-6) | `--title` (req), `--field SPEC` (x1-6), `--body`, `--timeout` |
+| `agentbox review` | diff approval | `--title` (req), `--diff-file PATH` (or stdin), `--body`, `--timeout` |
+| `agentbox say` | read a line out loud | `TEXT...`, or piped on stdin; `--wait`, `--timeout SEC` |
+| `agentbox drive` | synthetic pointer/keys | script on stdin or flags; `--window TITLE`, `--speed N`, `--wpm N` |
+| `agentbox control` | ask for the desktop, hands-off strip | `request REASON [--window SEC]`, `activity LINE`, `release`, `state` |
+| `agentbox show` | markdown viewer | `FILE` or `-`, `--watch`, `--title` |
+| `agentbox walkthrough` | durable board reviews | `create --spec FILE`, `open ID`, `list [--find Q] [--state S]`, `read ID [--ack]`, `await [ID] [--timeout SEC]`, `delete ID` |
+| `agentbox progress` | progress bar from stdin | `--title` (req), `--indeterminate` |
+| `agentbox stats` | interruption insights | `--since 24h\|7d\|30d\|0`, `--json` |
+| `agentbox dnd` | do-not-disturb | `on`\|`off`\|`status` |
+| `agentbox mute` / `unmute` | silence an agent | `AGENT` or `--list` |
+| `agentbox summon` | raise/focus current card | |
+| `agentbox inbox` / `app` | open the UI | `app --tab inbox\|stats\|progress\|session\|settings` |
+| `agentbox status` / `version` / `logs` | daemon health, build, event log | `logs --follow` |
+| `agentbox quit` | stop the daemon gracefully | |
+
+`--strict` (on `ask`/`confirm`) disables the free-text reply hatch. The `--field`
+spec is `type:key[:opt1,opt2][=default]`, e.g. `choice:env:staging,prod=staging`,
+`text:tag`, `bool:notify`.
+
+### Exit codes (stable contract)
+
+Every blocking command maps its outcome to an exit code. Branch on these:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | answered / yes / approved / proceeded / success |
+| 1 | no / vetoed / rejected |
+| 2 | usage error (bad flags) - fix and retry |
+| 3 | unanswered (timed out with no default, or dismissed) |
+| 4 | transport/daemon error - retry, or the daemon could not start |
+
+The bare answer prints on stdout (the chosen option, the typed text, etc.);
+`--json` prints the full result object instead.
+
+### Result object (what blocking calls return)
+
+```json
+{
+  "id": "k...",
+  "answered": true,
+  "answer": "the chosen option, or yes/no for confirm",
+  "reply": "free text, if the human typed instead of choosing",
+  "values": {"field_key": "value"},
+  "default_applied": true,
+  "vetoed": false,
+  "approved": true,
+  "secret_path": "/path/to/secret-file"
+}
+```
+
+When `answered=true`, exactly one of `answer` / `reply` / `values` / `vetoed` /
+`approved` carries the result for that kind. A secret returns `secret_path`
+(the value is on disk, 0600, never in the JSON unless the human opted into
+`--stdout`).
+
+## Identity (who is interrupting)
+
+Every interaction carries an identity so the human knows who is asking and
+the inbox/stats can group by agent:
+
+- `agent` - defaults to your process name; set with `--agent` (CLI). Over MCP it
+  is derived automatically.
+- `project` - defaults to the working-directory basename; set with `--project`.
+- `session` - empty by default; set with `--session` or the `AGENTBOX_SESSION_ID`
+  environment variable.
+
+`AGENTBOX_SESSION_ID` matters for the in-app **Session tab**: when AgentBox launches a
+Claude session itself (`agentbox app --tab session`), it spawns the child with an
+`AGENTBOX_SESSION_ID`, and any ask/confirm/notify you make with that session id
+renders inline in that tab instead of as a standalone card. In a normal terminal
+agent you can leave session empty. `AGENTBOX_INSTANCE` selects a named, isolated
+daemon (separate socket/state) - rarely needed.
+
+## Limits and validation
+
+- Choice options: 2-9. Form fields: 1-6. Action buttons: 0-3.
+- `report_progress` percent is clamped to 0-100.
+- `act_unless_stopped` / `--in` window must be positive (omit to take the
+  configured default, 15s).
+- `request_secret` needs a sink: `--to-file` and/or `--stdout`.
+- `urgent` level breaks through Do-Not-Disturb (unless the human disabled that).
+
+## Patterns
+
+**Long task with progress (MCP):** start `report_progress` with no `id` and a
+`title`; on each step call it again with the returned `id` and a new `percent`;
+finish with `done=true` (or `error="..."`). Completion shows a success/error
+toast. The bar lives in its own surface and never blocks your other calls.
+
+**Long task with progress (shell):**
+```sh
+seq 0 5 100 | while read p; do echo "$p building"; sleep 0.3; done | agentbox progress --title "Build"
+```
+
+**Get approval before a risky change:** `request_review` with the unified diff;
+proceed only on `approved=true`; surface `comment` if changes were requested.
+
+**Proceed by default, allow a stop:** `act_unless_stopped` ("Pushing to main in
+15s"); proceed when `vetoed=false`.
+
+**Need a credential:** `request_secret`; read the returned `path`; use the value;
+delete the file; never log it.
+
+**Report a result, no question:** `notify_user` (`success` when it worked,
+`error`/`urgent` when it did not).
+
+**Hand a change over for a real review:** `create_walkthrough` with steps
+citing the change (diff included), then `await_walkthrough` on the returned
+id. If your session ends first, nothing is lost: the next session calls
+`read_walkthrough` with `ack:true` and takes the submission exactly once.
+Act on the `unclear` set first - each entry carries the human's note saying
+what needs answering.
+
+## Anti-patterns (do not)
+
+- Do not ask a question with `notify_user` (it does not wait or return an
+  answer). Use a blocking tool.
+- Do not poll or loop blocking calls to "check in" - one ask per real decision.
+- Do not print, echo, or log a secret value; only ever touch the file at the
+  returned path.
+- Do not spam `notify_user` for incremental progress; use `report_progress`.
+- Do not set `urgent` for routine messages; it escalates and pierces DND.
+- Do not speak on every call. A line the human hears twenty times is noise they
+  will turn off, and then they lose it for the one that mattered.
+- Do not block on a question the human gave you a default/policy for - act.
+- Do not ask for the desktop with a card, or with a spoken line alone. Both are
+  over the moment they are read, and the human has no way to tell whether you
+  are still driving. `request_control`, and leave the strip up.
+- Do not state added/removed on a walkthrough's file-backed blocks or write
+  line numbers into its prose - supply the diff, bind the phrases, and AgentBox
+  derives the rest. The validator refuses both, with directions.
+- Do not delete a walkthrough to "clean up" after reading its handback; the
+  library is the human's record of what was reviewed and what they said.
+
+## Where to look next
+
+- `agentbox docs agent` - this manual, short form, in the binary.
+- `agentbox schema` - the JSON Schema for the Item/Result wire protocol.
+- `agentbox docs setup` - paste-ready MCP/hook registration.
+- [recipes.md](recipes.md) - copy-paste integration snippets.
+- [06-configuration.md](06-configuration.md) - the human's config knobs.
