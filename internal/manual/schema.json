@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agentbox wire protocol",
+  "description": "Item kinds agentbox accepts and the Result a blocking call returns (FR42). Items are sent over agentbox.v1.notify (notify) or agentbox.v1.ask (everything else); the daemon assigns id.",
+  "$defs": {
+    "level": {
+      "type": "string",
+      "enum": ["info", "success", "warning", "error", "urgent"],
+      "description": "Severity. Omitted defaults to info. urgent escalates and breaks through DND."
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "agent": {"type": "string", "description": "required: the calling agent's name"},
+        "project": {"type": "string"},
+        "session": {"type": "string"}
+      },
+      "required": ["agent"]
+    },
+    "option": {
+      "type": "object",
+      "properties": {
+        "label": {"type": "string"},
+        "desc": {"type": "string"}
+      },
+      "required": ["label"]
+    },
+    "action": {
+      "type": "object",
+      "description": "A button on a notify item (FR32). Clicking it runs exec locally in the item's cwd; the command is shown verbatim on hover.",
+      "properties": {
+        "label": {"type": "string"},
+        "exec": {"type": "string", "description": "shell command run on click"}
+      },
+      "required": ["label", "exec"]
+    },
+    "field": {
+      "type": "object",
+      "description": "One form field.",
+      "properties": {
+        "key": {"type": "string"},
+        "label": {"type": "string"},
+        "type": {"type": "string", "enum": ["choice", "text", "bool"]},
+        "options": {"type": "array", "items": {"type": "string"}, "description": "2-9 entries for choice"},
+        "default": {"type": "string"}
+      },
+      "required": ["key", "type"]
+    },
+    "item": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "description": "assigned by the daemon; callers leave empty"},
+        "kind": {"type": "string", "enum": ["notify", "choice", "text", "confirm", "veto", "form", "secret", "diff"]},
+        "level": {"$ref": "#/$defs/level"},
+        "title": {"type": "string"},
+        "body": {"type": "string", "description": "markdown"},
+        "options": {"type": "array", "items": {"$ref": "#/$defs/option"}, "minItems": 2, "maxItems": 9, "description": "choice items"},
+        "fields": {"type": "array", "items": {"$ref": "#/$defs/field"}, "minItems": 1, "maxItems": 6, "description": "form items"},
+        "timeout_s": {"type": "integer", "minimum": 0, "description": "seconds until default/timeout; for veto it is the countdown window and must be > 0"},
+        "default": {"type": "string", "description": "answer applied on timeout"},
+        "strict": {"type": "boolean", "description": "disable the free-text reply hatch on choice/confirm"},
+        "multiline": {"type": "boolean", "description": "text items: multi-line editor"},
+        "sink": {"type": "string", "description": "secret items: file the daemon writes the value to (mode 0600)"},
+        "stdout": {"type": "boolean", "description": "secret items: also return the value to the caller (opt-in)"},
+        "actions": {"type": "array", "items": {"$ref": "#/$defs/action"}, "maxItems": 3, "description": "notify items: up to 3 buttons that run a local command on click (FR32)"},
+        "cwd": {"type": "string", "description": "notify items with actions: working directory the daemon runs an action's exec in"},
+        "diff": {"type": "string", "description": "diff items: the unified diff to review (FR33)"},
+        "identity": {"$ref": "#/$defs/identity"}
+      },
+      "required": ["kind", "title", "identity"]
+    },
+    "result": {
+      "type": "object",
+      "description": "Returned by a blocking call. When answered is true, exactly one of answer, reply or values is set.",
+      "properties": {
+        "id": {"type": "string"},
+        "answered": {"type": "boolean"},
+        "answer": {"type": "string"},
+        "reply": {"type": "string", "description": "the user typed free text instead of choosing (reply hatch)"},
+        "values": {"type": "object", "additionalProperties": {"type": "string"}, "description": "form field values keyed by field key"},
+        "default_applied": {"type": "boolean", "description": "true when a timeout delivered the default"},
+        "vetoed": {"type": "boolean", "description": "veto items: true if the user stopped the action"},
+        "secret": {"type": "string", "description": "secret items with stdout opt-in: the value (never logged or stored)"},
+        "secret_path": {"type": "string", "description": "secret items: file the value was written to (mode 0600)"},
+        "approved": {"type": "boolean", "description": "diff items (FR33): the reviewer approved; reply carries any comment"}
+      },
+      "required": ["id", "answered"]
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/item"},
+    {"$ref": "#/$defs/result"}
+  ]
+}
