@@ -1,0 +1,1 @@
+ALTER TABLE items ADD COLUMN missed_while_away INTEGER NOT NULL DEFAULT 0;

@@ -1,0 +1,2 @@
+ALTER TABLE items ADD COLUMN fields TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE items ADD COLUMN form_values TEXT;
