@@ -1,0 +1,33 @@
+[Unit]
+Description=agentbox - desktop interaction hub for AI agents
+Documentation=https://gitlab.com/fu-bar/agentbox
+# Bind to the graphical session so agentbox starts with the desktop and stops
+# with it; it needs DISPLAY/WAYLAND_DISPLAY and the session D-Bus.
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/agentbox daemon
+# NO ExecStop. It was `agentbox quit`, and it made enabling this unit DESTROY the
+# daemon it was supposed to manage: agentbox is single-instance by flock and
+# auto-spawns on the first client call, so `agentbox daemon` prints "already running"
+# and exits 0 when one is up. systemd sees a Type=simple main process exit
+# successfully, considers the service finished, and runs ExecStop - which quit the
+# healthy daemon that was already serving. Enabling the unit left the desktop with
+# no agentbox at all.
+#
+# It was redundant as well as harmful: the daemon handles SIGTERM, which is what
+# systemd sends on stop, and that path drains through the same graceful shutdown
+# `agentbox quit` uses (cmd/agentbox/daemon.go, signal.Notify).
+#
+# The remaining wrinkle is cosmetic: start this while a daemon is already up and
+# the unit reports inactive while that daemon keeps serving. At login - the case
+# this unit exists for - nothing is running yet, so it starts one and stays active.
+# Robustness: if the daemon ever crashes, bring it back rather than leaving the
+# desktop without its interaction hub.
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

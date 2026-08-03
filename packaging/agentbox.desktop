@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=agentbox
+GenericName=Agent Interaction Hub
+Comment=Notifications and blocking questions from AI agents; lives in the tray
+Exec=agentbox daemon
+TryExec=agentbox
+Icon=agentbox
+Terminal=false
+Categories=Utility;
+Keywords=agent;ai;notification;claude;prompt;
+StartupNotify=false
+Actions=OpenWindow;
+
+[Desktop Action OpenWindow]
+Name=Open agentbox window
+Exec=agentbox app
