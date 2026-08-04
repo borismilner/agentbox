@@ -47,6 +47,16 @@ func TopicMatches(pattern, topic string) bool {
 	return topic == value
 }
 
+// SharedTopicPrefix is the family every shared-value change is posted under, so
+// "wait until anybody claims a chunk" is await_signal(["shared:claims/*"]).
+const SharedTopicPrefix = "shared:"
+
+// SharedTopic names the topic one key's changes arrive on. It is a function rather
+// than a string concatenation at each call site because three places have to agree
+// on it - the daemon that posts, the manual that teaches it, and any agent that
+// composes a pattern from a key it already has.
+func SharedTopic(key string) string { return SharedTopicPrefix + key }
+
 // TopicsMatch is any-of, which is what a waiter's topic list means.
 func TopicsMatch(patterns []string, topic string) bool {
 	for _, p := range patterns {

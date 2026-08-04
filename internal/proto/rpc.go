@@ -91,6 +91,18 @@ const (
 	// doing nothing, and a caller has to be able to tell from the door.
 	MethodSyncPost  = "agentbox.v1.sync_post"
 	MethodSyncAwait = "agentbox.v1.sync_await"
+	// Shared values (FR83 slice 4). One method for get, set and delete, because
+	// none of the three blocks: the rule that splits acquire from try is about a
+	// caller being able to tell from the door whether calling it parks the turn, and
+	// here the answer is no for every operation.
+	MethodSyncShared = "agentbox.v1.sync_shared"
+)
+
+// The three shared-value operations, as the wire spells them.
+const (
+	SharedOpGet    = "get"
+	SharedOpSet    = "set"
+	SharedOpDelete = "delete"
 )
 
 // ArtifactEvent is one thing the human did inside an artifact: the name and data
@@ -542,6 +554,72 @@ type SyncAwaitResult struct {
 	OldestSeq int64  `json:"oldest_seq,omitempty"`
 	More      bool   `json:"more,omitempty"`
 	Note      string `json:"note,omitempty"`
+}
+
+// Shared values (FR83 slice 4): the compare-and-swap blackboard. Coordination
+// that is neither a turn (a lock) nor an event (a signal) - a claim table, a "who
+// is on which chunk" map, a progress counter.
+//
+// SyncSharedParams carries all three operations, because none of them blocks.
+//
+// IfVersion is a POINTER because zero is a real value here, and a meaningful one:
+// versions start at 1, so 0 says "only if this key does not exist yet", which is
+// the whole claim idiom - ten workers CAS-from-empty on claims/<chunk> and exactly
+// one wins each key with no lock and no read-modify-write. Omitted means write
+// unconditionally; N means "only if it is still at N". (SyncAwaitParams.AfterSeq
+// folds "omitted" into 0 for the same reason inverted: there, nothing needs to say
+// "must be zero", so a plain int is honest. Here something does.)
+type SyncSharedParams struct {
+	Identity Identity `json:"identity"`
+	Op       string   `json:"op"`
+	// Key is exact for set and delete. For get it may end in * and read the whole
+	// family, which is the same prefix rule topics use - one idiom, not two.
+	Key   string          `json:"key"`
+	Value json.RawMessage `json:"value,omitempty"`
+	// IfVersion: nil unconditional, 0 must-not-exist, N must-be-N. A delete refuses
+	// 0, because "delete it only if it is not there" is not a thing to mean.
+	IfVersion *int64 `json:"if_version,omitempty"`
+	// Own records this session as the value's owner, so a peer can tell a live claim
+	// from one a dead session left behind. A counter wants no owner; a claim does.
+	Own bool `json:"own,omitempty"`
+}
+
+// SharedValue is one entry as every reader sees it.
+//
+// OwnerGone is the field the design is really about. A value's contents cannot say
+// whether the session that wrote it is still alive, so the owner is recorded at
+// write time and checked against the live roster at read time: an orphaned claim
+// becomes visible after a death or a restart instead of leaving the table
+// permanently un-drainable. OwnerAgent is recorded with it, so the report can name
+// which agent left it rather than only that somebody did.
+type SharedValue struct {
+	Key        string          `json:"key"`
+	Value      json.RawMessage `json:"value,omitempty"`
+	Version    int64           `json:"version"`
+	Owner      string          `json:"owner,omitempty"`
+	OwnerAgent string          `json:"owner_agent,omitempty"`
+	OwnerGone  bool            `json:"owner_gone,omitempty"`
+	UpdatedMS  int64           `json:"updated_ms,omitempty"`
+}
+
+// SyncSharedResult answers all three operations. Applied and Stale are the CAS
+// pair: a refused write comes back with the value and version that stopped it, so
+// one retry loop replaces lock-read-write-unlock and the caller never needs a
+// second call to find out what it lost to.
+type SyncSharedResult struct {
+	OK bool   `json:"ok"`
+	Op string `json:"op"`
+	// Found and Value answer an exact get; Values and More answer a prefix get.
+	Found  bool          `json:"found,omitempty"`
+	Value  *SharedValue  `json:"value,omitempty"`
+	Values []SharedValue `json:"values,omitempty"`
+	More   bool          `json:"more,omitempty"`
+	// Applied says the write or delete landed. Stale says it did not, because
+	// somebody else got there first - which for a claim is a normal outcome and not
+	// an error.
+	Applied bool   `json:"applied,omitempty"`
+	Stale   bool   `json:"stale,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // SyncListen is what a session is parked on, for its roster row. It is what makes
