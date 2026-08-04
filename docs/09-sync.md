@@ -8,8 +8,9 @@ it is doing right now, what it holds and what it waits on, in one surface.
 
 Requested by Boris 2026-08-04 (session 39). FR83. This document is the design;
 nothing here is implemented. It has survived one adversarial review, whose
-findings are folded in. Status: awaiting owner triage, the surface mock, and
-the slice-0 spike. An ADR comes at implementation kickoff, the way ADR-0012
+findings are folded in. Status: **triaged** (all three owner calls answered
+2026-08-04, recorded at the foot); awaiting the surface mock and the slice-0
+spike. An ADR comes at implementation kickoff, the way ADR-0012
 did for the review board, and it records what the mock and the spike changed
 rather than restating this document.
 
@@ -662,20 +663,33 @@ answer, so they need their own small probes rather than being assumed:
   is far shorter than `wait_max_s`. Measure it and let it set the default, or
   the flock wrapper will look broken the first time a real deploy runs long.
 
-## Open questions (owner calls)
+## Owner calls (triaged 2026-08-04)
 
-1. **How hard is the announce gate?** Design says: sync verbs refuse
-   without an announce; presence and reads never do. The stricter option -
-   every AgentBox tool nags - is a knob away if rude agents show up dim too
-   often.
-2. **The rail spot.** Design says: Agents is its own surface, the Home tile
-   links to it. The alternative is a Home panel only, cheaper but capping
-   the detail view.
-3. **Area granularity.** Design says: derived from the git top-level and
-   origin (one repo = one area, worktrees included), refined by declared
-   tags. Declared-only is simpler and blind to the common case;
-   derived-only cannot express "the webui half". Watch the first real
-   overlaps and let them pick.
+Boris answered all three the same day, through an `ask_user_form` card, and
+took the design's own answer in each case. They are settled; slice 1 is no
+longer gated on them.
+
+1. **How hard is the announce gate?** **As designed:** the sync verbs refuse
+   an unannounced session with a teaching error; presence and the monitoring
+   reads never refuse. The stricter option - every AgentBox tool nags - stays a
+   knob away if rude agents show up dim too often. The argument that carried
+   it: gating the reads would break the rule that visibility must not depend
+   on good manners, and a SessionStart hook satisfies the gate for nothing.
+2. **The rail spot.** **Its own rail surface**, with the Home tile linking to
+   it. An eighth rail item is one array entry plus a branch, the rail's own
+   comment already says the state you glance at most with several agents
+   running has to be permanently visible, and break-lock plus the activity
+   timeline need room a Home panel caps.
+3. **Area granularity.** **Derived first, declared second**, as written: the
+   git top-level and origin decide the area (one repo = one area, worktrees
+   included), and declared `kind:scope` tags refine it.
+
+One sharpening added at triage time, because it closes a hole the original
+wording left open: **the discovery rider fires on the derived area only.**
+Tags narrow searches and grouping; they never narrow the "you are not alone"
+push. Otherwise two agents in one checkout could declare
+`subsystem:webui` and `subsystem:daemon` and stop seeing each other, which is
+exactly the collision the feature exists to prevent.
 
 Two smaller calls made in the design and recorded here rather than left
 open: breaking a lock is unilateral behind a confirm (a veto-style card to
