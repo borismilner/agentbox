@@ -6,10 +6,12 @@ each other, wake each other, message each other - through the daemon they
 already share. And the human sees all of it live: every agent's purpose, what
 it is doing right now, what it holds and what it waits on, in one surface.
 
-Requested by Boris 2026-08-04 (session 37). FR83. This document is the design;
-nothing here is implemented. It has survived one adversarial review (the
-findings are folded in below, the load-bearing ones marked). Status: awaiting
-owner triage, the surface mock, and the slice-0 spike.
+Requested by Boris 2026-08-04 (session 39). FR83. This document is the design;
+nothing here is implemented. It has survived one adversarial review, whose
+findings are folded in. Status: awaiting owner triage, the surface mock, and
+the slice-0 spike. An ADR comes at implementation kickoff, the way ADR-0012
+did for the review board, and it records what the mock and the spike changed
+rather than restating this document.
 
 ## Why
 
