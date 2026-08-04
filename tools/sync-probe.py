@@ -10,6 +10,7 @@ this keeps several children alive and speaks to each of them in turn.
     tools/sync-probe.py rider     # the discovery rider, end to end
     tools/sync-probe.py locks     # slice 2's acceptance list
     tools/sync-probe.py signals   # slice 3's acceptance list
+    tools/sync-probe.py shared    # slice 4's acceptance list (RESTARTS the daemon)
     tools/sync-probe.py board     # a fixture to look at the surface with
 
 Add a scenario as a function and a line in SCENARIOS. What it gives you:
@@ -628,8 +629,228 @@ def scenario_signals():
     return bad
 
 
+
+def scenario_shared():
+    """Slice 4's acceptance list: three sessions drain a ten-chunk claim table.
+
+    The design's acceptance sentence is the whole scenario - "three sessions drain a
+    ten-chunk claim table (one key per chunk) with zero double-claims; restart the
+    daemon mid-drain: claims survive, the dead session's claim reads as ownerless,
+    and the table still drains" - so this runs it literally, against the deployed
+    daemon, with real mcp children.
+
+    It restarts the real daemon on purpose. That is the only way to settle the
+    durability half, and it is safe: children redial with backoff and replay their
+    announce, pending items live in the store, and nothing here touches Boris's
+    config. It does mean the run must be the daemon's only business for a moment,
+    which is why it says so on the way past.
+    """
+    bad = []
+    a = Session(agent="claude")
+    b = Session(agent="codex")
+    c = Session(agent="aider")
+    a.tool("announce", {"purpose": "sync-probe: drainer A", "activity": "claiming chunks"})
+    b.tool("announce", {"purpose": "sync-probe: drainer B", "activity": "claiming chunks"})
+    c.tool("announce", {"purpose": "sync-probe: drainer C, about to die", "activity": "claiming chunks"})
+
+    CHUNKS = 10
+    KEYS = [f"probe:claims/{i}" for i in range(CHUNKS)]
+
+    # A run leaves nothing behind, and shared values are deliberately never trimmed -
+    # so unlike the signals scenario this one has to clean up after itself.
+    for k in KEYS + ["probe:cli-claim"]:
+        a.tool("shared", {"op": "delete", "key": k})
+
+    # Three sessions claiming AT THE SAME TIME, which is the only version of this
+    # worth running: walking the table one session after another would prove nothing
+    # about contention, because every key would be free when the first walker reached
+    # it. Two go forward and one goes backward, so the collisions land in the middle
+    # and no session can win the whole table by being first.
+    winners = {}
+    claims_lock = threading.Lock()
+
+    def drain(name, sess, keys):
+        for key in keys:
+            got = structured(sess.tool("shared", {
+                "op": "set", "key": key, "value": {"worker": name}, "if_version": 0,
+                "own": True}))
+            with claims_lock:
+                if got.get("applied"):
+                    if key in winners:
+                        bad.append(f"{key} was claimed by {winners[key]} and again by {name}")
+                    winners[key] = name
+                elif not got.get("stale"):
+                    bad.append(f"a refused claim on {key} said neither applied nor stale: {got}")
+                # The refusal has to carry the winner, or the loser needs a second call
+                # to decide anything.
+                elif not (got.get("value") or {}).get("version"):
+                    bad.append(f"a refusal did not carry the current value: {got}")
+
+    racers = [threading.Thread(target=drain, args=("A", a, KEYS)),
+              threading.Thread(target=drain, args=("B", b, KEYS)),
+              threading.Thread(target=drain, args=("C", c, list(reversed(KEYS))))]
+    for r in racers:
+        r.start()
+    for r in racers:
+        r.join(timeout=60)
+
+    print(f"--- three sessions claimed {len(winners)} of {CHUNKS} chunks: "
+          + ", ".join(f"{k.split('/')[-1]}={v}" for k, v in sorted(winners.items())))
+    if len(winners) != CHUNKS:
+        bad.append(f"{len(winners)} of {CHUNKS} chunks were claimed; every key should have a winner")
+    if len(set(winners.values())) < 2:
+        bad.append(f"one session won every chunk ({set(winners.values())}); this proves nothing about contention")
+
+    # One session dies mid-drain, holding whatever it claimed. Its claims must read as
+    # abandoned once the roster loses it - that is what makes the table drainable
+    # instead of stuck forever on a chunk nobody is working on.
+    c_chunks = [k for k, v in winners.items() if v == "C"]
+    if not c_chunks:
+        # Not a product failure, but the rest of this scenario is about what a dead
+        # owner's claim looks like, so there is nothing left to check.
+        bad.append("session C won no chunk, so the death case cannot be exercised")
+        for k in KEYS:
+            a.tool("shared", {"op": "delete", "key": k})
+        a.close(), b.close(), c.close()
+        return bad
+    c.close()
+    time.sleep(8)  # past holder_gone_grace_s (5s), so the row is really gone
+
+    table = structured(a.tool("shared", {"op": "get", "key": "probe:claims/*"}))
+    values = {v["key"]: v for v in (table.get("values") or [])}
+    print(f"--- the table after C died ({len(values)} keys):")
+    for key in sorted(values):
+        v = values[key]
+        print(f"    {key} v{v['version']} {json.dumps(v.get('value'))}"
+              + (f" OWNER GONE ({v.get('owner_agent')})" if v.get("owner_gone") else ""))
+    if len(values) != CHUNKS:
+        bad.append(f"a prefix read returned {len(values)} of {CHUNKS} keys")
+    for key in c_chunks:
+        if not values.get(key, {}).get("owner_gone"):
+            bad.append(f"{key} was claimed by the session that died and does not read as ownerless: {values.get(key)}")
+        elif values[key].get("owner_agent") != "aider":
+            bad.append(f"{key} does not name the agent that abandoned it: {values[key]}")
+    for key, name in winners.items():
+        if name != "C" and values.get(key, {}).get("owner_gone"):
+            bad.append(f"{key} is held by a LIVE session and reads as abandoned: {values.get(key)}")
+    if "owner_gone" not in (table.get("note") or ""):
+        bad.append(f"the family read does not point at the orphans: {table.get('note')}")
+
+    # A waiter parks on the family and is woken by the next write, which is the design's
+    # one wake mechanism doing the blackboard's waiting for it.
+    woken = {}
+
+    def park():
+        woken["got"] = structured(b.tool(
+            "await_signal", {"topics": ["shared:probe:claims/*"], "timeout_s": 20}, timeout=40))
+    t = threading.Thread(target=park)
+    t.start()
+    time.sleep(2.0)
+    taken = c_chunks[0]
+    over = structured(a.tool("shared", {
+        "op": "set", "key": taken, "value": {"worker": "A", "took_over": True},
+        "if_version": values[taken]["version"], "own": True}))
+    print("--- A takes over an abandoned chunk")
+    print("   ", json.dumps(over)[:300])
+    if not over.get("applied"):
+        bad.append(f"taking over an abandoned claim at its current version failed: {over}")
+    t.join(timeout=40)
+    sigs = (woken.get("got") or {}).get("signals") or []
+    print("--- B was woken by the write:", json.dumps(sigs)[:220])
+    if len(sigs) != 1 or sigs[0].get("topic") != f"shared:{taken}":
+        bad.append(f"a waiter on the family was not woken by the write: {woken.get('got')}")
+    else:
+        data = sigs[0].get("data") or {}
+        if data.get("key") != taken or not data.get("version"):
+            bad.append(f"the shared signal does not describe the change: {data}")
+        if "value" in data:
+            bad.append(f"the signal is a doorbell and must not carry the value: {data}")
+
+    # The durability half: restart the real daemon and the claims are still there.
+    # Presence does not survive and is not meant to; coordination state does.
+    print("--- restarting the daemon (the claims must outlive it)")
+    out = subprocess.run(["systemctl", "--user", "restart", "agentbox.service"],
+                         capture_output=True, text=True)
+    if out.returncode != 0:
+        bad.append(f"could not restart the daemon: {out.stderr.strip()}")
+    # Long enough for the unit to come back AND for the surviving children to redial,
+    # which is what puts their rows back on the roster.
+    time.sleep(6)
+
+    after = structured(a.tool("shared", {"op": "get", "key": "probe:claims/*"}))
+    survived = {v["key"]: v for v in (after.get("values") or [])}
+    print(f"--- after the restart, {len(survived)} of {CHUNKS} keys survived")
+    if len(survived) != CHUNKS:
+        bad.append(f"only {len(survived)} of {CHUNKS} claims survived the restart")
+    # Compared as objects, not as JSON text: two dicts with the same contents in a
+    # different key order are the same value, and a probe that says otherwise reports
+    # a defect that is its own.
+    if survived.get(taken, {}).get("value") != {"worker": "A", "took_over": True}:
+        bad.append(f"the taken-over claim did not survive intact: {survived.get(taken)}")
+    if survived.get(taken, {}).get("version") != 2:
+        bad.append(f"the taken-over claim lost its version across the restart: {survived.get(taken)}")
+    # The one the pid check exists for: A is alive and reattached, so its claims must
+    # NOT read as abandoned just because the roster was empty a moment ago.
+    live_after = [k for k, v in winners.items() if v == "A"] + [taken]
+    for key in live_after:
+        if survived.get(key, {}).get("owner_gone"):
+            bad.append(f"{key} is held by a live session and read as abandoned after the restart: {survived.get(key)}")
+    # And the dead session's claims still read as abandoned, from a daemon that never
+    # saw that session at all - which only the recorded owner can answer.
+    for key in c_chunks:
+        if key == taken:
+            continue
+        if not survived.get(key, {}).get("owner_gone"):
+            bad.append(f"{key}'s dead owner was forgotten by the restart: {survived.get(key)}")
+
+    # The table still drains: every remaining claim is finished and removed.
+    for key in sorted(survived):
+        got = structured(a.tool("shared", {"op": "delete", "key": key}))
+        if not got.get("applied"):
+            bad.append(f"finishing {key} failed: {got}")
+    left = structured(a.tool("shared", {"op": "get", "key": "probe:claims/*"}))
+    print(f"--- drained: {len(left.get('values') or [])} keys left")
+    if left.get("values"):
+        bad.append(f"the table did not drain: {left.get('values')}")
+
+    # The CLI's three verbs, which is how a Makefile or a hook joins the same fabric.
+    a_key = structured(a.tool("list_agents", {}))
+    a_key = next((r["key"] for r in (a_key.get("agents") or [])
+                  if r.get("purpose") == "sync-probe: drainer A"), None)
+    if not a_key:
+        bad.append("could not find A's key on the roster for the CLI half")
+    else:
+        out = cli("sync", "set", "probe:cli-claim", "mine", "--if-version", "0", "--own", key=a_key)
+        if out.returncode != 0:
+            bad.append(f"`sync set` claiming a free key should exit 0: {out.returncode} {out.stderr.strip()}")
+        # A lost claim is exit 1 with the current value on stdout, which is the shape a
+        # claiming loop wants from a shell.
+        out = cli("sync", "set", "probe:cli-claim", "theirs", "--if-version", "0", "--own", key=a_key)
+        if out.returncode != 1 or "probe:cli-claim" not in out.stdout:
+            bad.append(f"a lost `sync set` should exit 1 with the value: {out.returncode} {out.stdout} {out.stderr}")
+        out = cli("sync", "get", "probe:cli-claim", key=a_key)
+        if out.returncode != 0 or "mine" not in out.stdout:
+            bad.append(f"`sync get` did not read the claim back: {out.stdout} {out.stderr}")
+        else:
+            print("--- CLI round trip")
+            print("   ", out.stdout.strip())
+        out = cli("sync", "del", "probe:cli-claim", key=a_key)
+        if out.returncode != 0:
+            bad.append(f"`sync del` failed: {out.stderr.strip()}")
+        # And a get of nothing is exit 1, per the house grammar.
+        out = cli("sync", "get", "probe:cli-claim", key=a_key)
+        if out.returncode != 1:
+            bad.append(f"a get of a missing key should exit 1, got {out.returncode}")
+
+    a.close()
+    b.close()
+    print("--- leaving no state: every probe claim is deleted, unlike the signals it posted")
+    return bad
+
+
 SCENARIOS = {"rider": scenario_rider, "locks": scenario_locks,
-             "signals": scenario_signals, "board": scenario_board}
+             "signals": scenario_signals, "shared": scenario_shared,
+             "board": scenario_board}
 
 
 def main():
