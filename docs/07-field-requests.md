@@ -2148,6 +2148,36 @@ free to fix.
 
 ---
 
+## FR89 [field] A posted item cannot be taken back, or cleared without the mouse
+
+**Session.** 2026-08-04, session 42. Boris, mid-session: "Why do you keep popping
+this 'Deadlock refused' panel? Did you need me to see it or to close it or
+something?"
+
+**What is wrong.** Nothing was wrong with the toast - a refused deadlock is one of
+the two coordination events the design says should interrupt him. What was wrong is
+that four of them were about locks named `probe:*` from an acceptance probe, they
+came back on every daemon restart (a warning is pending until dismissed, and
+pending items survive a restart by design), and **there is no way to clear them
+except clicking**. There is no `agentbox dismiss ID`, no RPC behind one, and no
+retraction: an agent that posts a toast it later knows to be noise has no way to
+withdraw it, and a human at a terminal with no window open cannot empty the queue.
+
+The asymmetry is the defect: agents have four doors to CREATE an item and none to
+retire one.
+
+**Fix.** Two verbs, one method: `agentbox dismiss [ID|--all]` for the human, and a
+retraction for the agent that posted it (`notify_user` returns an id already;
+withdrawing it should be the same id back through a `retract`). Non-blocking, and
+it must only ever touch items the caller posted unless `--all` is the human's own
+call. A test-only escape hatch is not enough - the real case is an agent that
+posts "build failed", fixes it, and should be able to take it back before he ever
+looks.
+
+**Meanwhile:** anything a probe or a test posts is the tester's mess to explain.
+Say so in the handoff, and prefer a name (`probe:`) that makes it obvious on
+sight, which is the only thing that worked here.
+
 ## FR88 [fixed 2026-08-04, session 42] Every blocking card was on a 30-minute fuse
 
 **Session.** 2026-08-04, session 42, measuring the MCP client's idle cap before
