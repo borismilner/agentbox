@@ -136,6 +136,13 @@ func daemonConfig(cfg config.Config) daemon.Config {
 		DndBlocksUrgent:    !cfg.Dnd.UrgentBreaksThrough,
 		ActionsDisabled:    !cfg.Actions.Enabled,
 		StartInDnd:         cfg.Dnd.StartInDnd,
+		// Sync (FR83). WaitMax bounds a parked MCP call; the other two are the lock
+		// table's clock. wait_warn_s = 0 means never warn and is passed through as
+		// the zero it is: config.Default supplies the real default, so nothing
+		// downstream has to guess whether a zero was chosen or omitted.
+		SyncWaitMax:         time.Duration(cfg.Sync.WaitMaxS) * time.Second,
+		SyncWaitWarn:        time.Duration(cfg.Sync.WaitWarnS) * time.Second,
+		SyncHolderGoneGrace: time.Duration(cfg.Sync.HolderGoneGraceS) * time.Second,
 	}
 }
 
@@ -315,6 +322,10 @@ func runDaemon() {
 	// decays on time alone never decays on screen, and a throttled push waits for
 	// unrelated traffic.
 	d.StartRoster()
+	// The lock table's clock (FR83 slice 2): an orphaned hold whose process has
+	// died, a ttl that has run out, a wait long enough to be contention. None of
+	// those is caused by a verb, so nothing else would notice them.
+	d.StartLocks()
 	// And the rider, which is how an agent already deep in a file hears that it
 	// has company: it rides back on whatever call it makes next (FR83).
 	lst.SetRider(d.SyncRider)

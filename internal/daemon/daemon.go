@@ -163,6 +163,16 @@ type Config struct {
 	DndBlocksUrgent    bool          // FR11 inverted so the zero value (urgent breaks through) is the default
 	ActionsDisabled    bool          // FR32 kill switch, inverted so the zero value (action buttons on) is the default
 	StartInDnd         bool
+
+	// Sync (FR83). SyncWaitMax bounds a PARKED MCP CALL and nothing else: the
+	// client aborts a tool call that has been silent for 1800s (measured), so a
+	// wait that promised more would be a lie the transport tells. SyncWaitWarn is
+	// the only coordination toast; a signal wait will never warn, because
+	// listening is the intended steady state. SyncHolderGoneGrace is how long an
+	// orphaned hold waits before its dead pid counts as proof the work is over.
+	SyncWaitMax         time.Duration
+	SyncWaitWarn        time.Duration // 0 disables
+	SyncHolderGoneGrace time.Duration
 }
 
 func (c *Config) fill() {
@@ -189,6 +199,18 @@ func (c *Config) fill() {
 	}
 	if c.CallerGone == 0 {
 		c.CallerGone = 4 * time.Second
+	}
+	if c.SyncWaitMax == 0 {
+		// Under the client's measured 1800s idle cap with room to spare, so a
+		// parked wait ends as an honest timed_out the agent can re-arm rather than
+		// as a transport error it cannot read (see keepalive.go).
+		c.SyncWaitMax = 25 * time.Minute
+	}
+	// SyncWaitWarn is deliberately NOT defaulted here: 0 means "never warn", which
+	// is what the config file's own 0 means, and config.Default supplies the real
+	// default. Filling it in would make an explicit 0 impossible to express.
+	if c.SyncHolderGoneGrace == 0 {
+		c.SyncHolderGoneGrace = 5 * time.Second
 	}
 }
 
@@ -279,6 +301,10 @@ type Daemon struct {
 	// the others, and more sharply: an attach is a call parked for the whole
 	// life of a session, so it must never be holding d.mu while it waits.
 	roster *roster
+	// locks is who is taking turns over what (FR83 slice 2). Same isolation, and
+	// the same reason again: an acquire is parked for as long as the caller is
+	// patient, and holding d.mu across that would stop the daemon.
+	locks *locks
 
 	closing atomic.Bool // FR45: set at shutdown so a teardown disconnect is not shown as "caller gone"
 }
@@ -472,6 +498,18 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	// locks, and the roster only ever reads them, so this cannot deadlock
 	// against either subsystem.
 	d.roster.SetObservers(d.askingKeys, d.drivingKey)
+	d.locks = newLocks(log)
+	d.locks.SetPolicy(cfg.SyncWaitWarn, cfg.SyncHolderGoneGrace)
+	// Locks read the roster (is this session announced, and who is it) and the
+	// waiters map (is the holder parked on a question to the human), and write
+	// back only two things: a repaint, and a warning toast. The roster in turn
+	// asks the table for holds and waits when it renders a row. Each direction
+	// takes only its own lock, which is what keeps the pair from deadlocking.
+	d.locks.SetObservers(d.roster.announced, d.roster.agentOf, d.askingKeys, d.lockWarn, d.roster.changed)
+	// An attach dropping is a session dying, and its locks must not silently
+	// free the resources its work may still be using (locks.go, the orphan rule).
+	d.roster.SetOnGone(d.locks.SessionGone)
+	d.roster.SetLocks(d.locks.rows)
 	// The scheduler is built here but not STARTED here: it wants a Runner, and
 	// the surface that can carry an assignment out is wired after the daemon
 	// exists (SetRunner, then StartAssignments). A daemon that never gets one
@@ -779,6 +817,36 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			}
 		}
 		return d.roster.List(p)
+	// Locks (FR83 slice 2, locks.go). acquire parks in a FIFO queue, so ctx is
+	// load-bearing the same way it is for a card: the caller going away must take
+	// its place in the queue with it.
+	case proto.MethodSyncLock:
+		p, rpcErr := lockParams(params, "sync_lock")
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return d.locks.Acquire(ctx, p, d.cfg.SyncWaitMax)
+	case proto.MethodSyncTryLock:
+		p, rpcErr := lockParams(params, "sync_try_lock")
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return d.locks.Try(p)
+	case proto.MethodSyncUnlock:
+		p, rpcErr := lockParams(params, "sync_unlock")
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return d.locks.Release(p)
+	case proto.MethodSyncBreakLock:
+		// The human's verb, not an agent's: it arrives from the Agents surface.
+		p, rpcErr := lockParams(params, "sync_break_lock")
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return d.locks.Break(p.Name), nil
+	case proto.MethodSyncLocks:
+		return proto.SyncLocksResult{OK: true, Locks: d.locks.Snapshot()}, nil
 	case proto.MethodProgress:
 		var u proto.ProgressUpdate
 		if err := json.Unmarshal(params, &u); err != nil {

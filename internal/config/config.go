@@ -44,6 +44,21 @@ type Config struct {
 	Actions struct {
 		Enabled bool `toml:"enabled"`
 	} `toml:"actions"`
+	// Sync is multi-agent coordination (FR83). WaitMaxS bounds a PARKED MCP CALL
+	// and nothing else: the client aborts a tool call it has heard nothing about
+	// for 1800s, so the ceiling sits under that and a wait that hits it returns a
+	// resumable timeout instead of a transport error. A CLI hold is bounded by
+	// whatever runs the CLI, which is a different number entirely (120s from an
+	// agent's shell, 600s with an explicit timeout) - the two must not be read as
+	// one.
+	Sync struct {
+		WaitMaxS int `toml:"wait_max_s"`
+		// WaitWarnS toasts when a LOCK wait exceeds it; 0 disables. A signal wait
+		// never warns, because listening is the intended steady state and warning
+		// on it would train the human to ignore the toast that matters.
+		WaitWarnS        int `toml:"wait_warn_s"`
+		HolderGoneGraceS int `toml:"holder_gone_grace_s"`
+	} `toml:"sync"`
 	// Panel is the drop-down session panel (M10). Hotkey is grabbed by the
 	// daemon on X11, so it works with no desktop configuration; an empty string
 	// turns the grab off and leaves `agentbox panel` as the only way in.
@@ -189,6 +204,9 @@ func Default() Config {
 	c.Presence.FullscreenAutoDnd = true
 	c.Presence.RespectDesktopDnd = true
 	c.Actions.Enabled = true
+	c.Sync.WaitMaxS = 1500
+	c.Sync.WaitWarnS = 600
+	c.Sync.HolderGoneGraceS = 5
 	c.Panel.Hotkey = "Ctrl+Alt+grave"
 	c.Panel.HeightFrac = 0.5 // half the monitor, never more: see the clamp below
 	c.Panel.WidthFrac = 0.74

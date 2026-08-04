@@ -70,6 +70,15 @@ const (
 	MethodSyncAnnounce = "agentbox.v1.sync_announce"
 	MethodSyncActivity = "agentbox.v1.sync_activity"
 	MethodSyncList     = "agentbox.v1.sync_list"
+	// Locks (FR83 slice 2). acquire BLOCKS in a FIFO queue; try never does, which
+	// is why they are two methods and not one flag (the FR74 rule: a blocking and
+	// a non-blocking verb never share a door). break_lock is the human's, from the
+	// Agents surface, and locks is the read both the surface and the CLI use.
+	MethodSyncLock      = "agentbox.v1.sync_lock"
+	MethodSyncTryLock   = "agentbox.v1.sync_try_lock"
+	MethodSyncUnlock    = "agentbox.v1.sync_unlock"
+	MethodSyncBreakLock = "agentbox.v1.sync_break_lock"
+	MethodSyncLocks     = "agentbox.v1.sync_locks"
 )
 
 // ArtifactEvent is one thing the human did inside an artifact: the name and data
@@ -272,6 +281,12 @@ type SyncAgent struct {
 	Purpose  string `json:"purpose,omitempty"`
 	Activity string `json:"activity,omitempty"`
 
+	// Holds and Waiting are this session's locks (FR83 slice 2). Two agents
+	// waiting on each other is then a drawn edge on the surface rather than a
+	// diagram the human assembles in his head.
+	Holds   []SyncHold `json:"holds,omitempty"`
+	Waiting *SyncWait  `json:"waiting,omitempty"`
+
 	// State is what the daemon observed, never what the agent claimed.
 	State  string `json:"state"`
 	Detail string `json:"detail,omitempty"`
@@ -297,6 +312,99 @@ type SyncResult struct {
 	// Note carries a teaching sentence for a refusal or a nudge, in the
 	// self-teaching style the rest of the tools use.
 	Note string `json:"note,omitempty"`
+}
+
+// SyncHold is one lock a session holds, as a roster row shows it.
+type SyncHold struct {
+	Name    string `json:"name"`
+	SinceMS int64  `json:"since_ms"`
+	// Orphaned says the holder's session is gone while the process it recorded
+	// lives on, so the lock is neither safely free nor actively held. It is the
+	// state that makes a half-finished deploy visible instead of invisible.
+	Orphaned bool   `json:"orphaned,omitempty"`
+	PID      int    `json:"pid,omitempty"`
+	Note     string `json:"note,omitempty"`
+}
+
+// SyncWait is the lock a session is parked on. HolderKey lets the surface make
+// the wait clickable: two agents waiting on each other should be one click apart,
+// not a puzzle.
+type SyncWait struct {
+	Name        string `json:"name"`
+	SinceMS     int64  `json:"since_ms"`
+	Ahead       int    `json:"ahead,omitempty"` // how many are in front in the queue
+	HolderKey   string `json:"holder_key,omitempty"`
+	HolderAgent string `json:"holder_agent,omitempty"`
+}
+
+// SyncLockParams is acquire, try and release alike (FR83 slice 2).
+//
+// TimeoutS keeps the meaning it has in every shipped blocking tool: 0 waits as
+// long as the caller does, bounded by the daemon's own ceiling on a parked call.
+// PID and TTLS are filled by the child or the CLI rather than by a model: they
+// are about which process the hold follows, which is a fact about the caller.
+type SyncLockParams struct {
+	Identity Identity `json:"identity"`
+	Name     string   `json:"name"`
+	TimeoutS int      `json:"timeout_s,omitempty"`
+	Note     string   `json:"note,omitempty"`
+	// ReleaseOnDetach frees the hold the moment the session's attach drops,
+	// instead of orphaning it. True when the session IS the critical section;
+	// false (the default) when it started work that outlives it.
+	ReleaseOnDetach bool `json:"release_on_detach,omitempty"`
+	TTLS            int  `json:"ttl_s,omitempty"`
+	PID             int  `json:"pid,omitempty"`
+}
+
+// SyncLockResult is the answer to every lock verb. Exactly one of Granted,
+// TimedOut, Refused and Released describes what happened; the rest of the fields
+// are the picture the caller would otherwise have to ask a second question for.
+type SyncLockResult struct {
+	OK      bool   `json:"ok"`
+	Name    string `json:"name,omitempty"`
+	Granted bool   `json:"granted,omitempty"`
+	// TimedOut is a result, not an error: the wait ended without a grant and
+	// nothing about the lock changed. Re-arming is one call.
+	TimedOut bool `json:"timed_out,omitempty"`
+	Refused  bool `json:"refused,omitempty"`
+	Released bool `json:"released,omitempty"`
+	Queued   bool `json:"queued,omitempty"`
+
+	// Holder and its companions are the whole picture: who has it, what they are
+	// for, what they are doing, how long they have held it, how many wait behind.
+	Holder     *SyncAgent `json:"holder,omitempty"`
+	HolderNote string     `json:"holder_note,omitempty"`
+	HolderPID  int        `json:"holder_pid,omitempty"`
+	HeldMS     int64      `json:"held_ms,omitempty"`
+	Queue      int        `json:"queue,omitempty"`
+	Orphaned   bool       `json:"orphaned,omitempty"`
+
+	// Reason says why a grant happened - released, holder gone, broken by the
+	// human, ttl expired - so a waiter always learns why it won.
+	Reason   string `json:"reason,omitempty"`
+	WaitedMS int64  `json:"waited_ms,omitempty"`
+	// Deadlock names the cycle an acquire would have closed.
+	Deadlock string `json:"deadlock,omitempty"`
+	Note     string `json:"note,omitempty"`
+}
+
+// SyncLockState is one lock as the surface and the CLI read it.
+type SyncLockState struct {
+	Name        string `json:"name"`
+	HolderKey   string `json:"holder_key,omitempty"`
+	HolderAgent string `json:"holder_agent,omitempty"`
+	Note        string `json:"note,omitempty"`
+	PID         int    `json:"pid,omitempty"`
+	HeldMS      int64  `json:"held_ms"`
+	ExpiresInMS int64  `json:"expires_in_ms,omitempty"`
+	Orphaned    bool   `json:"orphaned,omitempty"`
+	Waiters     int    `json:"waiters,omitempty"`
+}
+
+// SyncLocksResult is the whole lock table, for a read that is nobody's turn.
+type SyncLocksResult struct {
+	OK    bool            `json:"ok"`
+	Locks []SyncLockState `json:"locks,omitempty"`
 }
 
 type ControlRequestParams struct {

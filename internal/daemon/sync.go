@@ -134,10 +134,15 @@ type roster struct {
 	seenUnattached map[string]time.Time
 
 	// observers answer the questions a self-report cannot: who is parked on a
-	// human answer, and who holds the desktop. Both are already tracked
-	// elsewhere, so the roster asks rather than duplicating.
+	// human answer, who holds the desktop, and who holds or waits on a lock. All
+	// three are already tracked elsewhere, so the roster asks rather than
+	// duplicating.
 	askingFn  func() map[string]bool
 	drivingFn func() string
+	lockRows  func() (map[string][]proto.SyncHold, map[string]proto.SyncWait)
+
+	// onGone is told when a session's attach drops, after the row is removed.
+	onGone func(key string)
 
 	push    func([]proto.SyncAgent, bool)
 	lastGen time.Time
@@ -180,6 +185,95 @@ func (r *roster) SetPush(push func([]proto.SyncAgent, bool)) {
 	r.mu.Lock()
 	r.push = push
 	r.mu.Unlock()
+}
+
+// SetLocks wires the lock table's two reads into a row: what this session holds,
+// and what it is parked on (FR83 slice 2). Nil in a roster with no locks, which
+// is every test that predates them.
+func (r *roster) SetLocks(rows func() (map[string][]proto.SyncHold, map[string]proto.SyncWait)) {
+	r.mu.Lock()
+	r.lockRows = rows
+	r.mu.Unlock()
+}
+
+// SetOnGone wires what happens when a session's attach drops. The roster's own
+// answer is to remove the row; the lock table's is more careful, because a dead
+// child does not prove the work it started is over.
+func (r *roster) SetOnGone(gone func(key string)) {
+	r.mu.Lock()
+	r.onGone = gone
+	r.mu.Unlock()
+}
+
+// announced answers the lock verbs' gate: has this session said what it is for.
+func (r *roster) announced(key string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	row := r.rows[key]
+	return row != nil && row.announced
+}
+
+// agentOf is one row as a caller outside this file sees it, so a lock refusal can
+// name the holder in the same terms the human's board does. The state is derived
+// the same way, which is why it is worth going through here rather than reading
+// the map directly.
+func (r *roster) agentOf(key string) (proto.SyncAgent, bool) {
+	asking, driving := r.observed()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	row := r.rows[key]
+	if row == nil {
+		return proto.SyncAgent{}, false
+	}
+	now := time.Now()
+	a := proto.SyncAgent{
+		Key: key, Agent: row.identity.Agent, Project: row.identity.Project,
+		Session: row.identity.Session, Cwd: row.cwd, PID: row.pid,
+		Area: row.area, AreaPath: row.areaPath,
+		Purpose: row.purpose, Activity: row.activity,
+		AgeMS: now.Sub(row.attachedAt).Milliseconds(),
+	}
+	if !row.activityAt.IsZero() {
+		a.ActivitySinceMS = now.Sub(row.activityAt).Milliseconds()
+	}
+	// Deliberately without holds and waits: this is what a LOCK result embeds, and
+	// a holder's own hold on the lock being asked about would be saying the same
+	// thing twice in one answer.
+	a.State, a.Detail = derivedState(row, key, asking, driving, nil, now)
+	return a, true
+}
+
+// observed reads the two observer funcs and calls them outside r.mu. They reach
+// other subsystems' locks, and the roster must never hold its own while doing
+// that: the lock table calls back in here.
+func (r *roster) observed() (map[string]bool, string) {
+	r.mu.Lock()
+	askingFn, drivingFn := r.askingFn, r.drivingFn
+	r.mu.Unlock()
+
+	asking := map[string]bool{}
+	if askingFn != nil {
+		asking = askingFn()
+	}
+	driving := ""
+	if drivingFn != nil {
+		driving = drivingFn()
+	}
+	return asking, driving
+}
+
+// lockState is the holds and waits, read outside r.mu for the reason snapshot
+// explains. Empty maps when there is no lock table, which keeps every row
+// rendering correctly in a daemon built without one.
+func (r *roster) lockState() (map[string][]proto.SyncHold, map[string]proto.SyncWait) {
+	r.mu.Lock()
+	rows := r.lockRows
+	r.mu.Unlock()
+	if rows == nil {
+		return map[string][]proto.SyncHold{}, map[string]proto.SyncWait{}
+	}
+	return rows()
 }
 
 // betterIdentity keeps the most informative version of a session's identity
@@ -249,8 +343,13 @@ func (r *roster) Attach(ctx context.Context, p proto.SyncAttachParams) (proto.Sy
 
 	r.mu.Lock()
 	delete(r.rows, key)
+	gone := r.onGone
 	r.mu.Unlock()
 	r.log.Info(logging.EvSync, "component", "daemon", "sync", "detach", "key", key)
+	// Outside r.mu: this reaches the lock table, which reaches back here.
+	if gone != nil {
+		gone(key)
+	}
 	r.changed()
 
 	return proto.SyncResult{OK: true}, nil
@@ -434,7 +533,11 @@ func (r *roster) riderFor(key string) string {
 		if peer.purpose != "" {
 			what = `"` + peer.purpose + `"`
 		}
-		state, _ := derivedState(peer, k, asking, driving, now)
+		// Without the lock state: this runs under r.mu, and reaching the lock
+		// table from here would invert the two subsystems' lock order (see
+		// snapshot). A peer's lock is one call away on the board; what the rider
+		// owes the agent is that the peer EXISTS.
+		state, _ := derivedState(peer, k, asking, driving, nil, now)
 		return fmt.Sprintf("%s %s (%s)", name, what, state)
 	}
 
@@ -539,15 +642,14 @@ func (r *roster) peersOf(key, area string) proto.SyncResult {
 // whole reason the surface can be trusted: it reads the daemon's own facts
 // first and the agent's self-report last.
 func (r *roster) snapshot() ([]proto.SyncAgent, bool) {
+	// Every observer is read BEFORE r.mu, and that is a rule rather than a
+	// preference: the lock table asks the roster who a holder is while holding its
+	// own mutex, so a roster that held r.mu while asking the lock table would give
+	// the two subsystems opposite lock orders and deadlock the daemon.
+	asking, driving := r.observed()
+	holds, waits := r.lockState()
+
 	r.mu.Lock()
-	asking := map[string]bool{}
-	if r.askingFn != nil {
-		asking = r.askingFn()
-	}
-	driving := ""
-	if r.drivingFn != nil {
-		driving = r.drivingFn()
-	}
 	now := time.Now()
 	// Reap provisional rows nothing has touched. A row with a live attach is
 	// removed by the attach ending; a row without one has no such event, so its
@@ -569,7 +671,20 @@ func (r *roster) snapshot() ([]proto.SyncAgent, bool) {
 		if !row.activityAt.IsZero() {
 			a.ActivitySinceMS = now.Sub(row.activityAt).Milliseconds()
 		}
-		a.State, a.Detail = derivedState(row, key, asking, driving, now)
+		a.Holds = holds[key]
+		var wait *proto.SyncWait
+		if w, ok := waits[key]; ok {
+			// The holder's NAME comes from here rather than from the lock table: the
+			// roster is the authority on identity (it is what keeps a hook's attach
+			// from stamping a row `systemd`), and the lock only knows what the caller
+			// that took it happened to send.
+			if holder := r.rows[w.HolderKey]; holder != nil && holder.identity.Agent != "" {
+				w.HolderAgent = holder.identity.Agent
+			}
+			wait = &w
+			a.Waiting = wait
+		}
+		a.State, a.Detail = derivedState(row, key, asking, driving, wait, now)
 		out = append(out, a)
 	}
 	partial := len(r.seenUnattached) > 0
@@ -589,12 +704,26 @@ func (r *roster) snapshot() ([]proto.SyncAgent, bool) {
 // derivedState is the priority order, in one place. Facts the daemon can check
 // come first; the agent's own activity line only decides between working and
 // quiet, which is the most it should ever decide.
-func derivedState(row *rosterRow, key string, asking map[string]bool, driving string, now time.Time) (string, string) {
+//
+// A lock wait outranks working for the same reason asking does: the agent is
+// stopped, and a row that says "working" while its call is parked behind another
+// agent hides the one thing the human could act on. It names the holder, because
+// "blocked" without a holder is a puzzle rather than a state.
+func derivedState(row *rosterRow, key string, asking map[string]bool, driving string, wait *proto.SyncWait, now time.Time) (string, string) {
 	switch {
 	case asking[key]:
 		return StateAsking, ""
 	case driving != "" && driving == key:
 		return StateDriving, ""
+	case wait != nil:
+		detail := "lock " + wait.Name
+		if who := wait.HolderAgent; who != "" {
+			detail += ", held by " + who
+		}
+		if wait.Ahead > 0 {
+			detail += fmt.Sprintf(", %d ahead of you", wait.Ahead)
+		}
+		return StateBlocked, detail
 	case !row.announced:
 		return StateUnannounced, ""
 	case !row.attached:
@@ -783,6 +912,30 @@ func (d *Daemon) SetRosterSurface(push func([]proto.SyncAgent, bool)) {
 	d.roster.SetPush(push)
 }
 
+// lockWarn is the lock table's one voice at the human: a deadlock refused, a
+// wait long enough to be contention rather than progress, or a holder parked on
+// a question only he can answer. A warning toast, through the normal display
+// path, so it chimes and lands in history like anything else.
+//
+// Everything else about coordination stays quiet on purpose (vision principle 1):
+// two agents taking turns correctly is not news.
+func (d *Daemon) lockWarn(title, body string) {
+	d.surfaceNotify(proto.LevelWarning, proto.Identity{Agent: "agentbox"}, title, body)
+}
+
+// StartLocks and StopLocks run the lock table's clock, which is what notices an
+// orphan whose process has died and a wait worth warning about.
+func (d *Daemon) StartLocks() { d.locks.Start() }
+func (d *Daemon) StopLocks()  { d.locks.Stop() }
+
+// BreakLock is the human's, from the Agents surface. It reassigns the lock and
+// tells the ex-holder; it does not stop the ex-holder's work, and the copy beside
+// the button has to say so.
+func (d *Daemon) BreakLock(name string) proto.SyncLockResult { return d.locks.Break(name) }
+
+// LockSnapshot is every lock the daemon knows, for the surface's pull on mount.
+func (d *Daemon) LockSnapshot() []proto.SyncLockState { return d.locks.Snapshot() }
+
 // SyncRider is what rides back on a response envelope (FR83). It answers for any
 // method, because the point is that news reaches an agent through whatever it
 // happened to be doing.
@@ -802,15 +955,35 @@ func (d *Daemon) SyncRider(method string, params json.RawMessage) string {
 		return ""
 	}
 	key := strings.TrimSpace(id.Key)
+	// A lost lock rides the same envelope, and it goes first: "the human broke
+	// your lock" outranks news about company, and it is owed to this session
+	// whatever it called. Taken even for the methods that carry their own roster,
+	// because nothing else in the system will ever mention it again.
+	//
+	// A daemon assembled by hand (the roster's own tests) has no lock table, and
+	// the rider is still expected to work: presence never depends on the rest of
+	// the daemon being there.
+	var lines []string
+	if d.locks != nil {
+		lines = d.locks.TakeNotices(key)
+	}
 	switch method {
 	case proto.MethodSyncAttach:
+		// The attach returns once, at the end of a session. Anything put on it
+		// would arrive as the agent stops existing, so a notice is kept for the
+		// next real call instead of being spent here.
+		d.locks.keepNotices(key, lines)
 		return ""
 	case proto.MethodSyncAnnounce, proto.MethodSyncList:
-		// Move the cursor and say nothing: whatever is here was in that result.
+		// Move the cursor and say nothing about peers: whatever is here was in that
+		// result. A broken lock was not, so it still rides.
 		d.roster.riderFor(key)
-		return ""
+		return strings.Join(lines, " ")
 	}
-	return d.roster.riderFor(key)
+	if peers := d.roster.riderFor(key); peers != "" {
+		lines = append(lines, peers)
+	}
+	return strings.Join(lines, " ")
 }
 
 // identityOf reads the caller identity out of any params object. Every method's
