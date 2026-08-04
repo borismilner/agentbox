@@ -93,7 +93,14 @@ func runSyncShared(in sharedCLI) int {
 			return exitOK
 		}
 		if !res.Found {
-			fmt.Printf("%s does not exist (version 0)\n", in.key)
+			// A prefix that matches nothing and a key that is not there are different
+			// facts, and only one of them has a version. The daemon's note already draws
+			// the distinction, so use it rather than restating half of it.
+			if strings.HasSuffix(in.key, "*") {
+				fmt.Println(res.Note)
+			} else {
+				fmt.Printf("%s does not exist (version 0)\n", in.key)
+			}
 			return exitNo
 		}
 		fmt.Println(sharedLine(*res.Value))

@@ -376,3 +376,39 @@ func TestSharedRecordsTheOwningProcess(t *testing.T) {
 		t.Fatalf("an unowned write should record no owner at all: %+v", res.Value)
 	}
 }
+
+// fullStore is a store that is always full. It tests the MAPPING rather than the cap:
+// the store's own test proves ErrSharedFull comes back at a thousand keys, and what
+// is worth checking here is that it becomes the sentence telling an agent to delete
+// what it has finished - not an internal error, which reads as a bug in agentbox and
+// gives the agent nothing to do.
+type fullStore struct{ sharedStore }
+
+func (fullStore) SharedGet(string) (proto.SharedValue, bool, error) {
+	return proto.SharedValue{}, false, nil
+}
+
+func (fullStore) SharedSet(string, string, *int64, string, string, int) (proto.SharedValue, bool, error) {
+	return proto.SharedValue{}, false, store.ErrSharedFull
+}
+
+func TestSharedFullTableTellsTheCallerWhatToDo(t *testing.T) {
+	sh := newShared(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	sh.SetStore(fullStore{})
+	sh.SetObservers(func(string) bool { return true }, func(string) bool { return true }, nil, nil)
+
+	_, rpcErr := sh.Handle(proto.SyncSharedParams{
+		Identity: proto.Identity{Agent: "claude", Key: "k1"}, Op: proto.SharedOpSet,
+		Key: "claims/1", Value: json.RawMessage(`"x"`), IfVersion: vp(0)})
+	if rpcErr == nil {
+		t.Fatal("a write into a full table should be refused")
+	}
+	if rpcErr.Code != proto.CodeInvalidParams {
+		t.Errorf("code %d; a full table is the caller's problem to act on, not an internal failure", rpcErr.Code)
+	}
+	for _, want := range []string{"cap", "Delete the keys whose work is finished"} {
+		if !strings.Contains(rpcErr.Message, want) {
+			t.Errorf("the refusal does not mention %q: %s", want, rpcErr.Message)
+		}
+	}
+}
