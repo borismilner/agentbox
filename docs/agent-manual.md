@@ -55,6 +55,11 @@ auto-spawns the daemon; nothing else to start.
 | Say what this session is for, and see who else is here | `announce` | `agentbox sync announce` | no |
 | Say what you are doing right now | `set_activity` | `agentbox sync activity` | no |
 | Check for other agents before touching a shared tree | `list_agents` | `agentbox sync agents` | no |
+| Take turns over a shared resource (deploy, repo, VM) | `acquire_lock` | `agentbox sync lock` | yes |
+| Take it only if it is free right now | `try_lock` | - | no |
+| Hand it to whoever is behind you | `release_lock` | `agentbox sync unlock` | no |
+| Tell the other agents something happened | `post_signal` | `agentbox sync post` | no |
+| Wait to be told, instead of polling for it | `await_signal` | `agentbox sync await` | yes |
 | Tell the human something (result, FYI) | `notify_user` | `agentbox notify` | no |
 | Ask a single choice (2-9 options) | `ask_user` (with `options`) | `agentbox ask` | yes |
 | Ask for free text | `ask_user` (no `options`) | `agentbox input` | yes |
@@ -229,6 +234,99 @@ next AgentBox call and you must stop touching what it protected.
 **Never hold a lock across a question to the human.** Everything behind you then
 waits on something only he can end - the daemon warns him when it sees it, but the
 agent that arranged it is the one at fault.
+
+### post_signal  (non-blocking) / await_signal  (blocking)
+
+A lock is how two agents take turns. A signal is how one tells the other that it
+is their turn - and it is what replaces the loop where you sleep, call a status
+tool, decide, and look again, spending a model turn per look and reacting a whole
+interval late.
+
+- Args (`post_signal`): `topic` (exact, in the `kind:scope` idiom), `data`
+  (optional small JSON, capped at 16 KB).
+- Returns: `{ok, topic, seq, delivered, note}`. `seq` is this signal's place in
+  the one global sequence, which is also the cursor to read it from.
+- Args (`await_signal`): `topics` (exact names, or prefixes ending in `*`),
+  `after_seq` (your cursor; omit for "from now on"), `timeout_s`.
+- Returns: `{ok, signals:[{seq, topic, agent, project, key, data, at_ms}],
+  cursor, received, timed_out, gap, oldest_seq, more, note}`.
+
+```
+post_signal(topic="tests:green", data={"suite": "race"})
+  -> {seq: 41, delivered: 1}
+
+await_signal(topics=["tests:green"], timeout_s=600)
+  -> {signals: [{seq: 41, topic: "tests:green", agent: "claude", data: {...}}],
+      cursor: 41}
+```
+
+**A signal is stored, so it is delivered whether or not anybody was listening.**
+`delivered: 0` says nobody was parked at that instant, not that the signal was
+lost: a peer that was busy picks it up later by cursor, and a daemon restart loses
+nothing inside the retention window (`signal_keep` 1000 per topic,
+`signal_keep_days` 7).
+
+**The cursor is how you never miss one.** Pass the `cursor` you were last given
+back as `after_seq`, and you get everything matching since then **in one batch** -
+three events that fired while you were editing a file arrive together on your next
+call, rather than one wake per event. Omit `after_seq` and you wait for what
+happens from now on, which is the right reading when you have nothing to resume
+from. `more: true` means the batch was capped and one more call takes the rest
+without parking.
+
+**Topics are names, or families.** An exact name waits for one event; a name
+ending in `*` is a plain string prefix, so `done:*` catches `done:migration-3`.
+Not globbing, not regex - a topic is a name.
+
+**To message one agent, post to its private topic.** Every session's key names
+`to:<key>`, and the key is on its roster row from `announce` or `list_agents`. So
+messaging a peer is `post_signal(topic="to:"+peer_key, data={...})` and listening
+is `await_signal(topics=["to:@me"])`, where `@me` expands to your own key. A
+request and a reply are two signals with the reply topic named in the request.
+This carries structured data between programs; it is not a chat.
+
+**Three topics the daemon posts for you:**
+
+| Topic | Posted when |
+|---|---|
+| `agents:<area>` | an agent joins, announces or leaves your area |
+| `lock:<name>` | that lock changes hands, with the reason and the new holder |
+| `to:<your key>` | anything a peer addressed to you |
+
+`lock:<name>` is how you learn a resource freed *without* queueing for it, and
+`agents:<area>` is for an agent that is genuinely idle - one mid-task gets the
+`sync:` rider on whatever it calls next, with no call of its own.
+
+**A timeout is a result, not an error**, exactly as it is for a lock: the cursor
+comes back unchanged, so waiting again misses nothing that happened in between.
+Every park is bounded by `[sync] wait_max_s` (1500s), because the MCP client
+abandons a tool call it has heard nothing about for 1800s and never tells the
+daemon it did - so re-arming is the normal shape of a long wait, not a failure.
+
+**`gap: true` is the answer you must not skim.** Your cursor is older than what
+retention still holds, so signals between the two are gone and the batch cannot be
+complete. Treat whatever you were tracking through them as *unknown*, not as *not
+having happened*: a batch that silently skipped what retention ate is how two
+agents come to believe they each own one chunk of work.
+
+**Nothing ever warns the human about a wait here.** Listening is the intended
+steady state, which is precisely why a lock wait warns and a signal wait does not.
+
+The composition is the point:
+
+```
+await_signal(topics=["tests:green"])      # park, no polling
+acquire_lock(name="deploy:agentbox")      # then take the resource
+```
+
+and fanning work out is one `post_signal("done:<chunk>")` per finished piece
+against one `await_signal(["done:*"])`.
+
+Anti-patterns: polling a status tool in a loop (this is what replaces it); parking
+speculatively on a maybe-someday topic when `await_signal` occupies your turn;
+posting a `*` (a wildcard belongs in `topics`, never in a topic you post to);
+dropping the cursor after a timeout, which can miss whatever arrived between two
+calls; and sending a payload where a file path would do.
 
 ### notify_user  (non-blocking)
 Post a desktop notification. Returns immediately.

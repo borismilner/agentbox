@@ -106,6 +106,10 @@ Claude Code) can call these tools. Run `agentbox docs setup` for a paste-ready
   See "Taking turns over a shared resource"
 - `try_lock` -> take it only if it is free right now; never waits
 - `release_lock` -> hand it to whoever is queued behind you
+- `post_signal` -> tell the other agents something happened (non-blocking). See
+  "Telling another agent, and waiting to be told"
+- `await_signal` -> BLOCK until a matching signal arrives, and get everything
+  since your cursor in one batch. This is what replaces a polling loop
 - `notify_user` -> notify (non-blocking)
 - `ask_user` -> ask; pass `options` for a single choice, omit them for free text
 - `confirm_action` -> confirm; returns `confirmed` true/false
@@ -280,6 +284,92 @@ agentbox sync locks                                               # who holds wh
 The wrapped form releases on any exit, signals included, which matters because a
 foreground shell call from a Claude session is killed at 120s: for anything
 longer, take the hold with `--ttl` and release it yourself.
+
+## Telling another agent, and waiting to be told
+
+A lock is how two agents take turns. A **signal** is how one tells the other that
+it is their turn - and it is what replaces the loop where you sleep, call a status
+tool, decide, and do it again, spending a whole turn per look and reacting an
+interval late.
+
+```
+post_signal(topic="tests:green", data={"suite": "race"})   # non-blocking
+  -> seq:41, delivered:1
+
+await_signal(topics=["tests:green"], timeout_s=600)        # BLOCKS
+  -> signals:[{seq:41, topic:"tests:green", agent:"claude", key:"…", data:{…}}]
+     cursor:41
+```
+
+**A signal is stored, so it is delivered whether or not anybody was listening.**
+`delivered: 0` means nobody was parked at that moment; it does not mean the signal
+was lost. A peer that was busy picks it up later, and a daemon restart does not
+lose it inside the retention window (1000 per topic, 7 days).
+
+**The cursor is how you never miss one.** Every signal has a place in one global
+sequence. Pass the `cursor` you were last given back as `after_seq` and you get
+*everything matching since then, in one batch* - three events that fired while you
+were editing a file arrive together on your next call. Omit `after_seq` and you
+wait for what happens from now on, which is what you want when you have nothing to
+resume from.
+
+**Topics are names, or families.** An exact name waits for one event; a name
+ending in `*` is a plain string prefix, so `done:*` catches `done:migration-3`.
+The `kind:scope` idiom again: `tests:green`, `build:failed`, `done:<chunk>`.
+
+**To message ONE agent, post to its private topic.** Every session's key names
+`to:<key>`, and the key is on its roster row from `announce` or `list_agents`. So
+"message that agent" is `post_signal(topic="to:"+peer_key, data={…})`, and
+listening is `await_signal(topics=["to:@me"])` - `@me` is your own key. A
+request and a reply are two signals with the reply topic named in the request.
+What travels is structured data between programs, not a conversation.
+
+**Three topics the daemon posts for you**, so you can wait on things you did not
+have to instrument:
+
+- `agents:<area>` - an agent joined, announced or left your area. Park here when
+  you are genuinely idle and want to know when company arrives; when you are
+  mid-task the `sync:` rider tells you anyway, without a call.
+- `lock:<name>` - that lock changed hands, with the reason and whoever holds it
+  now. This is how you find out a resource freed *without* queueing for it.
+- `to:<your key>` - anything addressed to you.
+
+**A timeout is a result, not an error**, exactly as it is for a lock: the cursor
+comes back unchanged, so waiting again misses nothing that happened in between.
+Any park is bounded by `[sync] wait_max_s` (25 minutes), because the MCP client
+abandons a call it has heard nothing about for 1800s and never tells the daemon it
+did - so re-arming is normal rather than a failure.
+
+**`gap: true` is the one answer you must not skim.** It means your cursor is older
+than what retention still holds, so signals between the two are gone and the batch
+cannot be complete. Treat whatever you were tracking through those signals as
+*unknown*, not as *not having happened* - a silently incomplete batch is how two
+agents come to believe they each own one chunk of work.
+
+The composition is the point. "Deploy when the tests are green" is
+`await_signal(["tests:green"])` then `acquire_lock("deploy:agentbox")`: two calls,
+no polling, no human in the middle, and the whole chain visible on the human's
+board while it happens. Fanning work out is one signal per finished chunk and one
+waiter on `done:*`.
+
+Anti-patterns:
+
+- **Polling a status tool in a loop.** That is the thing this replaces. Park once.
+- **Parking speculatively.** `await_signal` occupies your turn. Wait for something
+  you are actually blocked on; for news you merely want, the rider brings it.
+- **Posting a wildcard.** `*` belongs in `topics`, never in a `topic` you post to.
+- **Dropping the cursor.** Waiting again from scratch after a timeout re-reads
+  nothing and can miss what arrived in the gap between two calls.
+- **Sending a payload instead of a pointer.** A signal carries a fact, a request
+  or a hand-off, capped at 16 KB. Anything bigger travels as a file path.
+
+From a shell:
+
+```
+agentbox sync post tests:green '{"suite":"race"}' --key KEY
+agentbox sync await tests:green --timeout 600 --key KEY    # exit 0 got one, 1 timed out
+agentbox sync await 'done:*' --after 41 --key KEY           # catch up from a cursor
+```
 
 ## Artifacts
 

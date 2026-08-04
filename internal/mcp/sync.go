@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -355,6 +356,126 @@ func (s *server) releaseLock(ctx context.Context, _ *sdk.CallToolRequest, in unl
 	return &sdk.CallToolResult{}, lockResult(res), nil
 }
 
+// The signal half (FR83 slice 3). Two tools for the same reason acquire and try
+// are two: post never blocks and await always may, and an agent reading a schema
+// has to be able to tell which one will park its turn.
+type postIn struct {
+	Topic string `json:"topic" jsonschema:"the topic this event is about, in the kind:scope idiom - tests:green, done:migration-3, build:failed. To message ONE agent, post to to:<its session key> (the key is on its roster row from announce or list_agents). A topic is a convention, not a registry: pick the name the agent waiting for this event would wait on"`
+	Data  any    `json:"data,omitempty" jsonschema:"optional small JSON payload: the fact, the request or the hand-off. Keep it to what the receiver needs to act - a file path rather than a file"`
+}
+
+type postOut struct {
+	OK    bool   `json:"ok"`
+	Topic string `json:"topic"`
+	// Seq is the signal's place in the one global sequence. It is also the cursor
+	// to hand a peer: after_seq one below this delivers exactly this signal.
+	Seq       int64  `json:"seq"`
+	Delivered int    `json:"delivered"`
+	Note      string `json:"note,omitempty"`
+}
+
+type awaitSignalIn struct {
+	Topics []string `json:"topics" jsonschema:"the topics to wait on, any of which wakes you. An exact name waits for one event (tests:green); a name ending in * waits for a family (done:*). Use to:@me for signals addressed to this session - @me is your own session key"`
+	// AfterSeq is offered to the model because resuming is the model's decision: it
+	// is the difference between "tell me what happens next" and "tell me everything
+	// I have not seen", and only the caller knows which it means.
+	AfterSeq int64 `json:"after_seq,omitempty" jsonschema:"the cursor from your last await_signal or post_signal. Omit it to wait for what happens from now on; pass it to catch up on everything you have not seen, which may come back at once without waiting"`
+	TimeoutS int   `json:"timeout_s,omitempty" jsonschema:"how long to wait, in seconds. 0 waits as long as the daemon allows a parked call. A timeout is a result, not an error: it comes back with your cursor unchanged, so waiting again misses nothing"`
+}
+
+type signalOut struct {
+	Seq     int64  `json:"seq"`
+	Topic   string `json:"topic"`
+	Agent   string `json:"agent,omitempty"`
+	Project string `json:"project,omitempty"`
+	// Key is the poster's session key, which is what makes a reply possible:
+	// post_signal to "to:<key>".
+	Key  string `json:"key,omitempty"`
+	Data any    `json:"data,omitempty"`
+	AtMS int64  `json:"at_ms,omitempty"`
+}
+
+type awaitSignalOut struct {
+	OK      bool        `json:"ok"`
+	Signals []signalOut `json:"signals,omitempty"`
+	Cursor  int64       `json:"cursor"`
+	// Received says it plainly, so a model does not have to infer the difference
+	// between an empty batch and a timeout from two other fields.
+	Received  bool   `json:"received"`
+	TimedOut  bool   `json:"timed_out,omitempty"`
+	Gap       bool   `json:"gap,omitempty"`
+	OldestSeq int64  `json:"oldest_seq,omitempty"`
+	More      bool   `json:"more,omitempty"`
+	Note      string `json:"note,omitempty"`
+}
+
+// expandTopics resolves @me to this session's own key, so `to:@me` becomes the
+// session's private topic.
+//
+// The child does it rather than the daemon on purpose: a magic token the daemon
+// understood would mean every stored topic and every pattern had to be read
+// through it forever, and the whole point of the private topic is that it is an
+// ordinary name. This way the daemon has one rule for topics and the convenience
+// costs one string replacement.
+func (s *server) expandTopics(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, t := range in {
+		out = append(out, strings.ReplaceAll(t, "@me", s.id.Key))
+	}
+	return out
+}
+
+func (s *server) postSignal(ctx context.Context, _ *sdk.CallToolRequest, in postIn) (*sdk.CallToolResult, postOut, error) {
+	s.ensureAttached()
+	req := proto.SyncPostParams{Identity: s.id, Topic: strings.ReplaceAll(in.Topic, "@me", s.id.Key)}
+	if in.Data != nil {
+		b, err := json.Marshal(in.Data)
+		if err != nil {
+			return errResult[postOut](fmt.Errorf("data is not encodable as JSON: %w", err))
+		}
+		req.Data = b
+	}
+	var res proto.SyncPostResult
+	if err := s.syncCall(ctx, proto.MethodSyncPost, &req, &res); err != nil {
+		return errResult[postOut](err)
+	}
+	return &sdk.CallToolResult{}, postOut{OK: res.OK, Topic: res.Topic,
+		Seq: res.Seq, Delivered: res.Delivered, Note: res.Note}, nil
+}
+
+func (s *server) awaitSignal(ctx context.Context, _ *sdk.CallToolRequest, in awaitSignalIn) (*sdk.CallToolResult, awaitSignalOut, error) {
+	s.ensureAttached()
+	req := proto.SyncAwaitParams{Identity: s.id, Topics: s.expandTopics(in.Topics),
+		AfterSeq: in.AfterSeq, TimeoutS: in.TimeoutS}
+	var res proto.SyncAwaitResult
+	// No dial deadline of its own: this parks for as long as the caller is patient,
+	// and the keep-alive middleware is what stops the client giving up on it.
+	if err := s.syncCall(ctx, proto.MethodSyncAwait, &req, &res); err != nil {
+		return errResult[awaitSignalOut](err)
+	}
+	out := awaitSignalOut{OK: res.OK, Cursor: res.Cursor, Received: len(res.Signals) > 0,
+		TimedOut: res.TimedOut, Gap: res.Gap, OldestSeq: res.OldestSeq,
+		More: res.More, Note: res.Note}
+	for _, sig := range res.Signals {
+		one := signalOut{Seq: sig.Seq, Topic: sig.Topic, Agent: sig.Agent,
+			Project: sig.Project, Key: sig.Key, AtMS: sig.AtMS}
+		if len(sig.Data) > 0 {
+			// Handed back as the structure the poster sent rather than as a string of
+			// JSON, so the receiving model reads a payload instead of parsing one. A
+			// payload that will not decode travels as the raw text it was: the signal
+			// arriving matters more than agentbox approving of its shape.
+			var v any
+			if err := json.Unmarshal(sig.Data, &v); err == nil {
+				one.Data = v
+			} else {
+				one.Data = string(sig.Data)
+			}
+		}
+		out.Signals = append(out.Signals, one)
+	}
+	return &sdk.CallToolResult{}, out, nil
+}
+
 // addSyncTools registers the roster family. Kept in one function beside the
 // others so the tool list has one obvious place per feature.
 func addSyncTools(srv *sdk.Server, s *server) {
@@ -390,4 +511,20 @@ func addSyncTools(srv *sdk.Server, s *server) {
 		Description: "Release a lock you hold, handing it to whoever is queued behind you. Non-blocking. " +
 			"Release as soon as the protected work is finished rather than at the end of your session: everything behind you is stopped until you do.",
 	}, s.releaseLock)
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "post_signal",
+		Description: "Tell the other agents on this machine that something happened - tests went green, a chunk is done, a build failed. Non-blocking. " +
+			"Topics are names in the kind:scope idiom (tests:green, done:migration-3); post to to:<session key> to message ONE agent, whose key is on its roster row. " +
+			"A signal is stored, so it is delivered whether or not anybody was waiting: a peer that was busy picks it up later by cursor, and a daemon restart does not lose it. " +
+			"delivered=0 means nobody was parked on it, which is a fact rather than a failure. " +
+			"Use this instead of leaving a peer to poll for a status you already know.",
+	}, s.postSignal)
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "await_signal",
+		Description: "BLOCK until another agent (or agentbox) posts a matching signal, so waiting for a peer costs one parked call instead of a sleep-and-check loop that spends a turn per poll. " +
+			"Topics: an exact name waits for one event, a name ending in * waits for a family (done:*), and to:@me waits for signals addressed to this session. " +
+			"Everything matching since your cursor comes back in ONE batch, so a signal that fired while you were busy is not missed - pass the cursor you were last given as after_seq. " +
+			"A timeout is a RESULT, not an error: the cursor comes back unchanged and waiting again misses nothing. gap=true means your cursor is older than what retention still holds, so the batch cannot be complete - treat what you were tracking as unknown rather than as not having happened. " +
+			"Park here only for something you are genuinely waiting on. The composition worth knowing: await_signal on tests:green, then acquire_lock on the deploy.",
+	}, s.awaitSignal)
 }
