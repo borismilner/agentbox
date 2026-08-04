@@ -193,6 +193,47 @@ def show(label, res):
         print("   ", t[:300].replace("\n", " "))
 
 
+def dying_claim(agent, purpose, key, value):
+    """One whole session in a process of its OWN, which claims a key and then dies.
+
+    Session.close() kills the mcp child, and that is not enough. The pid a claim
+    records is the child's PARENT - the agent process, deliberately: an mcp child may
+    be restarted while the agent it serves works on, so what decides whether a claim
+    is still live work is the process that might still be doing it. Every Session in
+    one probe run shares THIS python process as that parent, so a closed Session
+    leaves a pid that is very much alive, and its claim correctly reads as live.
+
+    Which is why modelling a dead agent needs a parent that dies too. This re-runs the
+    probe as a child process with an internal verb: it announces, claims, closes its
+    child and exits, so both halves of the two-step check answer gone - no roster row,
+    and no process.
+
+    Returns the pid that died, for the failure message if it does not.
+    """
+    out = subprocess.run([sys.executable, os.path.abspath(__file__), "__claim",
+                          agent, purpose, key, json.dumps(value)],
+                         cwd=REPO, capture_output=True, text=True, timeout=60)
+    if out.returncode != 0:
+        raise RuntimeError(f"the dying claimer failed: {out.stdout} {out.stderr}")
+    return int((out.stdout or "0").strip() or 0)
+
+
+def run_dying_claim(argv):
+    """The internal verb dying_claim spawns. Not a scenario: it IS the dead agent."""
+    agent, purpose, key, value = argv[0], argv[1], argv[2], json.loads(argv[3])
+    s = Session(agent=agent)
+    s.tool("announce", {"purpose": purpose, "activity": f"working {key}"})
+    got = structured(s.tool("shared", {"op": "set", "key": key, "value": value,
+                                       "if_version": 0, "own": True}))
+    if not got.get("applied"):
+        print(f"could not claim {key}: {got}", file=sys.stderr)
+        return 1
+    # The pid the claim recorded is this process, which is about to stop existing.
+    print(os.getpid())
+    s.close()
+    return 0
+
+
 def scenario_rider():
     """The discovery rider: an agent that is not asking must still be told."""
     bad = []
@@ -655,6 +696,11 @@ def scenario_shared():
 
     CHUNKS = 10
     KEYS = [f"probe:claims/{i}" for i in range(CHUNKS)]
+    # Two abandoned chunks, from two processes that die: one gets taken over below,
+    # and the other has to STAY abandoned across the daemon restart - which is the half
+    # only the recorded owner can answer, since the restarted daemon never saw either
+    # session.
+    ABANDONED, ABANDONED2 = KEYS[4], KEYS[8]
 
     # A run leaves nothing behind, and shared values are deliberately never trimmed -
     # so unlike the signals scenario this one has to clean up after itself.
@@ -686,6 +732,17 @@ def scenario_shared():
                 elif not (got.get("value") or {}).get("version"):
                     bad.append(f"a refusal did not carry the current value: {got}")
 
+    # One worker takes a chunk and dies before finishing it, in a process of its own
+    # so that BOTH halves of the ownership check answer gone. Done before the race, so
+    # the drainers meet a key that is claimed by nobody who is coming back - which is
+    # the state a claim table has to be able to describe or it is un-drainable.
+    dead_pid = dying_claim("aider", "sync-probe: the worker that dies",
+                           ABANDONED, {"worker": "D"})
+    dead_pid2 = dying_claim("aider", "sync-probe: the second worker that dies",
+                            ABANDONED2, {"worker": "D"})
+    winners[ABANDONED], winners[ABANDONED2] = "D", "D"
+    time.sleep(8)  # past holder_gone_grace_s (5s), so the roster rows are really gone
+
     racers = [threading.Thread(target=drain, args=("A", a, KEYS)),
               threading.Thread(target=drain, args=("B", b, KEYS)),
               threading.Thread(target=drain, args=("C", c, list(reversed(KEYS))))]
@@ -693,6 +750,16 @@ def scenario_shared():
         r.start()
     for r in racers:
         r.join(timeout=60)
+
+    over = structured(a.tool("shared", {
+        "op": "set", "key": ABANDONED, "value": {"worker": "A"}, "if_version": 0, "own": True}))
+    if over.get("applied"):
+        bad.append(f"claiming an already-claimed key from empty succeeded: {over}")
+    elif "abandoned" not in (over.get("note") or ""):
+        bad.append(f"losing to a DEAD claimer should say take it over, got {over.get('note')}")
+    else:
+        print("--- losing to the dead worker says what to do:")
+        print("   ", over.get("note")[:220])
 
     print(f"--- three sessions claimed {len(winners)} of {CHUNKS} chunks: "
           + ", ".join(f"{k.split('/')[-1]}={v}" for k, v in sorted(winners.items())))
@@ -704,21 +771,11 @@ def scenario_shared():
     # One session dies mid-drain, holding whatever it claimed. Its claims must read as
     # abandoned once the roster loses it - that is what makes the table drainable
     # instead of stuck forever on a chunk nobody is working on.
-    c_chunks = [k for k, v in winners.items() if v == "C"]
-    if not c_chunks:
-        # Not a product failure, but the rest of this scenario is about what a dead
-        # owner's claim looks like, so there is nothing left to check.
-        bad.append("session C won no chunk, so the death case cannot be exercised")
-        for k in KEYS:
-            a.tool("shared", {"op": "delete", "key": k})
-        a.close(), b.close(), c.close()
-        return bad
-    c.close()
-    time.sleep(8)  # past holder_gone_grace_s (5s), so the row is really gone
-
+    c_chunks = [ABANDONED, ABANDONED2]
     table = structured(a.tool("shared", {"op": "get", "key": "probe:claims/*"}))
     values = {v["key"]: v for v in (table.get("values") or [])}
-    print(f"--- the table after C died ({len(values)} keys):")
+    print(f"--- the table with two dead workers' chunks in it ({len(values)} keys), "
+          f"the dead pids being {dead_pid} and {dead_pid2}:")
     for key in sorted(values):
         v = values[key]
         print(f"    {key} v{v['version']} {json.dumps(v.get('value'))}"
@@ -731,7 +788,7 @@ def scenario_shared():
         elif values[key].get("owner_agent") != "aider":
             bad.append(f"{key} does not name the agent that abandoned it: {values[key]}")
     for key, name in winners.items():
-        if name != "C" and values.get(key, {}).get("owner_gone"):
+        if name != "D" and values.get(key, {}).get("owner_gone"):
             bad.append(f"{key} is held by a LIVE session and reads as abandoned: {values.get(key)}")
     if "owner_gone" not in (table.get("note") or ""):
         bad.append(f"the family read does not point at the orphans: {table.get('note')}")
@@ -791,7 +848,7 @@ def scenario_shared():
         bad.append(f"the taken-over claim lost its version across the restart: {survived.get(taken)}")
     # The one the pid check exists for: A is alive and reattached, so its claims must
     # NOT read as abandoned just because the roster was empty a moment ago.
-    live_after = [k for k, v in winners.items() if v == "A"] + [taken]
+    live_after = [k for k, v in winners.items() if v != "D"] + [taken]
     for key in live_after:
         if survived.get(key, {}).get("owner_gone"):
             bad.append(f"{key} is held by a live session and read as abandoned after the restart: {survived.get(key)}")
@@ -844,6 +901,7 @@ def scenario_shared():
 
     a.close()
     b.close()
+    c.close()
     print("--- leaving no state: every probe claim is deleted, unlike the signals it posted")
     return bad
 
@@ -855,6 +913,10 @@ SCENARIOS = {"rider": scenario_rider, "locks": scenario_locks,
 
 def main():
     name = sys.argv[1] if len(sys.argv) > 1 else ""
+    # The internal verb dying_claim re-runs this file with. Routed before the scenario
+    # lookup because it is not one: it is a session that exists to die.
+    if name == "__claim":
+        return run_dying_claim(sys.argv[2:])
     if name not in SCENARIOS:
         print(__doc__, file=sys.stderr)
         print("scenarios: " + ", ".join(sorted(SCENARIOS)), file=sys.stderr)
