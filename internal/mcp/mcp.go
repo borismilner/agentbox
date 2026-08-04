@@ -24,16 +24,27 @@ import (
 type server struct {
 	runtimeDir string
 	id         proto.Identity
+
+	// base is Serve's context, which lives as long as this child does. The
+	// attach stream (sync.go) needs a context outliving any single tool call,
+	// because presence is the whole session and not one question.
+	base   context.Context
+	attach attachState
 }
 
 // Serve runs the MCP stdio server until the client disconnects or ctx is
 // cancelled. id is the default caller identity stamped on every item.
 func Serve(ctx context.Context, runtimeDir, version string, id proto.Identity) error {
-	s := &server{runtimeDir: runtimeDir, id: id}
+	s := &server{runtimeDir: runtimeDir, id: id, base: ctx}
 	srv := sdk.NewServer(&sdk.Implementation{Name: "agentbox", Version: version}, nil)
 	// The standards an agent can ask for mid-task (standards.go): resources and
 	// a prompt, so a review kit does not have to be written from memory.
 	addStandards(srv)
+	// The roster family (FR83, sync.go). Registered unconditionally in slice 1:
+	// the design's [sync] enabled flag exists to keep eight always-refusing
+	// schemas out of a session's context, and with two harmless read-and-declare
+	// tools there is nothing yet to gate.
+	addSyncTools(srv, s)
 
 	sdk.AddTool(srv, &sdk.Tool{
 		Name:        "notify_user",
@@ -116,8 +127,9 @@ func Serve(ctx context.Context, runtimeDir, version string, id proto.Identity) e
 	}, s.controlRequest)
 	sdk.AddTool(srv, &sdk.Tool{
 		Name: "set_activity",
-		Description: "Update the line the hands-off strip shows, and reset its age, so the human can see the run is moving rather than stuck. Non-blocking; call it whenever what you are doing changes. " +
-			"Only the agent holding the desktop can write it (otherwise you get held_by and nothing changes), and with no run on screen it does nothing.",
+		Description: "Say what you are doing RIGHT NOW, in one line, and keep it current as the work changes. Non-blocking, and it is cheap: call it whenever you move on to something else. " +
+			"It writes your row on the human's Agents board always, so they can see every session is moving rather than stuck - and it additionally writes the HANDS OFF strip while you hold the desktop. " +
+			"Re-sending an unchanged line deliberately does not reset its age, because repeating yourself is not progress. Announce first, so the line has a purpose to sit under.",
 	}, s.controlActivity)
 	sdk.AddTool(srv, &sdk.Tool{
 		Name: "release_control",

@@ -1,0 +1,223 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/borismilner/agentbox/internal/client"
+	"github.com/borismilner/agentbox/internal/proto"
+)
+
+// `agentbox sync ...` (FR83): the roster's second door.
+//
+// The CLI is not a convenience here, it is what makes the mandate reachable by
+// things that are not Claude sessions: a SessionStart hook announcing a purpose
+// for nothing, a PostToolUse hook keeping the activity line honest when a model
+// forgets, a Makefile, a non-Claude agent. Hooks are shell, so they cost no
+// tokens, which is the only reason coverage can be complete rather than
+// aspirational.
+//
+// A CLI call is not itself a session and has no key of its own. It acts on
+// behalf of one with --key, defaulting to AGENTBOX_SESSION_KEY so a hook script
+// inherits it without every recipe repeating the flag.
+
+func syncUsage() {
+	fmt.Fprintln(os.Stderr, "usage: agentbox sync announce PURPOSE [--area A] [--activity LINE]")
+	fmt.Fprintln(os.Stderr, "       agentbox sync activity LINE")
+	fmt.Fprintln(os.Stderr, "       agentbox sync agents [--area A] [--project P] [--json]")
+	fmt.Fprintln(os.Stderr, "       agentbox sync peers [--json]")
+	fmt.Fprintln(os.Stderr, "       agentbox sync attach [--area A]")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Who else is here, what they are for, and what they are doing right now.")
+	fmt.Fprintln(os.Stderr, "Every call acts on behalf of a session: --key, or AGENTBOX_SESSION_KEY.")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Exit codes: 0 done, 1 refused, 4 agentbox itself failed.")
+}
+
+func runSync(args []string) int {
+	if len(args) == 0 {
+		syncUsage()
+		return exitUsage
+	}
+	verb, rest := args[0], args[1:]
+
+	fs := flag.NewFlagSet("sync "+verb, flag.ExitOnError)
+	area := fs.String("area", "", "kind:scope area tag")
+	project := fs.String("project", "", "filter by project")
+	activity := fs.String("activity", "", "current activity (announce only)")
+	asJSON := fs.Bool("json", false, "machine-readable output")
+	key := fs.String("key", os.Getenv("AGENTBOX_SESSION_KEY"), "session key to act on behalf of")
+	fs.Usage = syncUsage
+
+	// Same trap the control verb documents: Go's flag package stops at the first
+	// non-flag argument, so `sync announce "porting the settings surface" --area
+	// subsystem:webui` would silently keep the default and fold the flag into the
+	// purpose the human reads. Lift the flags out first.
+	flags, words := partitionControlFlags(rest)
+	if err := fs.Parse(flags); err != nil {
+		return exitError
+	}
+	text := strings.TrimSpace(strings.Join(words, " "))
+
+	id := proto.Identity{
+		Agent: parentComm(), Project: filepath.Base(mustGetwd()),
+		Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: *key,
+	}
+
+	switch verb {
+	case "announce":
+		if text == "" {
+			fmt.Fprintln(os.Stderr, "agentbox sync announce: wants a purpose - one line saying what this session is for")
+			return exitNo
+		}
+		if id.Key == "" {
+			fmt.Fprintln(os.Stderr, "agentbox sync announce: wants --key (or AGENTBOX_SESSION_KEY): one session, one key")
+			return exitNo
+		}
+		req := proto.SyncAnnounceParams{Identity: id, Purpose: text, Activity: *activity, Area: *area}
+		var res proto.SyncResult
+		if code := syncCLICall(proto.MethodSyncAnnounce, &req, &res); code != exitOK {
+			return code
+		}
+		if *asJSON {
+			return printJSON(res)
+		}
+		fmt.Printf("announced: %s\n", text)
+		printPeers(res)
+		return exitOK
+
+	case "activity":
+		if text == "" {
+			fmt.Fprintln(os.Stderr, "agentbox sync activity: wants a line saying what is happening now")
+			return exitNo
+		}
+		// Routed through the control verb on purpose: set_activity is ONE verb
+		// that writes the roster always and the hands-off strip additionally, and
+		// a second door with different behaviour would be exactly the drift this
+		// feature exists to remove.
+		req := proto.ControlRequestParams{Action: proto.ControlActivity, Identity: id, Activity: text}
+		var res proto.ControlResult
+		if code := syncCLICall(proto.MethodControl, &req, &res); code != exitOK {
+			return code
+		}
+		if *asJSON {
+			return printJSON(res)
+		}
+		return exitOK
+
+	case "agents", "peers":
+		req := proto.SyncListParams{Identity: id, Area: *area, Project: *project}
+		var res proto.SyncResult
+		if code := syncCLICall(proto.MethodSyncList, &req, &res); code != exitOK {
+			return code
+		}
+		if *asJSON {
+			return printJSON(res)
+		}
+		if len(res.Agents) == 0 {
+			if res.Partial {
+				fmt.Println("no attached agents, but the roster cannot see everybody - do not read this as being alone")
+			} else {
+				fmt.Println("no agents attached")
+			}
+			return exitOK
+		}
+		for _, a := range res.Agents {
+			purpose := a.Purpose
+			if purpose == "" {
+				purpose = "no purpose given"
+			}
+			line := fmt.Sprintf("%s · %s [%s] %s", a.Agent, a.Project, a.State, purpose)
+			if a.Activity != "" {
+				line += " · " + a.Activity
+			}
+			fmt.Println(line)
+		}
+		if res.Partial {
+			fmt.Println("(partial: at least one session predates sync and has no row)")
+		}
+		return exitOK
+
+	case "attach":
+		// Holds presence open for as long as this process runs, which is the door
+		// a non-Claude agent uses: same contract as the mcp child, wrapped around
+		// whatever the agent actually is.
+		if id.Key == "" {
+			fmt.Fprintln(os.Stderr, "agentbox sync attach: wants --key (or AGENTBOX_SESSION_KEY): one session, one key")
+			return exitNo
+		}
+		cwd, _ := os.Getwd()
+		req := proto.SyncAttachParams{Identity: id, Cwd: cwd, PID: os.Getpid(), Area: *area}
+		dialCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		conn, err := client.Dial(dialCtx, runtimeDir(), func() error {
+			return fmt.Errorf("no daemon running")
+		})
+		cancel()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "agentbox sync attach: no daemon running")
+			return exitError
+		}
+		defer conn.Close()
+		var res proto.SyncResult
+		// No timeout: the whole point is to stay. Ctrl-C or the process ending is
+		// what ends the row.
+		if err := conn.Call(context.Background(), proto.MethodSyncAttach, &req, &res); err != nil {
+			fmt.Fprintf(os.Stderr, "agentbox sync attach: %v\n", err)
+			return exitError
+		}
+		return exitOK
+
+	default:
+		fmt.Fprintf(os.Stderr, "agentbox sync: unknown verb %q\n", verb)
+		syncUsage()
+		return exitUsage
+	}
+}
+
+// syncCLICall makes one short call and maps a refusal to exit 1, following the
+// house exit-code grammar rather than inventing one.
+func syncCLICall(method string, req, res any) int {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := client.Dial(ctx, runtimeDir(), func() error {
+		return fmt.Errorf("no daemon running")
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "agentbox sync: no daemon running")
+		return exitError
+	}
+	defer conn.Close()
+	if err := conn.Call(ctx, method, req, res); err != nil {
+		fmt.Fprintf(os.Stderr, "agentbox sync: %v\n", err)
+		return exitNo
+	}
+	return exitOK
+}
+
+// printPeers is the whole point of announce answering with something: an agent
+// learns it has company in its first call, and so does a human running it by
+// hand.
+func printPeers(res proto.SyncResult) {
+	if res.Partial {
+		fmt.Println("the roster cannot see everybody: at least one session predates sync, so do not conclude you are alone")
+	}
+	if len(res.Agents) == 0 {
+		if !res.Partial {
+			fmt.Println("nobody else is in your area")
+		}
+		return
+	}
+	fmt.Printf("%d other agent(s) in your area:\n", len(res.Agents))
+	for _, a := range res.Agents {
+		purpose := a.Purpose
+		if purpose == "" {
+			purpose = "no purpose given"
+		}
+		fmt.Printf("  %s · %s [%s] %s\n", a.Agent, a.Project, a.State, purpose)
+	}
+}

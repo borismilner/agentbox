@@ -38,6 +38,57 @@ finishes; a Notification hook surfaces Claude's own prompts.
 }
 ```
 
+## Keeping the Agents board honest with no tokens (FR83)
+
+The roster is only as truthful as the agents on it, and a model that forgets to
+`set_activity` leaves a stale row that looks like a hung session. Hooks close
+that gap: they are shell, so they cost no tokens and they run whether the model
+remembers anything or not.
+
+`AGENTBOX_SESSION_KEY` is what ties a hook to the session it belongs to. Set it
+once, in the same environment the agent runs in, and every `agentbox sync` call
+below acts on behalf of that session:
+
+```sh
+export AGENTBOX_SESSION_KEY="$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+```
+
+Then in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command",
+        "command": "agentbox sync announce \"$(basename \"$PWD\") session (purpose not yet stated)\""}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Edit|Write|NotebookEdit",
+       "hooks": [{"type": "command",
+        "command": "agentbox sync activity \"editing $(jq -r '.tool_input.file_path // \"a file\"')\""}]},
+      {"matcher": "Bash",
+       "hooks": [{"type": "command",
+        "command": "agentbox sync activity \"$(jq -r '.tool_input.command // \"running a command\"' | cut -c1-70)\""}]}
+    ]
+  }
+}
+```
+
+What that buys, in order of how much it matters:
+
+- A row exists from the first moment of the session, with a placeholder purpose.
+  The agent's own `announce` replaces it with something meaningful; if the model
+  never bothers, the human still sees which directory the session is in rather
+  than a nameless dim row.
+- The activity line stays current through every edit and every command, so
+  "working" and "quiet" mean what they say. A model that never calls
+  `set_activity` still produces a truthful ticker.
+- None of it costs a token, because none of it goes through the model.
+
+The placeholder purpose is deliberately worded as unfinished. A hook cannot know
+why a session exists, and a confident-sounding guess would be worse than an
+obvious placeholder: the human would read it as the agent's own answer.
+
 ## Teach the agent to drive AgentBox itself
 
 Drop the quickstart into your project instructions so the agent reaches for

@@ -104,6 +104,10 @@ const (
 	EvSpeechAloud    = "speech.aloud" // the human working the read-aloud transport
 	EvControl        = "control"      // the desktop handover strip (FR74)
 	EvRenderFailed   = "render.failed"
+	// Multi-agent coordination (FR83). One vocabulary for the whole roster
+	// lifecycle - attach, announced, detach - because the question asked of this
+	// log is always "which agents were here, and what were they each doing".
+	EvSync = "sync"
 	// The assignment scheduler (M12/FR82). One vocabulary for the whole
 	// lifecycle - armed, started, finished, skipped - because the question asked
 	// of this log is always "did the thing that was supposed to run, run".

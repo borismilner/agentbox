@@ -229,6 +229,18 @@ func (c *control) State() proto.ControlResult {
 	}
 }
 
+// holderKey is the session key driving the desktop, or empty (FR83). The roster
+// asks this rather than reading the run itself, so control keeps its own lock and
+// the roster never reaches inside it.
+func (c *control) holderKey() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.run == nil {
+		return ""
+	}
+	return c.run.identity.Key
+}
+
 // Deny is the human pressing the button on the strip. It releases the blocked
 // request, which is what makes the strip the place the answer happens rather than
 // a card beside it.

@@ -63,6 +63,13 @@ const (
 	MethodAssignmentDelete = "agentbox.v1.assignment_delete"
 	MethodAssignmentRun    = "agentbox.v1.assignment_run"
 	MethodAssignmentRuns   = "agentbox.v1.assignment_runs"
+
+	// Sync (FR83). attach blocks for the session's whole life: the call is the
+	// presence, so it is the only method here that is not a question.
+	MethodSyncAttach   = "agentbox.v1.sync_attach"
+	MethodSyncAnnounce = "agentbox.v1.sync_announce"
+	MethodSyncActivity = "agentbox.v1.sync_activity"
+	MethodSyncList     = "agentbox.v1.sync_list"
 )
 
 // ArtifactEvent is one thing the human did inside an artifact: the name and data
@@ -203,6 +210,89 @@ const (
 // human's terms, and is what the strip shows while asking. WindowS is how long
 // the countdown runs before silence counts as consent; Activity is the line to
 // show, on the activity verb.
+// Sync (FR83): who else is here, what they are for, and what they are doing.
+//
+// SyncAttach is the odd one: it BLOCKS for the whole life of the session and
+// never returns a useful result, because the call itself is the presence. Its
+// context dying is the agent going away, which is the same insight FR45 had
+// per-call, promoted to per-session.
+type SyncAttachParams struct {
+	Identity Identity `json:"identity"`
+	// Cwd, PID and Area are what the child knows without asking its model
+	// anything, which is what makes a rude agent visible instead of invisible.
+	Cwd  string   `json:"cwd,omitempty"`
+	PID  int      `json:"pid,omitempty"`
+	Area string   `json:"area,omitempty"`
+	Tags []string `json:"tags,omitempty"`
+}
+
+// SyncAnnounceParams states what a session is FOR. Purpose is the mandate;
+// activity is optional here because set_activity carries it from then on.
+type SyncAnnounceParams struct {
+	Identity Identity `json:"identity"`
+	Purpose  string   `json:"purpose"`
+	Activity string   `json:"activity,omitempty"`
+	Area     string   `json:"area,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+}
+
+// SyncActivityParams updates the caller's roster line. It is the same verb the
+// control strip already had, generalized: it writes the roster always, and the
+// hands-off strip too when the caller happens to hold the desktop.
+type SyncActivityParams struct {
+	Identity Identity `json:"identity"`
+	Activity string   `json:"activity"`
+}
+
+// SyncListParams filters the roster. Empty means everybody.
+type SyncListParams struct {
+	Identity Identity `json:"identity"`
+	Area     string   `json:"area,omitempty"`
+	Project  string   `json:"project,omitempty"`
+}
+
+// SyncAgent is one roster row on the wire.
+type SyncAgent struct {
+	Key     string `json:"key"`
+	Agent   string `json:"agent"`
+	Project string `json:"project,omitempty"`
+	Session string `json:"session,omitempty"`
+	Cwd     string `json:"cwd,omitempty"`
+	PID     int    `json:"pid,omitempty"`
+
+	Area string   `json:"area,omitempty"`
+	Tags []string `json:"tags,omitempty"`
+
+	Purpose  string `json:"purpose,omitempty"`
+	Activity string `json:"activity,omitempty"`
+
+	// State is what the daemon observed, never what the agent claimed.
+	State  string `json:"state"`
+	Detail string `json:"detail,omitempty"`
+
+	ActivitySinceMS int64 `json:"activity_since_ms"`
+	AgeMS           int64 `json:"age_ms"`
+}
+
+// SyncResult answers announce and list alike: the caller's own peers.
+//
+// Partial is the honesty bit. A session whose mcp child predates this feature
+// has no attach and no row, so a roster that omitted it while saying "you are
+// alone" would be lying. When Partial is set, the list is not everybody, and
+// nobody may conclude absence from it.
+type SyncResult struct {
+	OK      bool        `json:"ok"`
+	Agents  []SyncAgent `json:"agents,omitempty"`
+	Partial bool        `json:"partial,omitempty"`
+	// Peers counts rows sharing the caller's area, excluding the caller. It is
+	// separate from len(Agents) because a filtered list and "am I alone" are
+	// different questions.
+	Peers int `json:"peers"`
+	// Note carries a teaching sentence for a refusal or a nudge, in the
+	// self-teaching style the rest of the tools use.
+	Note string `json:"note,omitempty"`
+}
+
 type ControlRequestParams struct {
 	Action string `json:"action"`
 	// Identity names the agent, and here it is load-bearing rather than

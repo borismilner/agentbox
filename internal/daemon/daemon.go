@@ -275,6 +275,11 @@ type Daemon struct {
 	// a blocked request must not hold the daemon while the human decides.
 	control *control
 
+	// roster is who else is here (FR83). Its own lock for the same reason as
+	// the others, and more sharply: an attach is a call parked for the whole
+	// life of a session, so it must never be holding d.mu while it waits.
+	roster *roster
+
 	closing atomic.Bool // FR45: set at shutdown so a teardown disconnect is not shown as "caller gone"
 }
 
@@ -462,6 +467,11 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	}
 	d.aloud = newAloud(snd, log)
 	d.control = newControl(log)
+	d.roster = newRoster(log)
+	// The two facts a self-report cannot supply. Both live behind their own
+	// locks, and the roster only ever reads them, so this cannot deadlock
+	// against either subsystem.
+	d.roster.SetObservers(d.askingKeys, d.drivingKey)
 	// The scheduler is built here but not STARTED here: it wants a Runner, and
 	// the surface that can carry an assignment out is wired after the daemon
 	// exists (SetRunner, then StartAssignments). A daemon that never gets one
@@ -613,6 +623,12 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			}
 			return d.control.Request(ctx, id, req.Reason, time.Duration(req.WindowS)*time.Second), nil
 		case proto.ControlActivity:
+			// One tool, two readers (FR83). set_activity already meant "say what
+			// you are doing", so it stays one tool and now writes the roster
+			// ALWAYS and the hands-off strip additionally, when this caller
+			// happens to hold the desktop. An agent that is not driving used to
+			// get silence from this verb; now it gets a live line on the board.
+			d.roster.Activity(proto.SyncActivityParams{Identity: id, Activity: req.Activity})
 			return d.control.Activity(id, req.Activity), nil
 		case proto.ControlRelease:
 			return d.control.Release(id), nil
@@ -730,6 +746,39 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			}
 		}
 		return map[string]any{"muted": d.MutedAgents()}, nil
+	// Sync (FR83, sync.go). attach is the odd one: it BLOCKS for the session's
+	// whole life, because the call being open IS the presence. ctx is therefore
+	// load-bearing exactly as it is for control - the connection dying is the
+	// agent dying, and the roster must not keep a row for somebody who is gone.
+	case proto.MethodSyncAttach:
+		var p proto.SyncAttachParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: `sync_attach wants {"identity": {...}, "cwd": "...", "pid": N}`}
+		}
+		if p.Area == "" {
+			p.Area = DeriveArea(p.Cwd)
+		}
+		return d.roster.Attach(ctx, p)
+	case proto.MethodSyncAnnounce:
+		var p proto.SyncAnnounceParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: `sync_announce wants {"identity": {...}, "purpose": "..."}`}
+		}
+		return d.roster.Announce(p)
+	case proto.MethodSyncActivity:
+		var p proto.SyncActivityParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: `sync_activity wants {"identity": {...}, "activity": "..."}`}
+		}
+		return d.roster.Activity(p)
+	case proto.MethodSyncList:
+		var p proto.SyncListParams
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: `sync_list wants {"area": "...", "project": "..."} or {}`}
+			}
+		}
+		return d.roster.List(p)
 	case proto.MethodProgress:
 		var u proto.ProgressUpdate
 		if err := json.Unmarshal(params, &u); err != nil {
@@ -811,6 +860,11 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 	if err := it.Validate(); err != nil {
 		return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: err.Error()}
 	}
+	// Every item carries an identity, so this costs nothing and it is what keeps
+	// the roster from lying (FR83). A session whose child predates sync has no
+	// attach and no row; noticing it here is how a read learns to say partial
+	// instead of implying the caller is alone.
+	d.roster.SeenUnattached(it.Identity)
 	if err := d.st.CreateItem(&it); err != nil {
 		return nil, &proto.RPCError{Code: proto.CodeInternal, Message: err.Error()}
 	}

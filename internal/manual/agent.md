@@ -98,6 +98,10 @@ reply hatch) unless you pass `--strict`. Handle a `reply` field as well as
 Claude Code) can call these tools. Run `agentbox docs setup` for a paste-ready
 `.mcp.json` and hook snippets.
 
+- `announce` -> say what this session is FOR, and get back the agents already
+  working where you are (non-blocking). **Your first AgentBox call.** See "Working
+  beside other agents" below
+- `list_agents` -> the live roster: identity, purpose, current activity, state
 - `notify_user` -> notify (non-blocking)
 - `ask_user` -> ask; pass `options` for a single choice, omit them for free text
 - `confirm_action` -> confirm; returns `confirmed` true/false
@@ -118,10 +122,12 @@ Claude Code) can call these tools. Run `agentbox docs setup` for a paste-ready
   before any run of drive_desktop worth the name, and before driving anything
   else on their screen. Returns `granted`, `denied`, or `held_by` (another
   agent has it - wait, do not drive)
-- `set_activity` -> the line the strip shows, as the work moves on
-  (non-blocking). `release_control` -> give the desktop back and take the strip
-  down, the moment you stop driving. Presence is the signal, so a card or a
-  spoken line cannot replace these
+- `set_activity` -> what you are doing right now, in one line, kept current
+  (non-blocking). It writes your row on the human's Agents board always, and the
+  HANDS OFF strip additionally while you hold the desktop.
+  `release_control` -> give the desktop back and take the strip down, the moment
+  you stop driving. Presence is the signal, so a card or a spoken line cannot
+  replace these
 - `report_progress` -> a live progress bar (non-blocking). Omit `id` and set
   `title` to start; pass the returned `id` on every later call to update
   `percent` (or `indeterminate`); call `done` (with `error` to fail). Prefer
@@ -148,6 +154,50 @@ Claude Code) can call these tools. Run `agentbox docs setup` for a paste-ready
 - `run_assignment` -> run one now (non-blocking, returns a `run_id`);
   `assignment_runs` -> how the last ones went. `delete_assignment` removes it
   with its history, so prefer `enabled:false` to pause
+
+## Working beside other agents
+
+You are probably not the only agent on this machine. Several sessions share one
+repo, one daemon, one desktop and one human, and none of you can see the others
+without asking. This is how you ask.
+
+**Announce first.** `announce("<why this session exists>")` before you do
+anything else. The human watches a live Agents board of every session; your
+purpose is the headline of your row, so write the line they would recognise
+("porting the settings surface to the new theme"), not a summary of your tools.
+Call it again if the mission changes. A session that never announces still shows
+up - the daemon registers what your child knows - but it shows up dim and
+nameless, which tells the human nothing.
+
+**Keep the activity line current.** `set_activity("running make check")` as the
+work moves on. It is cheap, non-blocking, and it is the difference between "that
+session is alive" and "that session is stuck". Re-sending an unchanged line
+deliberately does not reset its age, because repeating yourself is not progress.
+
+**Look for company before you touch a shared tree.** `announce` returns the
+agents in your area, and `list_agents` answers the same question later. An area
+is derived from the repo you are in, so two sessions in one checkout - or in two
+worktrees of one repo - find each other without either declaring anything. If
+peers come back, coordinate: split the files, or wait. Two agents editing one
+tree is how a catch-all `git add` sweeps somebody else's unfinished work into
+your commit, which is a thing that has actually happened here.
+
+**`alone` is the only claim worth trusting, and only when it is true.** A read
+answers `partial: true` when the roster cannot see everybody - a session whose
+child predates this feature has no row. On `partial`, never conclude you are
+working alone. Silence is not evidence.
+
+Names for areas and topics follow one idiom, `kind:scope`, so a name reads the
+same to the next agent: `repo:agentbox`, `subsystem:webui`, `role:release`.
+
+Anti-patterns, each of which has cost somebody real work:
+
+- **Polling instead of asking once.** Do not loop over `list_agents` waiting for
+  something to change. Ask when you are about to act.
+- **Announcing once and never updating.** A purpose from an hour ago beside an
+  activity line from an hour ago is indistinguishable from a hung session.
+- **Assuming the tree is yours.** It is shared until the roster says otherwise,
+  and the roster is one call away.
 
 ## Artifacts
 

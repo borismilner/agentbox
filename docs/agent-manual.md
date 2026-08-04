@@ -52,6 +52,9 @@ auto-spawns the daemon; nothing else to start.
 
 | You want to... | MCP tool | CLI | Blocks? |
 | --- | --- | --- | --- |
+| Say what this session is for, and see who else is here | `announce` | `agentbox sync announce` | no |
+| Say what you are doing right now | `set_activity` | `agentbox sync activity` | no |
+| Check for other agents before touching a shared tree | `list_agents` | `agentbox sync agents` | no |
 | Tell the human something (result, FYI) | `notify_user` | `agentbox notify` | no |
 | Ask a single choice (2-9 options) | `ask_user` (with `options`) | `agentbox ask` | yes |
 | Ask for free text | `ask_user` (no `options`) | `agentbox input` | yes |
@@ -108,6 +111,54 @@ worth saying: omitting it means the chime alone, which is the default.
 Do not restate the title, do not read a diff or a table out, and do not narrate
 every step - the same restraint that applies to interrupting at all applies here,
 more so, because a voice cannot be glanced past.
+
+### announce  (non-blocking)
+Say what this session is FOR, and find out who else is already working where you
+are. **This should be your first AgentBox call.**
+
+The human watches a live Agents board of every session on the machine. Your
+`purpose` is the headline of your row there, so write the one line they would
+recognise - "porting the settings surface to the new theme" - not a summary of
+your tools or a restatement of your prompt.
+
+- Args: `purpose` (req), `activity` (what you are doing right now; `set_activity`
+  carries it from then on), `area` (a `kind:scope` tag such as
+  `subsystem:webui`), `tags`.
+- Returns: `{ok, peers: [{key, agent, project, purpose, activity, state, cwd}],
+  alone, partial, note}`.
+- `peers` are the agents sharing your area. If any come back, **you are not
+  working alone**: partition the work or wait, rather than editing the same tree
+  at the same time.
+- `alone: true` is returned only when it is certainly true. `partial: true` means
+  the roster cannot see everybody (a session older than this feature has no row),
+  and on `partial` you must never conclude you are alone.
+- Call it again if the mission changes. You do not need to call it repeatedly
+  otherwise; `set_activity` is the per-step verb.
+
+You do not have to announce to be visible - the daemon registers what your child
+knows for free, so a silent session still appears. It appears dim and nameless,
+which tells the human nothing, which is the whole reason to announce.
+
+### list_agents  (non-blocking)
+The live roster: every session the daemon can see, with identity, purpose,
+current activity and derived state. The same roster the human's Agents surface
+renders, so you and they cannot see different answers.
+
+- Args: `area`, `project` (both optional filters; omit for everybody).
+- Returns: `{ok, agents: [...], partial, note}`.
+- Use it before editing a shared tree, or to find the peer you want to
+  coordinate with. Do **not** poll it in a loop - ask when you are about to act.
+
+**Area is derived, not declared.** It comes from the repo you are working in, so
+two sessions in one checkout (or in two worktrees of one repo) find each other
+without either one spelling it out. A declared `area` tag narrows searches; it
+never narrows what you are told about, so you cannot accidentally hide from a
+peer by tagging yourself differently.
+
+**State is the daemon's word, never yours.** You write `purpose` and `activity`;
+everything else on your row - `asking`, `driving`, `working`, `quiet`,
+`unannounced` - is derived from what the daemon observed. That is what makes the
+board trustworthy: no agent can claim to be busy.
 
 ### notify_user  (non-blocking)
 Post a desktop notification. Returns immediately.
@@ -575,6 +626,7 @@ instead of the bare answer).
 | `agentbox say` | read a line out loud | `TEXT...`, or piped on stdin; `--wait`, `--timeout SEC` |
 | `agentbox drive` | synthetic pointer/keys | script on stdin or flags; `--window TITLE`, `--speed N`, `--wpm N` |
 | `agentbox control` | ask for the desktop, hands-off strip | `request REASON [--window SEC]`, `activity LINE`, `release`, `state` |
+| `agentbox sync` | who else is here, and what you are for | `announce PURPOSE [--area A] [--activity LINE]`, `activity LINE`, `agents [--area A] [--project P]`, `attach`, `--key`, `--json` |
 | `agentbox show` | markdown viewer | `FILE` or `-`, `--watch`, `--title` |
 | `agentbox walkthrough` | durable board reviews | `create --spec FILE`, `open ID`, `list [--find Q] [--state S]`, `read ID [--ack]`, `await [ID] [--timeout SEC]`, `delete ID` |
 | `agentbox progress` | progress bar from stdin | `--title` (req), `--indeterminate` |
@@ -655,6 +707,20 @@ daemon (separate socket/state) - rarely needed.
 
 ## Patterns
 
+**Arriving on a shared machine:** `announce("<why this session exists>")` first,
+then read the `peers` it hands back. Nobody there, `partial` false: proceed.
+Peers there: decide how to split before you edit anything, and say so through the
+peer's row rather than guessing. `partial` true: proceed as though you have
+company, because you may.
+
+**Staying legible:** `set_activity` whenever what you are doing changes. Two
+lines of yours are on the human's board - the purpose (why) and the activity
+(now) - and the second one going stale is what "stuck" looks like from outside.
+
+**Naming things so the next agent understands them:** one idiom, `kind:scope`.
+`repo:agentbox`, `subsystem:webui`, `role:release`, `vm:boris-vm`. It costs
+nothing and it means two agents that never met agree on what a name refers to.
+
 **Long task with progress (MCP):** start `report_progress` with no `id` and a
 `title`; on each step call it again with the returned `id` and a new `percent`;
 finish with `done=true` (or `error="..."`). Completion shows a success/error
@@ -704,6 +770,21 @@ what needs answering.
   derives the rest. The validator refuses both, with directions.
 - Do not delete a walkthrough to "clean up" after reading its handback; the
   library is the human's record of what was reviewed and what they said.
+- Do not work anonymously. A session that never calls `announce` shows on the
+  human's board as a dim row with no purpose, which is worse than useless to
+  them: they can see that something is running and nothing about what.
+- Do not announce once and then go quiet. A purpose from an hour ago beside an
+  activity line from an hour ago is indistinguishable from a hung session, and
+  the human cannot tell which of their agents needs rescuing.
+- Do not poll `list_agents` in a loop waiting for the roster to change. Ask when
+  you are about to act.
+- Do not conclude you are alone from a roster that said `partial`. It means the
+  daemon cannot see everybody, so absence is not evidence - the same rule that
+  applies to a silent card applies to a quiet board.
+- Do not assume a shared tree is yours because nothing has gone wrong yet. Two
+  agents editing one checkout is how a catch-all `git add` sweeps somebody
+  else's unfinished work into your commit, and how a `git reset` drops their
+  finished one. Both happened here on 2026-08-04, in one hour.
 
 ## Where to look next
 

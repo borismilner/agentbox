@@ -1,6 +1,11 @@
 package webui
 
-import "sync"
+import (
+	"strings"
+	"sync"
+
+	"github.com/borismilner/agentbox/internal/proto"
+)
 
 // The Agents surface (FR83): every live agent session, what it is for, what it
 // is doing right now, what it holds and what it waits on.
@@ -155,6 +160,41 @@ func (a *agents) set(r wireRoster) {
 // this on every roster change, coalesced on its side; the surface renders
 // whatever arrives.
 func (u *UI) ShowAgents(r wireRoster) { u.agents.set(r) }
+
+// ShowRoster is the daemon's own door: it takes the roster in the daemon's
+// vocabulary and renders it in the surface's. It satisfies the push signature
+// the sync subsystem expects, so wiring is one line at construction.
+//
+// The conversion lives here rather than in the daemon because the wire types are
+// this package's and unexported - the same reason the demo fixture lives here.
+// The hue is computed with the daemon's function, not the frontend's, which is
+// deliberate: the two disagree (FR85), and this surface joins the majority
+// rather than widening the split.
+func (u *UI) ShowRoster(agents []proto.SyncAgent, partial bool) {
+	dark := u.themeMode() == "dark"
+	rows := make([]wireAgent, 0, len(agents))
+	for _, a := range agents {
+		rows = append(rows, wireAgent{
+			Key: a.Key, Agent: a.Agent, Project: a.Project, Session: a.Session,
+			Hue: IdentityHue(a.Agent, a.Project, dark),
+			Cwd: a.Cwd, PID: a.PID,
+			Area: a.Area, AreaLabel: areaLabel(a.Area), Tags: a.Tags,
+			Purpose: a.Purpose, Activity: a.Activity,
+			State: a.State, Detail: a.Detail,
+			ActivitySinceMS: a.ActivitySinceMS, AgeMS: a.AgeMS,
+		})
+	}
+	u.agents.set(wireRoster{Agents: rows, Partial: partial})
+}
+
+// areaLabel is the heading a group of agents gets. An area key is machine-shaped
+// (`repo:agentbox`); the heading is what the human already calls the thing.
+func areaLabel(area string) string {
+	if _, name, ok := strings.Cut(area, ":"); ok && name != "" {
+		return name
+	}
+	return area
+}
 
 // Roster is the daemon's sync subsystem as this surface needs it: the one thing
 // the human can do to an agent from here. Its own keyhole, like Handover and

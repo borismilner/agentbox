@@ -68,6 +68,9 @@ Commands:
             --wait returns when it has been heard, for a narrated sequence
   drive     move the pointer, click and type as a person would
                                        agentbox drive --window agentbox click 25% -46
+  sync      say what this session is for, and see who else is here
+                                       agentbox sync announce "porting the settings surface"
+                                       agentbox sync agents
   summon    raise + focus the current card (bind to a desktop shortcut)
   stats     interruption insights       agentbox stats [--since 7d]
   dnd       do-not-disturb              agentbox dnd on|off|status
@@ -133,6 +136,8 @@ func main() {
 		os.Exit(runDrive(args))
 	case "control":
 		os.Exit(runControl(args))
+	case "sync":
+		os.Exit(runSync(args))
 	case "summon":
 		os.Exit(runSummon(args))
 	case "stats":

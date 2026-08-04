@@ -304,6 +304,12 @@ func runDaemon() {
 	// Deny and Allow answer the agent blocked on the request (FR74).
 	u.SetHandover(d.Handover())
 	d.SetControlSurface(u.ShowControl, u.HideControl)
+	// The Agents surface (FR83): the roster pushes at it on every change,
+	// throttled on the daemon's side. One line, because the conversion into the
+	// surface's own vocabulary lives with the surface.
+	d.SetRosterSurface(u.ShowRoster)
+	// And the pull, so a window opened between two pushes does not start blank.
+	u.ShowRoster(d.RosterSnapshot())
 	d.SetPresence(presence.New()) // FR29/FR44 presence signals; no-op without X11
 	d.SetDriver(driver{})         // synthetic input (agentbox drive / drive_desktop); refuses itself without X11
 	// Assignments (M12/FR82): the daemon owns the schedule, the webui carries a
