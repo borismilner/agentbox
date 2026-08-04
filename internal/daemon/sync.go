@@ -110,11 +110,16 @@ type rosterRow struct {
 	touched  time.Time
 
 	// knownPeers is this session's cursor on its own area: the peers it has
-	// already been told about, by key. The rider reports the difference and moves
-	// the cursor, so each arrival and departure is mentioned exactly once. Nil
-	// means nothing has been reported to this session yet, which is not the same
-	// as an empty set - an empty set says it has been told it is alone.
-	knownPeers map[string]bool
+	// already been told about, keyed by session key and remembering the name each
+	// one was reported under. The rider reports the difference and moves the
+	// cursor, so each arrival and departure is mentioned exactly once. Nil means
+	// nothing has been reported to this session yet, which is not the same as an
+	// empty set - an empty set says it has been told it is alone.
+	//
+	// The name is remembered rather than looked up because a departure is reported
+	// after the row is gone: without this the line could only name the session key,
+	// which reads as noise to the agent it is warning.
+	knownPeers map[string]string
 }
 
 type roster struct {
@@ -368,10 +373,14 @@ func (r *roster) riderFor(key string) string {
 	if row == nil || row.area == "" {
 		return ""
 	}
-	current := map[string]bool{}
+	current := map[string]string{}
 	for k, other := range r.rows {
 		if k != key && other.area == row.area {
-			current[k] = true
+			name := other.identity.Agent
+			if name == "" {
+				name = k
+			}
+			current[k] = name
 		}
 	}
 	known := row.knownPeers
@@ -379,12 +388,12 @@ func (r *roster) riderFor(key string) string {
 
 	var joined, left []string
 	for k := range current {
-		if !known[k] {
+		if _, told := known[k]; !told {
 			joined = append(joined, k)
 		}
 	}
 	for k := range known {
-		if !current[k] {
+		if _, still := current[k]; !still {
 			left = append(left, k)
 		}
 	}
@@ -445,9 +454,12 @@ func (r *roster) riderFor(key string) string {
 	if len(left) > 0 {
 		gone := make([]string, 0, len(left))
 		for _, k := range left {
-			// A row that has gone cannot be described, so it is named by the only
-			// thing that outlives it here: its key.
-			gone = append(gone, k)
+			// The row is already gone, so this is the name it was reported under.
+			name := known[k]
+			if name == "" {
+				name = k
+			}
+			gone = append(gone, name)
 		}
 		parts = append(parts, fmt.Sprintf("%d %s left %s (%s)",
 			len(left), plural(len(left), "agent"), row.area, strings.Join(gone, ", ")))

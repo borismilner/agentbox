@@ -149,6 +149,26 @@ renders, so you and they cannot see different answers.
 - Use it before editing a shared tree, or to find the peer you want to
   coordinate with. Do **not** poll it in a loop - ask when you are about to act.
 
+### The line you did not ask for
+
+When your area gains or loses an agent, the news is appended to the result of
+whatever tool you call next, as a line beginning `sync:`. It names who arrived,
+the purpose they announced and the state they are in:
+
+```
+sync: 1 agent joined repo:agentbox: codex "FR73: making a card body readable
+after it closes" (working). Coordinate before you edit a shared file: split the
+work or wait.
+```
+
+This is why polling is pointless. Each arrival and departure is reported once, on
+a call you were making anyway - `set_activity`, a notification, anything - so an
+agent that is deep in a file still finds out. `announce` and `list_agents` never
+carry it, because their own result already shows you the roster.
+
+A line like that is a request to stop and coordinate before continuing, not
+decoration.
+
 **Area is derived, not declared.** It comes from the repo you are working in, so
 two sessions in one checkout (or in two worktrees of one repo) find each other
 without either one spelling it out. A declared `area` tag narrows searches; it

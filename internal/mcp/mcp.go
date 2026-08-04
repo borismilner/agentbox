@@ -582,7 +582,9 @@ func (s *server) sendShow(ctx context.Context, req proto.ShowRequest) (*sdk.Call
 		return errResult[showOut](fmt.Errorf("cannot reach agentbox daemon: %w", err))
 	}
 	defer conn.Close()
-	if err := conn.Call(ctx, proto.MethodShow, &req, nil); err != nil {
+	rider, err := conn.CallRidden(ctx, proto.MethodShow, &req, nil)
+	noteRider(ctx, rider)
+	if err != nil {
 		return errResult[showOut](err)
 	}
 	return &sdk.CallToolResult{}, showOut{Shown: true}, nil
@@ -620,7 +622,9 @@ func (s *server) speak(ctx context.Context, _ *sdk.CallToolRequest, in speakIn) 
 		defer cancelCall()
 	}
 	req := proto.SpeakRequest{Text: in.Text, Wait: in.Wait}
-	if err := conn.Call(callCtx, proto.MethodSpeak, &req, nil); err != nil {
+	rider, err := conn.CallRidden(callCtx, proto.MethodSpeak, &req, nil)
+	noteRider(ctx, rider)
+	if err != nil {
 		return errResult[speakOut](err)
 	}
 	return &sdk.CallToolResult{}, speakOut{Spoken: true, Waited: in.Wait}, nil
@@ -650,7 +654,9 @@ func (s *server) drive(ctx context.Context, _ *sdk.CallToolRequest, in driveIn) 
 	var res proto.DriveResult
 	// A script can legitimately run for a while (movements, typing, waits), so
 	// this call does not get the short dial timeout the others use.
-	if err := conn.Call(ctx, proto.MethodDrive, &req, &res); err != nil {
+	rider, err := conn.CallRidden(ctx, proto.MethodDrive, &req, &res)
+	noteRider(ctx, rider)
+	if err != nil {
 		return errResult[driveOut](err)
 	}
 	return &sdk.CallToolResult{}, driveOut{Steps: res.Steps}, nil
@@ -698,7 +704,9 @@ func (s *server) control(ctx context.Context, req proto.ControlRequestParams) (c
 	}
 	defer conn.Close()
 	var res proto.ControlResult
-	if err := conn.Call(ctx, proto.MethodControl, &req, &res); err != nil {
+	rider, err := conn.CallRidden(ctx, proto.MethodControl, &req, &res)
+	noteRider(ctx, rider)
+	if err != nil {
 		return controlOut{}, err
 	}
 	return out(res), nil
@@ -776,7 +784,9 @@ func (s *server) reportProgress(ctx context.Context, _ *sdk.CallToolRequest, in 
 	}
 	defer conn.Close()
 	var res proto.ProgressResult
-	if err := conn.Call(ctx, proto.MethodProgress, u, &res); err != nil {
+	rider, err := conn.CallRidden(ctx, proto.MethodProgress, u, &res)
+	noteRider(ctx, rider)
+	if err != nil {
 		return errResult[progressOut](err)
 	}
 	return &sdk.CallToolResult{}, progressOut{ID: res.ID}, nil

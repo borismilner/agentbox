@@ -395,7 +395,9 @@ func TestTheRiderReportsADepartureOnceAndNamesNobodyElse(t *testing.T) {
 	stopPeer()
 
 	got := r.riderFor("mine")
-	if !strings.Contains(got, "left") || !strings.Contains(got, "peer") {
+	if !strings.Contains(got, "left") || !strings.Contains(got, "codex") {
+		// Named, not keyed: the row is gone by now, so the name has to have been
+		// remembered when the arrival was reported.
 		t.Errorf("the departure was reported as %q", got)
 	}
 	// Nothing to coordinate with somebody who has gone.

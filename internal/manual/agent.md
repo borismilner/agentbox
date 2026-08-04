@@ -187,6 +187,14 @@ answers `partial: true` when the roster cannot see everybody - a session whose
 child predates this feature has no row. On `partial`, never conclude you are
 working alone. Silence is not evidence.
 
+**Company finds you, so read the line when it arrives.** When your area gains or
+loses an agent, the news is appended to the result of whatever tool you call
+next, as a line starting `sync:` - naming who arrived, what they said they are
+for, and what state they are in. You get it once per arrival, on an ordinary call
+you were making anyway, which is why you never have to poll for it. It is telling
+you something you did not ask about: stop and coordinate before you carry on
+editing.
+
 Names for areas and topics follow one idiom, `kind:scope`, so a name reads the
 same to the next agent: `repo:agentbox`, `subsystem:webui`, `role:release`.
 
