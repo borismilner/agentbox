@@ -165,11 +165,16 @@ Four things worth knowing:
 - **A `get` on a key ending in `*` reads the family**, which is not in the design
   and is what makes one-key-per-item usable: a ten-chunk table is one read.
 
-**What remains of FR83:** the teaching half of slice 5, and one addition slice 4
-names in [09-sync.md](09-sync.md) - the blackboard is not on the Agents surface.
-`shared` reads and the CLI report an orphaned claim; nothing on screen does. Shared
-values are global state like the lock table, so the place for them is a panel
-beside the locks rather than a chip on a row.
+**The blackboard is on the Agents surface**, in a block of its own beside the lock
+table: global state rather than per-agent state, abandoned claims sorted to the top,
+and the abandoned count in the heading in the warning colour so a glance answers "is
+anything stuck?". Photographed with all three cases at once - two live claims, one
+abandoned by a process that really died, and an unowned counter. Looking at it
+turned up two things the diff did not: the key and value were touching, and an empty
+roster hid the blackboard and the orphaned locks behind "No agents attached", which
+is the state where leftover coordination state matters most.
+
+**What remains of FR83:** the teaching half of slice 5.
 
 What else remains is the showcase re-record (decided, not yet scheduled) and the
 verification and refinement queue.
@@ -947,8 +952,8 @@ fixed in session 42. Both are in [07-field-requests.md](07-field-requests.md).
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (FR85 with FR86, the blackboard's panel, FR84,
-and the older FR73/FR65/FR74-marker queue); the numbered list below is the long
+carries the current short order (FR85 with FR86, FR84, and the older
+FR73/FR65/FR74-marker queue); the numbered list below is the long
 tail behind it, kept for the items nothing else records.
 
 1. **FR74's last open piece: the fullscreen marker.** A fullscreen window may

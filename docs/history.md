@@ -83,12 +83,37 @@ exist (1000) refuses a NEW key rather than evicting an old one - while never
 blocking an update, because refusing those would strand a claim its owner is trying
 to finish.
 
-**One thing not built, recorded so it is not read as an oversight:** the Agents
-surface does not show the blackboard. The design's prose promises "the surface and
-`shared` reads report a value whose owner is no longer present" and only the second
-half is done - `shared` reads and `agentbox sync get 'claims/*'` report an orphan,
-nothing on screen does. Shared values are global state like the lock table, so the
-place for them is a panel beside the locks rather than a chip on a row.
+**The surface came after the tools, and looking at it paid twice.** The design's
+prose promised "the surface and `shared` reads report a value whose owner is no
+longer present", so the blackboard got a block of its own beside the lock table -
+global state rather than per-agent state, abandoned claims sorted to the top, the
+abandoned count in the heading in the warning colour. Nothing else on that board can
+say a claim was abandoned: the lock table cannot, a claim not being a lock, and the
+agent's row cannot, the agent being gone.
+
+Two defects a real screen turned up. The key and the value were touching
+(`claims/chunk-7{"worker":"aider"}`), and the heading read "1 abandoned 4", which
+parses as one number. And one hole that was not mine: an empty roster hid the
+blackboard AND the orphaned locks behind "No agents attached" - the state where
+leftover coordination state matters most, and the same hole the orphan block had
+carried since slice 2.
+
+**The live board also demonstrated the pid fix in the field.** A deploy restarts the
+daemon, and one frame afterwards showed the roster rows healed to 21 seconds old
+while the claims kept their true age of three minutes: presence does not survive a
+restart, coordination state does. Two live claims still read as live, and the
+abandoned one still read as abandoned, from a daemon that had never seen either
+session.
+
+**Two clicking mistakes worth not repeating.** `xdotool mousemove` takes SCREEN
+coordinates while `import -window` captures window pixels, so clicks computed off a
+screenshot land wherever the window happens to sit - this window was at (370,170),
+so two "clicks on a row" both hit the sidebar and navigated to Library, and the
+"nothing happened" that looked like a passing test was a click into empty space. Get
+the origin from `xdotool getwindowgeometry` and add it. And `pkill -f board-shared.py`
+killed the invoking shell with exit 144, which is the trap CLAUDE.md opens with, hit
+in the session that quotes it - the same way session 43 hit it. Kill by pid from
+`ps -eo pid,args`.
 
 Also this session, at Boris's request: a **global usage-budget rule** in
 `~/.claude/CLAUDE.md`. Every session periodically reads `claude -p /usage` and

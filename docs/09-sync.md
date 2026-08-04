@@ -10,8 +10,8 @@ Requested by Boris 2026-08-04 (session 39). FR83. This document is the design;
 **slices 1 to 4 are complete, deployed and verified live** (2026-08-04,
 sessions 40 to 44: the roster and the surface, then the discovery rider and the
 four defects a real screen turned up, then locks, then signals, then shared
-values). All four primitives exist. Only the teaching half of slice 5 is not
-started, plus one addition slice 4 names: the blackboard is not on the surface. It has
+values). All four primitives exist, and the human's board shows all four. Only the
+teaching half of slice 5 is not started. It has
 survived one adversarial review, whose findings are folded in, plus the mock, the
 live run, and a look at the real surface. Status: **triaged** (all three owner
 calls answered 2026-08-04, recorded at the foot). Each slice's record below says
@@ -843,15 +843,23 @@ ceilings are unrelated and the manual must not let them read as one number.
    key and version and no value, the live owners still reading as live across the
    restart, and the CLI exiting 0 on a won claim and 1 on a lost one.
 
-   **One thing NOT built, so the next session does not read it as an oversight:**
-   the Agents surface does not show the blackboard. The design's prose says "the
-   surface and `shared` reads report a value whose owner is no longer present",
-   and only the second half of that is done - `shared` reads report it, `agentbox
-   sync get 'claims/*'` reports it, and nothing on screen does. It is an addition
-   rather than a correction (no agent is misled; the orphan is visible to every
-   reader that asks), but it is the one promise in this section still outstanding.
-   Shared values are global state like the lock table, not per-agent state, so the
-   place for them is a panel beside the locks rather than a chip on a row.
+   **And the surface, which this section's prose promised**: "the surface and
+   `shared` reads report a value whose owner is no longer present". A block of its
+   own beside the lock table, because a shared value is global state rather than
+   per-agent state - and because a claim outlives the session that made it, which
+   nothing else on that board can say (the lock table cannot, a claim not being a
+   lock; the agent's row cannot, the agent being gone). Abandoned claims sort to
+   the top and the count in the heading reads in the warning colour, so a glance
+   answers "is anything stuck?" without reading rows. Photographed with all three
+   cases at once: two live claims, one abandoned by a process that really died, and
+   an unowned counter reading "no owner: shared state rather than a claim".
+
+   Two things a real screen changed, neither visible in the diff: the key and the
+   value were touching (`claims/chunk-7{"worker":"aider"}`), and the heading read
+   "1 abandoned 4", which parses as one number. Also fixed on the way past: an empty
+   roster used to hide the blackboard AND the orphaned locks behind "No agents
+   attached", which is precisely the state where leftover coordination state matters
+   most - the same hole the orphan block had had since slice 2.
 5. **Teaching, which is what makes the mandate real.** See the section below;
    this slice is not documentation garnish, it is the difference between a
    feature that exists and a feature every agent uses. Accept: a Claude

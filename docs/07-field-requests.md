@@ -2026,10 +2026,12 @@ session has died reads as abandoned instead of blocking the table.
 are locks, the notes are signals, and the polling is over. The social locks
 CLAUDE.md wrote down have machinery behind them.
 
-Still to build from the design: the teaching half of slice 5, and one addition
-slice 4 names - the blackboard is not on the Agents surface. `shared` reads and
-`agentbox sync get 'claims/*'` report an orphaned claim; nothing on screen does.
-See the slice list in 09-sync.md.
+The Agents surface shows all four: rows with their purpose and activity, the lock
+table with its orphans, listening chips, and the blackboard in a block of its own
+with abandoned claims at the top.
+
+Still to build from the design: the teaching half of slice 5. See the slice list in
+09-sync.md.
 
 Two things this work turned up that were nothing to do with sync, both recorded
 in [history.md](history.md) session 40: `Conn.Serve` never told a blocking
