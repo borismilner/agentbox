@@ -480,6 +480,103 @@ func (s *server) awaitSignal(ctx context.Context, _ *sdk.CallToolRequest, in awa
 	return &sdk.CallToolResult{}, out, nil
 }
 
+// The shared-value half (FR83 slice 4). ONE tool with three operations, which is
+// the opposite call from acquire/try and post/await - and the reason is the same
+// rule read the other way round. That rule exists so an agent can tell from the
+// door whether calling parks its turn; get, set and delete all answer "no", so
+// folding them costs no clarity and saves two tools against a context budget that
+// is this design's biggest cost.
+type sharedIn struct {
+	Op  string `json:"op" jsonschema:"get to read a key (or a family - a key ending in * returns every key under that prefix), set to write it, delete to remove it"`
+	Key string `json:"key" jsonschema:"the value's name, in the kind:scope or path idiom - claims/chunk-3, progress:migration, owner:table-7. ONE KEY PER ITEM is the idiom for fanned-out work: ten workers claiming ten keys means first-writer-wins per item, where one table under one hot key makes every loser retry"`
+	// Value is any, like a signal's payload: the shape is the agent's own vocabulary
+	// and agentbox only has an opinion about the size.
+	Value any `json:"value,omitempty" jsonschema:"for set: the JSON value to store. Small by contract - a claim, a counter, a pointer. Put anything bigger in a file and store the path"`
+	// IfVersion is a POINTER so that 0 can mean something. See the comment on
+	// proto.SyncSharedParams: versions start at 1, so 0 is free to mean "must not
+	// exist", which is what makes a claim safe without a lock.
+	IfVersion *int64 `json:"if_version,omitempty" jsonschema:"compare-and-swap. Omit to write no matter what. Pass 0 to CLAIM: the write succeeds only if nobody has this key yet, which is how two agents never both take chunk 3. Pass the version you last read to write only if nobody changed it since - a refusal comes back with the current value and version, so you retry immediately instead of asking again"`
+	Own       bool   `json:"own,omitempty" jsonschema:"true to record this session as the value's owner. Use it for a claim: a reader then learns whether the owner is still running, so work abandoned by a session that died is visible instead of blocking the table forever. Leave false for shared state that belongs to nobody, like a counter"`
+}
+
+type sharedValueOut struct {
+	Key     string `json:"key"`
+	Value   any    `json:"value,omitempty"`
+	Version int64  `json:"version"`
+	Owner   string `json:"owner,omitempty"`
+	Agent   string `json:"owner_agent,omitempty"`
+	// OwnerGone is the field worth reading twice: the value is still here and the
+	// session that claimed it is not, so this work was started and abandoned rather
+	// than finished.
+	OwnerGone bool  `json:"owner_gone,omitempty"`
+	UpdatedMS int64 `json:"updated_ms,omitempty"`
+}
+
+type sharedOut struct {
+	OK     bool             `json:"ok"`
+	Op     string           `json:"op"`
+	Found  bool             `json:"found,omitempty"`
+	Value  *sharedValueOut  `json:"value,omitempty"`
+	Values []sharedValueOut `json:"values,omitempty"`
+	More   bool             `json:"more,omitempty"`
+	// Applied and Stale are the CAS pair. Stale is not an error: losing a claim race
+	// is the normal outcome for nine workers out of ten.
+	Applied bool   `json:"applied,omitempty"`
+	Stale   bool   `json:"stale,omitempty"`
+	Note    string `json:"note,omitempty"`
+}
+
+// sharedValue decodes one row for the model, handing the payload back as the
+// structure the writer sent rather than as a string of JSON - the same courtesy
+// await_signal does for a signal's data, and for the same reason: a receiving model
+// should read a value, not parse one.
+func sharedValue(v proto.SharedValue) sharedValueOut {
+	out := sharedValueOut{Key: v.Key, Version: v.Version, Owner: v.Owner,
+		Agent: v.OwnerAgent, OwnerGone: v.OwnerGone, UpdatedMS: v.UpdatedMS}
+	if len(v.Value) > 0 {
+		var decoded any
+		if err := json.Unmarshal(v.Value, &decoded); err == nil {
+			out.Value = decoded
+		} else {
+			out.Value = string(v.Value)
+		}
+	}
+	return out
+}
+
+func (s *server) sharedValues(ctx context.Context, _ *sdk.CallToolRequest, in sharedIn) (*sdk.CallToolResult, sharedOut, error) {
+	s.ensureAttached()
+	req := proto.SyncSharedParams{
+		Identity: s.id, Op: in.Op,
+		// @me expanded here for the same reason it is for topics: a session's own key
+		// is a fine thing to name a key after ("owner:@me"), and the daemon keeps one
+		// rule about names rather than learning a magic token.
+		Key:       strings.ReplaceAll(in.Key, "@me", s.id.Key),
+		IfVersion: in.IfVersion, Own: in.Own,
+	}
+	if in.Value != nil {
+		b, err := json.Marshal(in.Value)
+		if err != nil {
+			return errResult[sharedOut](fmt.Errorf("value is not encodable as JSON: %w", err))
+		}
+		req.Value = b
+	}
+	var res proto.SyncSharedResult
+	if err := s.syncCall(ctx, proto.MethodSyncShared, &req, &res); err != nil {
+		return errResult[sharedOut](err)
+	}
+	out := sharedOut{OK: res.OK, Op: res.Op, Found: res.Found, More: res.More,
+		Applied: res.Applied, Stale: res.Stale, Note: res.Note}
+	if res.Value != nil {
+		v := sharedValue(*res.Value)
+		out.Value = &v
+	}
+	for _, v := range res.Values {
+		out.Values = append(out.Values, sharedValue(v))
+	}
+	return &sdk.CallToolResult{}, out, nil
+}
+
 // addSyncTools registers the roster family. Kept in one function beside the
 // others so the tool list has one obvious place per feature.
 func addSyncTools(srv *sdk.Server, s *server) {
@@ -531,4 +628,15 @@ func addSyncTools(srv *sdk.Server, s *server) {
 			"A timeout is a RESULT, not an error: the cursor comes back unchanged and waiting again misses nothing. gap=true means your cursor is older than what retention still holds, so the batch cannot be complete - treat what you were tracking as unknown rather than as not having happened. " +
 			"Park here only for something you are genuinely waiting on. The composition worth knowing: await_signal on tests:green, then acquire_lock on the deploy.",
 	}, s.awaitSignal)
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "shared",
+		Description: "Read and write small shared state every agent on this machine can see, with compare-and-swap so two of you never both take the same work. Non-blocking, whichever op you use. " +
+			"This is the blackboard: a lock says whose turn it is and a signal says something happened, but only this can say chunk 7 is MINE. " +
+			"To split fanned-out work, use one key per item and claim with if_version 0 - the write succeeds only if nobody has that key yet, so ten workers over ten keys means zero double-claims and no lock at all. " +
+			"To update state you have read, pass the version you saw as if_version; a refusal comes back with the current value and version, so you retry immediately rather than asking again. Losing a race is a normal result (stale=true), not an error. " +
+			"Pass own=true for a claim: a reader is then told whether the owner is still running, so work abandoned by a session that died shows up as owner_gone instead of blocking the table forever - take it over by writing the key with its current version. " +
+			"Every write posts a shared:<key> signal, so waiting for somebody to claim or finish something is await_signal on shared:claims/* rather than a poll loop. " +
+			"Values are small by contract; put anything bigger in a file and share the path. Delete a key when its work is done. " +
+			"You must announce before writing: a claim the human cannot attribute to a purpose is one he cannot judge when the work stalls.",
+	}, s.sharedValues)
 }

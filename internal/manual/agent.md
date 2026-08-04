@@ -110,6 +110,9 @@ Claude Code) can call these tools. Run `agentbox docs setup` for a paste-ready
   "Telling another agent, and waiting to be told"
 - `await_signal` -> BLOCK until a matching signal arrives, and get everything
   since your cursor in one batch. This is what replaces a polling loop
+- `shared` -> read and write small shared state with compare-and-swap
+  (`op: get | set | delete`, non-blocking). Claiming one item of fanned-out work so
+  no two agents double it is `if_version=0`. See "Splitting work nobody doubles"
 - `notify_user` -> notify (non-blocking)
 - `retract` -> take back an item you posted, before he deals with it. Pass the id
   `notify_user` gave you, or omit it to withdraw everything this session still has
@@ -374,6 +377,71 @@ From a shell:
 agentbox sync post tests:green '{"suite":"race"}' --key KEY
 agentbox sync await tests:green --timeout 600 --key KEY    # exit 0 got one, 1 timed out
 agentbox sync await 'done:*' --after 41 --key KEY           # catch up from a cursor
+```
+
+## Splitting work nobody doubles
+
+A lock says whose turn it is and a signal says something happened. Neither can say
+**chunk 7 is mine**, which is what a fanned-out job needs before it starts work a
+peer already started. That is `shared`: small named state with compare-and-swap,
+one tool with `op: get | set | delete`, and none of the three blocks.
+
+```
+shared(op="set", key="claims/chunk-3", value={"worker":"me"}, if_version=0, own=True)
+  -> applied:true, value:{version:1, owner:"8b94…"}          # it is yours
+
+shared(op="set", key="claims/chunk-3", value={"worker":"me"}, if_version=0)
+  -> applied:false, stale:true, value:{version:1, owner_agent:"codex"}
+                                                             # somebody was faster
+```
+
+**`if_version` is the whole feature.** Versions start at 1, so 0 is free to mean
+"only if this key does not exist" - and that is a claim. Omit it to write no matter
+what; pass the version you last read to write only if nobody moved it since.
+
+**A refusal is a result, not an error.** `stale: true` comes back with the current
+value and version, so a loser goes to the next key and an updater retries at once.
+No lock, no read-modify-write, no second call to learn what you lost to.
+
+**One key per item.** Ten workers over `claims/<chunk>` is first-writer-wins per
+item and every loss is cheap. Ten workers CAS-ing one `claims` object is nine
+retries a round, each of them a model turn.
+
+**`own=True` is what makes abandoned work visible.** Your session key and agent
+name go into the row, and every read checks them against the live roster - so a
+session that dies holding a claim leaves `owner_gone: true` behind instead of a
+chunk nobody will ever finish. Take one over by writing the key with its current
+`version` as `if_version`. Leave `own` off for state that belongs to nobody, like a
+counter.
+
+**A `key` ending in `*` reads the family**, so a ten-chunk table is one call.
+
+**Every write posts `shared:<key>`.** "Wait until somebody claims or finishes
+something" is `await_signal(["shared:claims/*"])` - one wake mechanism in this whole
+design, and this is not a second one. The signal carries the key, the version and
+the owner, never the value: when it rings, `get` the value.
+
+**Values are never trimmed** - the deliberate difference from signals, because
+retention on a claim table would hand one chunk to two agents. They survive a
+daemon restart and leave when you delete them, so **delete a key when its work is
+done**. The cap on how many may exist refuses a new key rather than evicting
+somebody's claim.
+
+Anti-patterns:
+
+- **A shared value used as a message.** Post a signal; a value is state.
+- **One hot key for a fan-out.** One key per item, or every loser pays a retry.
+- **Claiming without `own`.** Nobody can then tell your live work from a corpse.
+- **Leaving finished claims behind.** That is what fills the table.
+- **Polling a key.** Park on `shared:<key>` instead.
+- **A payload instead of a pointer.** 16 KB, and a file path is the idiom.
+
+From a shell, which is the shape a Makefile or a hook wants:
+
+```
+agentbox sync set claims/3 mine --if-version 0 --own --key KEY   # exit 0 won, 1 lost
+agentbox sync get 'claims/*' --key KEY                          # the whole table
+agentbox sync del claims/3 --key KEY                            # finished with it
 ```
 
 ## Artifacts

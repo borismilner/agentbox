@@ -39,6 +39,9 @@ func syncUsage() {
 	fmt.Fprintln(os.Stderr, "       agentbox sync locks [--json]")
 	fmt.Fprintln(os.Stderr, "       agentbox sync post TOPIC [DATA]                    # tell the others")
 	fmt.Fprintln(os.Stderr, "       agentbox sync await TOPIC... [--after SEQ] [--timeout N]")
+	fmt.Fprintln(os.Stderr, "       agentbox sync get KEY                              # or KEY* for the family")
+	fmt.Fprintln(os.Stderr, "       agentbox sync set KEY VALUE [--if-version N] [--own]")
+	fmt.Fprintln(os.Stderr, "       agentbox sync del KEY [--if-version N]")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Who else is here, what they are for, and what they are doing right now.")
 	fmt.Fprintln(os.Stderr, "Every call acts on behalf of a session: --key, or AGENTBOX_SESSION_KEY.")
@@ -53,8 +56,16 @@ func syncUsage() {
 	fmt.Fprintln(os.Stderr, "sent as a JSON string. await prints one line per signal and its cursor,")
 	fmt.Fprintln(os.Stderr, "which --after resumes from without missing anything in between.")
 	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "A shared value is small state with compare-and-swap. --if-version 0 claims a")
+	fmt.Fprintln(os.Stderr, "key only if nobody has it yet, which is how a fanned-out job splits work with")
+	fmt.Fprintln(os.Stderr, "one key per item; --if-version N writes only if it is still at N. --own records")
+	fmt.Fprintln(os.Stderr, "this session as the owner, so a claim left by a session that died reads as")
+	fmt.Fprintln(os.Stderr, "orphaned instead of blocking the table.")
+	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Exit codes: 0 done, 1 refused or not granted, 4 agentbox itself failed.")
 	fmt.Fprintln(os.Stderr, "An await that times out is 1; a wrap exits with the command's own code.")
+	fmt.Fprintln(os.Stderr, "A set or del that lost the compare-and-swap is 1, with the current value on")
+	fmt.Fprintln(os.Stderr, "stdout: that is the shape a claim loop wants from a shell.")
 }
 
 func runSync(args []string) int {
@@ -86,6 +97,11 @@ func runSync(args []string) int {
 	ttl := fs.Int("ttl", 0, "seconds a detached hold lives without a wrapped command")
 	note := fs.String("note", "", "what the lock is being held for")
 	after := fs.Int64("after", 0, "signal cursor to resume from; 0 waits for what happens from now on")
+	// A string rather than an int because zero is a real value here and a meaningful
+	// one: it claims a key only if nobody has it yet. An int flag cannot tell "0" from
+	// "not given", and the difference is between a claim and an unconditional write.
+	ifVersion := fs.String("if-version", "", "compare-and-swap: 0 writes only if the key is absent, N only if it is still at N")
+	own := fs.Bool("own", false, "record this session as the value's owner")
 	fs.Usage = syncUsage
 
 	// Same trap the control verb documents: Go's flag package stops at the first
@@ -242,6 +258,20 @@ func runSync(args []string) int {
 			return exitNo
 		}
 		return runSyncAwait(id, words, *after, *timeout, *asJSON)
+
+	case "get", "set", "del", "delete":
+		// The blackboard's CLI door (syncshared.go). Three verbs rather than one with
+		// an --op flag: a shell reads better as `sync set claims/3 mine` than as a verb
+		// plus a mode, and the MCP side folds them for a reason that does not apply
+		// here (a tool costs context in every session; a subcommand costs nothing).
+		if len(words) == 0 {
+			fmt.Fprintf(os.Stderr, "agentbox sync %s: wants a key\n", verb)
+			return exitNo
+		}
+		return runSyncShared(sharedCLI{
+			verb: verb, id: id, key: words[0], value: strings.Join(words[1:], " "),
+			ifVersion: *ifVersion, own: *own, asJSON: *asJSON,
+		})
 
 	case "attach":
 		// Holds presence open for as long as this process runs, which is the door

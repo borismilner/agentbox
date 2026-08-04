@@ -60,6 +60,8 @@ auto-spawns the daemon; nothing else to start.
 | Hand it to whoever is behind you | `release_lock` | `agentbox sync unlock` | no |
 | Tell the other agents something happened | `post_signal` | `agentbox sync post` | no |
 | Wait to be told, instead of polling for it | `await_signal` | `agentbox sync await` | yes |
+| Claim one item of fanned-out work, so nobody doubles it | `shared` (`op="set"`, `if_version=0`) | `agentbox sync set --if-version 0` | no |
+| Read shared state, or a whole claim table | `shared` (`op="get"`) | `agentbox sync get` | no |
 | Tell the human something (result, FYI) | `notify_user` | `agentbox notify` | no |
 | Take back something you posted | `retract` | `agentbox dismiss ID` | no |
 | See what is still waiting for him | - | `agentbox pending` | no |
@@ -329,6 +331,77 @@ speculatively on a maybe-someday topic when `await_signal` occupies your turn;
 posting a `*` (a wildcard belongs in `topics`, never in a topic you post to);
 dropping the cursor after a timeout, which can miss whatever arrived between two
 calls; and sending a payload where a file path would do.
+
+### shared  (non-blocking, all three operations)
+
+The blackboard. A lock says whose turn it is and a signal says something happened;
+only this can say **chunk 7 is mine**. One tool with `op: get | set | delete`,
+folded into one door because none of the three blocks - the rule that splits
+`acquire_lock` from `try_lock` exists so you can tell from the door whether calling
+parks your turn, and here the answer is always no.
+
+- Args: `op`, `key`, `value` (for `set`, small JSON), `if_version`, `own`.
+- Returns: `{ok, op, found, value, values, more, applied, stale, note}`, where a
+  value is `{key, value, version, owner, owner_agent, owner_gone, updated_ms}`.
+
+**`if_version` is the whole feature.** Versions start at 1, so 0 is free to mean
+something, and what it means is *claim*:
+
+| `if_version` | Meaning | Use |
+|---|---|---|
+| omitted | write no matter what | seeding a table, a value nobody contends |
+| `0` | **only if the key does not exist** | claiming an item, first writer wins |
+| `N` | only if it is still at `N` | updating state you have read |
+
+```
+shared(op="set", key="claims/chunk-3", value={"worker": "me"}, if_version=0, own=True)
+  -> {applied: true, value: {key: "claims/chunk-3", version: 1, owner: "8b94…"}}
+
+shared(op="set", key="claims/chunk-3", value={"worker": "me"}, if_version=0)
+  -> {applied: false, stale: true,
+      value: {version: 1, owner_agent: "codex"},
+      note: "claims/chunk-3 is already claimed by codex, which is still running…"}
+```
+
+**A refusal is a result, not an error.** `stale: true` comes back with the current
+value and version, so a losing claimer moves to the next key and an updater retries
+immediately - no second call to find out what it lost to, and no lock-read-write-
+unlock anywhere.
+
+**One key per item, not one table under one hot key.** Ten workers claiming
+`claims/<chunk>` is first-writer-wins per item, and every worker that loses has
+already lost cheaply. Ten workers CAS-ing one `claims` object means nine retries
+per round, each of them a model turn.
+
+**`own=True` is what makes abandoned work visible.** The owner's session key and
+agent name are recorded in the row at write time, and every read checks the key
+against the live roster. A session that dies holding a claim leaves
+`owner_gone: true` on it - so the table is drainable after a death or a daemon
+restart instead of stuck forever on a chunk nobody is working on. Take it over by
+writing the key with its current `version` as `if_version`. Leave `own` false for
+state that belongs to nobody, like a counter.
+
+**A read may take a family.** A `key` ending in `*` returns every key under that
+prefix (same prefix rule as topics), so a ten-chunk claim table is one call.
+
+**Every write posts `shared:<key>`.** Waiting for somebody to claim or finish
+something is `await_signal(["shared:claims/*"])` - there is one wake mechanism in
+this design and this is not a second one. The signal carries the key, the new
+version and the owner, never the value: it is a doorbell, so read the value with a
+`get` when it rings.
+
+**Values survive a daemon restart and are never trimmed**, which is the deliberate
+difference from signals. Retention on a claim table would hand one chunk to two
+agents. They leave when you delete them - so delete a key when its work is done -
+and the cap on how many may exist (1000) *refuses a new key* rather than evicting
+somebody's claim.
+
+Anti-patterns: a shared value as a message (post a signal); one hot key for a
+fan-out (one key per item); a payload instead of a pointer (`shared_max_bytes` is
+16 KB, and a file path is the idiom); polling a key in a loop (park on
+`shared:<key>`); claiming without `own`, which leaves nobody able to tell your live
+work from a corpse; and leaving finished claims behind, which is what fills the
+table.
 
 ### notify_user  (non-blocking)
 Post a desktop notification. Returns immediately.
