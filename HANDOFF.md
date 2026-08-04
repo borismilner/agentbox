@@ -1,4 +1,4 @@
-# Handoff - AgentBox: FR81 shipped; a second agent still in flight in this tree
+# Handoff - AgentBox: M12 complete, FR81 shipped, both live on the desktop
 
 **Written:** 2026-08-04 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -6,149 +6,175 @@
 
 ```bash
 cd ~/me/projects/agentbox
-cat /tmp/agentbox-agents.md   # the parallel-agent ledger; is Agent B (M12 panel) still working?
-git status -sb                # B's panel diff uncommitted = B unfinished; clean = B landed
-git log --oneline -5          # expect docs(handoff), then c15fce6 fix(assignments), 48950dc, c915fab
-make deployed                 # 1898d37 = pre-FR81 build still serving (deploy is deliberately pending)
+git status -sb              # expect clean, in sync with origin/main
+git log --oneline -6        # head: this handoff; then 368ffbf/bacb64b/c15fce6 (panel), 48950dc/c915fab (FR81)
+make deployed               # must answer this handoff's commit, CLEAN (no "(dirty)")
+agentbox control state      # "no run: the desktop is the human's"
 ```
 
-**The tree may be shared.** Session 37 ran two agents in one checkout: this
-stream (FR81, all committed and pushed) and Agent B (M12's custom HTML panel,
-mid-flight at write time). Before editing or building ANYTHING, read the
-ledger at `/tmp/agentbox-agents.md` and reconcile:
+**Three** agents worked this checkout on 2026-08-04. Two shipped code and are
+done, committed, pushed and deployed: M12's custom HTML panel (session 38) and
+FR81's visual pass (session 37). The third (session 39) wrote a design and
+touched no code. No code is in flight.
 
-- **If B's work landed** (tree clean, STATUS says the panel runs): run
-  `make check`, then `make deploy` - the deployed daemon is still `1898d37`
-  and has NEITHER the panel NOR the FR81 restyle. Deploy was held back on
-  purpose: `make deploy` builds from the working tree, which held B's
-  half-done code. After deploy, exercise the panel and one restyled surface
-  live. Then pick up the queue below.
-- **If B is still in flight or the tree holds their uncommitted diff and the
-  ledger says nothing:** do not build, deploy, or touch dist. Work queue
-  items that avoid their files, or wait. Their claimed files are in the
-  ledger (Assignments.svelte, assignpanel.go, artifact libs, mdhtml.go).
-- **If the ledger is gone** (/tmp cleared by a reboot): the git log and
-  STATUS tell you whether the panel landed; a dirty tree of the files above
-  means an abandoned session - ask Boris before cleaning anything up.
+**First, though: Boris asked for a new feature this session and it is designed,
+not built.** FR83, multi-agent coordination plus a live Agents surface, in
+[docs/09-sync.md](docs/09-sync.md) with the field case in
+[docs/07-field-requests.md](docs/07-field-requests.md). It is the newest thing
+he asked for, it outranks everything below by the field-requests rule, and it is
+waiting on three things only he can start: his triage of the three open
+questions at the foot of 09-sync.md, the surface mock
+(`agentbox webui-demo agents` over canned roster data, per this file's own
+mock-first rule), and the slice-0 CLI spike. Do not start slice 1 without the
+mock; the doc says why. The prerequisite inside it - a session key on
+`proto.Identity` - also fixes a shipped FR74 defect, and that part could ship
+alone if he wants a small win first.
 
-The queue after that (was item 3 of the previous handoff; FR81 was item 2):
+Then the queue:
 
 **1. FR73 - a card body must be readable after the card closes.** The inbox
-row truncates the body to a tooltip and offers no detail view; Boris hit
-this 2026-07-31. Nothing new needs storing - it is a reader. Note the Inbox
-surface was restyled this session; extend it in its current shape.
+row truncates the body to a tooltip and offers no detail view, so a card that
+timed out takes its message with it. Boris hit this on 2026-07-31. Nothing new
+needs storing - it is a reader. The Inbox surface was restyled on 2026-08-04;
+extend it in its current shape (joined rows, UI-caps section labels, mono only
+for data).
 
-**2. FR65 - open a citation in the editor.** An open button per code block
-on the review board, next to copy, running a configured editor command
-template. The JetBrains invocation is under "Mechanics discovered" in
+**2. FR65 - open a citation in the editor.** An open button per code block on
+the review board, next to copy, running a configured editor command template.
+The JetBrains invocation is under "Mechanics discovered" in
 [docs/07-field-requests.md](docs/07-field-requests.md).
 
-**3. FR74's fullscreen marker** - built in session 34, never exercised.
-Needs a real fullscreen window and Boris's consent to drive; read the
-one-UI trap in `CLAUDE.md` first. The unknown: whether GTK honours a
-4px-tall window at all.
+**3. FR74's fullscreen marker** - built in session 34, still never exercised.
+Needs a real fullscreen window and Boris's consent to drive: take the desktop
+with `request_control`, and read the one-UI trap in `CLAUDE.md` first. The
+specific unknown is whether GTK honours a 4px-tall window at all.
+
+**4. Retry the "Claude usage check" assignment** (`a0eff4b720959`) - its one
+manual run failed on 2026-08-04 for an environmental reason, not a defect:
+`You've reached your Fable 5 limit. /model to switch models.` The assignment
+declares no model, so a run inherits whatever `claude` defaults to; Boris
+switched his default to Opus 5 the same hour, so a retry may simply pass.
+`run_assignment` then `assignment_runs` to see. It is still ad-hoc
+(schedule-or-delete remains Boris's call).
 
 ## Where we are
 
-Session 37 (2026-08-04) shipped FR81's second half: History, Inbox, Library,
+Two parallel sessions on 2026-08-04 closed the two open items the 2026-08-03
+handoff named.
+
+**Session 37 - FR81's visual pass** (this stream): History, Inbox, Library,
 Settings, Session and the app shell now speak the visual language Home and
-Assignments established (UI caps for labels, mono for data, Home's tile
-grammar, one recipe per control, serif empty states; Library rebuilt on the
-shared list shape). Committed as `c915fab` + docs `48950dc`, pushed to
-origin. Every surface was exercised live from an isolated worktree build -
-screenshots dark and light, populated Library driven by pointer against a
-copy of the real store. Full detail: history.md "Thirty-seventh session".
+Assignments established - UI caps for section labels with mono reserved for
+data, Home's tile grammar (number first, mono tabular, lowercase label), one
+recipe each for segmented controls, ghost buttons, search boxes and serif
+empty states. Library was rebuilt on the shared header/search/joined-rows
+shape (onboarding moved into its empty state, ages on the shared 1Hz ticker,
+delete revealed on hover behind an inline confirm) and its inverted hover rule
+went with the rewrite. Viewer already conformed and was untouched. Commits
+`c915fab` + `48950dc`.
 
-In parallel, a second agent built M12's last piece (the custom HTML panel
-running in the artifact sandbox, two-way channel into `SetAssignmentParams`).
-At write time they had landed `c15fce6` (a run keeps saved values when no
-spec declares them) and still held the main panel diff uncommitted. Their
-STATUS draft claims the panel runs end to end with 568 tests; treat that as
-theirs to confirm, not this handoff's.
+**Session 38 - M12's last piece** (the other agent): the custom HTML panel
+runs in the artifact sandbox with a two-way channel - out through
+`emit("params", ...)` into `SetAssignmentParams`, in through
+`window.agentbox.params` and the `agentbox:params` event - plus an
+`AssignmentsChanged` daemon poke that replaced the surface's 3s poll. Commits
+`c15fce6`, `bacb64b`, `368ffbf`. Their record is history.md "Thirty-eighth
+session"; STATUS.md carries the mechanics.
 
+So **M0 through M12 are complete** and the app's surfaces read as one product.
 Read [docs/08-assignments.md](docs/08-assignments.md) before touching
-assignments; two conventions live there (a run's last assistant message is
-its summary; a fenced agentbox-data block becomes the run's `data` column).
+assignments: a run's last assistant message is its summary, and a fenced
+agentbox-data block in it becomes the run's `data` column.
 
 ## Live state (volatile - verify on resume)
 
-- **Background jobs:** none from this stream. Agent B's session may still be
-  running on this machine.
-- **PRs:** none, ever (this repo pushes `main` directly).
-- **Git:** at write time `main` was ahead of origin by B's `c15fce6` plus
-  this handoff's own commit, and deliberately NOT pushed from this session -
-  a push would publish B's commit while they might still amend it. B was
-  asked via the ledger to push `main` when they land. Until that push **this
-  handoff is LOCAL TO THIS MACHINE and invisible on boris-vm**. This
-  stream's FR81 commits (`c915fab`, `48950dc`) are pushed. Uncommitted (ALL Agent B's, do not touch): the
-  panel diff across Assignments.svelte, assignpanel.go+test, artifact.go+test,
-  artifact libs, mdhtml.go, daemon.go+tests, policy tests, both manuals,
-  docs/STATUS.md, docs/08-assignments.md, plus a rebuilt dist. Two of MY
-  lines ride inside their dirty docs/STATUS.md (the FR81 header sentence and
-  the removed "0d." queue item) - hunks merged, could not be staged apart;
-  B folds them in (ledger note, ~11:15).
-- **Deployed:** `1898d37` - pre-FR81, pre-panel. The desktop UI Boris sees
-  does NOT yet show this session's restyle. Deploy after B lands (see Do
-  this next). GitLab push-mirrors to GitHub on its own; a rejected direct
-  `git push github` ("cannot lock ref") usually lost the race to the mirror -
-  fetch and compare before treating it as failure. Pushing origin is enough.
-- **In-flight edits (this stream):** none. FR81 is complete and committed.
-- **History numbering:** session 37 = FR81 (committed); B was asked via the
-  ledger to log theirs as session 38.
-- **Carried from session 36, still pending on Boris:** delete the old-name
-  fallback dirs (`rm -rf ~/.config/qq ~/.local/state/qq ~/.cache/qq
-  ~/.local/share/qq`) after a few quiet days; schedule-or-delete the ad-hoc
-  "Claude usage check" assignment (`a0eff4b720959`).
-- **The session-34 `-race` flake watch item** did not recur in this
-  session's gate runs either. Keep watching; do not close.
+- **Background jobs:** none. **PRs:** none, ever (this repo pushes `main`).
+- **Git:** clean, `main` pushed and in sync with `origin` (GitLab). **GitLab
+  push-mirrors to GitHub on its own**: a direct `git push github` can lose the
+  race and be rejected with "cannot lock ref"; fetch and compare heads before
+  treating that as a real failure. Pushing `origin` is enough.
+- **Deployed:** this handoff's commit, clean stamp, daemon answering. The live
+  daemon has BOTH streams. It was briefly deployed dirty at 11:05 (built while
+  this file was uncommitted) and redeployed clean afterwards - if `make
+  deployed` ever reports `(dirty)`, that is the cause and a redeploy from a
+  clean tree fixes it.
+- **In-flight edits:** none from either stream.
+- **The parallel-agent ledger** lived at `/tmp/agentbox-agents.md` (file
+  ownership, dist rules, who may displace the desktop's one daemon). It is
+  volatile and probably gone; the pattern is recorded in history.md session 37
+  and is worth recreating if two agents ever share this tree again.
+- **Rename fallout still on disk, on purpose** (from session 36):
+  `~/.config/qq`, `~/.local/state/qq`, `~/.cache/qq`, `~/.local/share/qq` are
+  fallback copies (delete after a quiet few days); `~/.local/bin/qq` is a
+  compat symlink to `agentbox`.
+- **How to exercise an MCP tool added this session:** you cannot call
+  `mcp__agentbox__*` for a tool newer than your own `agentbox mcp` child.
+  Speak stdio JSON-RPC to a fresh `agentbox mcp` instead - the recipe is under
+  "Mechanics discovered" in [docs/07-field-requests.md](docs/07-field-requests.md).
+- **The session-34 `-race` flake watch item** did not recur through either
+  stream's gate runs. Keep watching; do not close it yet.
 
 ## Blocked on you (Boris)
 
-Nothing - proceed autonomously after the ledger/git reconciliation above.
-The two session-36 conveniences (fallback dirs, "Claude usage check") remain
-whenever convenient.
+Nothing - proceed autonomously. Two things when convenient:
+
+- **Delete the old-name fallback dirs** once a few quiet days pass:
+  `rm -rf ~/.config/qq ~/.local/state/qq ~/.cache/qq ~/.local/share/qq`
+- **"Claude usage check"** is still ad-hoc. Give it a schedule
+  (`daily 09:00`) or delete it - and note its one run failed on a model usage
+  limit (see "Do this next" 4), not on anything AgentBox did.
 
 ## I can do solo (no input needed)
 
-1. The reconciliation + deploy in "Do this next" (once B has landed).
-2. FR73 (inbox detail reader).
-3. FR65 (open citation in editor).
+1. FR73 (the inbox detail reader).
+2. FR65 (open a citation in the editor).
+3. Retry the "Claude usage check" run and report what it does now.
 
 ## Facts - verified vs assumed
 
-- [verified] FR81 restyle exercised live this session: all six surfaces
-  screenshotted from a demo build (dark; History+Library also light), and
-  populated Library driven by pointer on a state copy - hover reveal,
-  delete-confirm strip, Keep - all behaving.
-- [verified] `make check` green in the isolated worktree (HEAD + FR81 only;
-  564 tests, 21 packages, race on). NOT run over B's combined diff.
-- [verified] `c915fab`'s dist was built from exactly its committed sources
-  (worktree build), and both FR81 commits are on origin.
-- [verified] Deployed daemon answered `1898d37` and `agentbox control state`
-  answered "no run" after the last restore (~11:05).
-- [assumed] Everything about Agent B's stream: their 568-test count, the
-  panel running end to end, their STATUS/08-assignments edits - all from
-  their uncommitted drafts, none independently exercised here.
-- [assumed] Light theme on Inbox, Settings, Session (tokens verified on
-  History and Library only); inbox triage keyboard focus handoff (code
-  untouched, but unexercised since the restyle).
+- [verified] FR81 is live in the DEPLOYED build, not only in a test build: the
+  History surface was opened from the deployed daemon and screenshotted
+  showing Boris's real data (47 interruptions, agents zsh/claude/claude-code/
+  python3) in the new tile grammar, label voice and segmented control.
+- [verified] The FR81 restyle exercised live during session 37: all six
+  surfaces screenshotted from an isolated worktree build (dark; History and
+  Library also in light), and a populated Library driven by pointer against a
+  copy of the real store - hover reveal, delete-confirm strip, Keep.
+- [verified] `make check` green on the FR81 stream in isolation (564 tests, 21
+  packages, race on). The other agent reported 568 tests green over the merged
+  tree.
+- [verified] The failed run `r00e68daef6dc` failed on
+  `You've reached your Fable 5 limit`, and used the panel's stored params
+  (`warn_at: 90`, `window: "7d"`) - which is incidental live evidence that the
+  no-spec params fix works.
+- [verified] `agentbox control state` answers "the desktop is the human's";
+  no control strip is stranded on screen.
+- [assumed] Every claim about the panel's behaviour beyond the run record
+  above - the two-way channel, the daemon poke - is the other agent's
+  verification, read from their commits and STATUS, not re-exercised here.
+- [assumed] Light theme on Inbox, Settings and Session (tokens were verified
+  on History and Library only), and the inbox triage keyboard focus handoff
+  (its code was untouched but unexercised since the restyle).
 - [assumed] The FR74 marker's behaviour over a fullscreen window (unchanged
-  since session 34).
+  since session 34: mechanism proven, the marker window never mapped).
+- [assumed] That `claude --model <id>` accepts whatever id Boris types into an
+  assignment. The flag is still passed through unvalidated.
 
 ## Declutter ledger
 
 | Removed / condensed | Where its knowledge now lives |
 |---|---|
-| Session-36 HANDOFF (rename fallout, queue, mirror race) | history.md "Thirty-sixth session"; mirror race + fallback dirs + usage-check carried above |
-| The panel design brief from the old handoff's item 1 | Superseded by B's implementation; design record in docs/08-assignments.md + their session entry when committed |
-| This session's working notes (audit, recipes) | history.md "Thirty-seventh session"; the recipes are IN the shipped surfaces |
-| Parallel-agent coordination protocol | /tmp/agentbox-agents.md (volatile); pattern recorded in history.md session 37 |
+| Session-36 HANDOFF (rename fallout, queue, mirror race) | history.md "Thirty-sixth session"; the mirror race, fallback dirs and usage-check item are carried above |
+| The custom-panel design brief that was item 1 of the 2026-08-03 handoff | Shipped; the contract is in docs/08-assignments.md + STATUS, the story in history.md "Thirty-eighth session" |
+| This handoff's own earlier draft (written mid-flight, with branch logic for "is the other agent done?") | Resolved: both streams landed, so the branch collapsed to the linear queue above |
+| Session-37 working notes (surface audit, the style recipes) | history.md "Thirty-seventh session"; the recipes are IN the shipped surfaces |
+| The parallel-agent coordination protocol (/tmp ledger, volatile) | history.md "Thirty-seventh session", the two-agent paragraph |
 
 ## Map
 
-1. [docs/STATUS.md](docs/STATUS.md) - current state, queue (B's uncommitted edits pending there at write time).
-2. [docs/history.md](docs/history.md) - "Thirty-seventh session" is this one.
-3. [docs/07-field-requests.md](docs/07-field-requests.md) - FR81 marked shipped; FR73/FR65/FR74 mechanics.
-4. [docs/08-assignments.md](docs/08-assignments.md) - read before touching assignments.
-5. [CLAUDE.md](CLAUDE.md) - the traps; the pkill one has a new costume (history.md, session 37).
-6. `/tmp/agentbox-agents.md` - the parallel-agent ledger (volatile, may be gone after reboot).
+1. [docs/STATUS.md](docs/STATUS.md) - current state, what works, known gaps, the queue.
+2. [docs/history.md](docs/history.md) - session 37 is FR81, session 38 is the panel.
+3. [docs/08-assignments.md](docs/08-assignments.md) - the M12 design, the panel contract; read before touching assignments.
+4. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in commits; FR81/FR82 shipped, FR73/FR65/FR74 mechanics.
+5. [docs/agent-manual.md](docs/agent-manual.md) - the agent-facing reference (`agentbox docs agent` prints it).
+6. [CLAUDE.md](CLAUDE.md) - the traps that have cost sessions; read before touching the build or the daemon.

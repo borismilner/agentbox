@@ -9,6 +9,34 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Thirty-eighth session (2026-08-04): the custom panel runs
+
+M12's last open piece shipped: an assignment's `panel_html` hydrates in the
+artifact sandbox instead of showing a note. The block carries `data-panel`,
+which reroutes its emits away from the waiting-agent path - `emit("params",
+{...})` lands in `SetAssignmentParams`, merged over the stored values so
+unsent keys survive (turning a typed knob now preserves panel-only keys the
+same way), and any other event name is reported in the panel's bar as
+undelivered. Values flow the other way too: `window.agentbox.params` plus an
+`agentbox:params` window event, pushed on load and on every change. A new
+`agentbox:assignments` poke from the daemon after every mutation (save,
+values, enable, delete, run start/finish/skip, whoever asked) replaced the
+surface's 3s poll, which is what lets an agent's `update_assignment` reach a
+panel somebody is looking at. The panel producer joined the no-auto-fetch
+policy sweep and the `{@html}` allowlist; the sandbox itself is unchanged.
+
+One defect fixed on the way in: `launch()` ran a run's values through
+`assign.Merge`, which starts from the spec's defaults and keeps only declared
+keys - with no spec that is an empty map, so every saved value vanished at the
+door while the save path had deliberately kept them. Both paths now use
+`mergeParams`.
+
+Commits `c15fce6`, `bacb64b`, `368ffbf`; 568 tests green. **This entry was
+reconstructed from those commits and STATUS after the fact** (the session that
+wrote them left STATUS naming session 38 but added no entry here), so it
+records what the code says and not what that session saw on screen - the
+panel's live behaviour is theirs, and unverified elsewhere in these docs.
+
 ## Thirty-seventh session (2026-08-04): one visual language (FR81)
 
 FR81's second half shipped: History, Inbox, Library, Settings, Session and
