@@ -219,9 +219,13 @@ func (s *server) announce(ctx context.Context, _ *sdk.CallToolRequest, in announ
 	}
 	s.ensureAttached()
 
+	cwd, _ := os.Getwd()
 	req := proto.SyncAnnounceParams{
 		Identity: s.id, Purpose: in.Purpose, Activity: in.Activity,
-		Area: in.Area, Tags: in.Tags,
+		// The cwd is what the daemon derives the area from when the model names
+		// none, and the announce may well arrive before this session's attach does
+		// (FR90).
+		Cwd: cwd, Area: in.Area, Tags: in.Tags,
 	}
 	// Remembered for replay: a daemon restart must not cost the human the
 	// purpose the model already stated.

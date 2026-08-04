@@ -684,3 +684,69 @@ func TestAPushTheThrottleDroppedStillArrives(t *testing.T) {
 		t.Errorf("the surface never got the dropped activity line, it has %q", got)
 	}
 }
+
+// FR90: an announce that arrives before its session's attach must still land in an
+// area. Found while verifying slice 3 - the signals probe went intermittently red
+// because an announced-but-not-yet-attached session had no area, so its rider
+// cursor was never initialized and its first later call reported the whole area as
+// news. The same hole made it invisible to the peers it exists to be found by.
+func TestAnnounceDerivesItsAreaFromTheCwd(t *testing.T) {
+	d := &Daemon{roster: newRoster(slog.New(slog.NewTextHandler(io.Discard, nil)))}
+	r := d.roster
+	// Both sessions stand in the same directory, so both derive the same area - the
+	// point being that the announce reaches one WITHOUT having to name it.
+	area := DeriveArea("/tmp/x")
+	defer attached(t, r, id("claude", "agentbox", "here"), "/tmp/x", area)()
+
+	// The area as the dispatch supplies it: derived from the cwd because the model
+	// named none, which is the case a hook-driven announce is always in.
+	p := proto.SyncAnnounceParams{Identity: proto.Identity{Agent: "codex",
+		Project: "agentbox", Key: "new", Via: proto.ViaMCP},
+		Purpose: "just arrived", Cwd: "/tmp/x", Area: area}
+	if _, rpcErr := r.Announce(p); rpcErr != nil {
+		t.Fatalf("announce: %s", rpcErr.Message)
+	}
+
+	r.mu.Lock()
+	row := r.rows["new"]
+	got, cwd := row.area, row.cwd
+	r.mu.Unlock()
+	if got == "" {
+		t.Fatal("the announced row has no area, so no area-filtered read can see it")
+	}
+	if cwd != "/tmp/x" {
+		t.Fatalf("the announce's cwd should fill an empty one, got %q", cwd)
+	}
+
+	// The announce's own rider pass moves the cursor and says nothing, because the
+	// announce result already listed the peers. Without an area that pass was a
+	// no-op, and the next call dumped the whole area as news.
+	if line := d.SyncRider(proto.MethodSyncAnnounce, paramsFor(t, p.Identity)); line != "" {
+		t.Fatalf("the announce should say nothing beyond its own result, got %q", line)
+	}
+	if line := d.SyncRider(proto.MethodSyncActivity, paramsFor(t, p.Identity)); line != "" {
+		t.Fatalf("the next call repeated what the announce already showed: %q", line)
+	}
+	// And the session already there is told about the arrival.
+	here := proto.Identity{Agent: "claude", Key: "here", Via: proto.ViaMCP}
+	if line := d.SyncRider(proto.MethodSyncActivity, paramsFor(t, here)); !strings.Contains(line, "codex") {
+		t.Fatalf("the existing session was not told about the arrival: %q", line)
+	}
+}
+
+// An area nobody can determine is not "everybody". Returning the whole machine
+// would tell an agent in one repo to coordinate with agents in another, and
+// returning nothing silently would claim it is alone.
+func TestPeersWithNoAreaAnswersPartialRatherThanEverybody(t *testing.T) {
+	r := newTestRoster()
+	elsewhere := attached(t, r, id("claude", "other", "far"), "/tmp/other", "repo:other")
+	defer elsewhere()
+
+	res := r.peersOf("nobody", "")
+	if len(res.Agents) != 0 {
+		t.Fatalf("an unknown area must not return peers, got %d", len(res.Agents))
+	}
+	if !res.Partial {
+		t.Fatal("an unknown area cannot claim the caller is alone, so the read is partial")
+	}
+}

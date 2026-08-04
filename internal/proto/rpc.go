@@ -243,10 +243,18 @@ type SyncAttachParams struct {
 
 // SyncAnnounceParams states what a session is FOR. Purpose is the mandate;
 // activity is optional here because set_activity carries it from then on.
+//
+// Cwd is here for the same reason the attach carries it: the area is DERIVED from
+// where the caller stands, and an announce can arrive before that session's attach
+// does - a hook announces on a session's behalf before its child has made a single
+// tool call. A row with no area is invisible to every area-filtered read, so
+// leaving it out made a session unfindable by exactly the peers it needed to
+// coordinate with (FR90).
 type SyncAnnounceParams struct {
 	Identity Identity `json:"identity"`
 	Purpose  string   `json:"purpose"`
 	Activity string   `json:"activity,omitempty"`
+	Cwd      string   `json:"cwd,omitempty"`
 	Area     string   `json:"area,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
 }

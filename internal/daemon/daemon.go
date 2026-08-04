@@ -829,6 +829,14 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: `sync_announce wants {"identity": {...}, "purpose": "..."}`}
 		}
+		// Derived here exactly as it is for the attach, and for the same reason: the
+		// area is a fact about where the caller stands, not something a model should
+		// have to state. An announce that arrives before its session's attach - which
+		// is every hook-driven announce - would otherwise create a row with no area,
+		// and an area-filtered read cannot see one of those (FR90).
+		if p.Area == "" {
+			p.Area = DeriveArea(p.Cwd)
+		}
 		return d.roster.Announce(p)
 	case proto.MethodSyncActivity:
 		var p proto.SyncActivityParams

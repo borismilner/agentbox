@@ -464,6 +464,11 @@ func (r *roster) Announce(p proto.SyncAnnounceParams) (proto.SyncResult, *proto.
 	if p.Activity != "" {
 		row.activity, row.activityAt = p.Activity, now
 	}
+	// The cwd only fills a hole: an attached row already has the one its own
+	// connection reported, and that is the more trustworthy of the two.
+	if row.cwd == "" && p.Cwd != "" {
+		row.cwd = p.Cwd
+	}
 	if p.Area != "" {
 		row.area = p.Area
 		row.areaPath = areaPathOf(row.cwd, row.area)
@@ -692,14 +697,25 @@ func (r *roster) SeenUnattached(id proto.Identity) {
 }
 
 // peersOf counts and lists the rows sharing an area, excluding the caller.
+//
+// An empty area is "cannot answer", not "everybody": a caller whose own area is
+// unknown has no peers that can be named honestly, and returning the whole machine
+// would tell an agent in one repo to coordinate with agents in another. It is not
+// "you are alone" either, so the read is marked partial - the same rule absence
+// gets everywhere else (FR61). With the area derived on announce as well as on
+// attach this should no longer happen at all; it is guarded because the version
+// that returned everybody did happen, and quietly.
 func (r *roster) peersOf(key, area string) proto.SyncResult {
 	rows, partial := r.snapshot()
+	if area == "" {
+		return proto.SyncResult{Partial: true}
+	}
 	out := make([]proto.SyncAgent, 0, len(rows))
 	for _, a := range rows {
 		if a.Key == key {
 			continue
 		}
-		if area != "" && a.Area != area {
+		if a.Area != area {
 			continue
 		}
 		out = append(out, a)

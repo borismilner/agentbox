@@ -2157,6 +2157,46 @@ free to fix.
 
 ---
 
+## FR90 [fixed 2026-08-04, session 43] A session that announced before it attached had no area
+
+**Session.** 2026-08-04, session 43, while verifying slice 3. The signals probe
+passed and the *rider* probe - slice 1's, which had passed all day - started
+failing intermittently, differently each time: once "a rider arrived with no
+change in the area", once "the agent was never told a peer joined".
+
+**What was wrong.** An area is derived from where a session stands, and only the
+**attach** carried a cwd. The attach is lazy (it starts on the first tool call), so
+an `announce` can and does arrive first - always, for a hook that announces on a
+session's behalf before its child has made a single call. That created a row with
+no area at all, and three things follow from it, none of them visible on the board:
+
+- **The row is invisible to the peers it exists to be found by.** Every
+  area-filtered read skips a row whose area is empty, so a hook-announced session
+  could sit in the same repo while another session's `announce` answered
+  `alone: true`. That is the one claim the design says must be true when made.
+- **Its rider cursor was never initialized.** `riderFor` returns early on a row with
+  no area, *before* recording what the session has been told, so the announce's
+  cursor-moving pass did nothing and the session's next call reported its whole
+  area as news - a duplicate of what the announce had just shown it.
+- **`peersOf` with an empty area filtered nothing**, so the same call could return
+  every agent on the machine, telling an agent in one repo to coordinate with
+  agents in another.
+
+Latent since slice 1 and only intermittent, because it is a race between the
+announce and the lazy attach. Slice 3 made the attach fractionally slower (it posts
+a presence signal now), which is what turned an occasional flake into one often
+enough to chase.
+
+**Fixed.** `SyncAnnounceParams` carries `Cwd`, both doors send it, and the daemon
+derives the area on announce exactly as it already did on attach. `peersOf` now
+treats an unknown area as "cannot answer" - no peers, `partial: true` - rather than
+as "everybody", because neither an empty list nor a full one is honest there.
+
+**The lesson worth keeping:** the flake was in a probe for a slice that was already
+finished, and the temptation was to read it as noise from another live agent.
+Two consecutive runs failing *differently* is what said otherwise. A probe that
+asserts on real, shared state will occasionally be right when it looks wrong.
+
 ## FR89 [field] A posted item cannot be taken back, or cleared without the mouse
 
 **Session.** 2026-08-04, session 42. Boris, mid-session: "Why do you keep popping

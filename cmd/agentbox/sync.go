@@ -116,7 +116,11 @@ func runSync(args []string) int {
 			fmt.Fprintln(os.Stderr, "agentbox sync announce: wants --key (or AGENTBOX_SESSION_KEY): one session, one key")
 			return exitNo
 		}
-		req := proto.SyncAnnounceParams{Identity: id, Purpose: text, Activity: *activity, Area: *area}
+		// The cwd rides along so the daemon can derive the area: a hook announces
+		// before the session's own child has attached, and a row with no area is
+		// invisible to the peers it exists to be found by (FR90).
+		req := proto.SyncAnnounceParams{Identity: id, Purpose: text, Activity: *activity,
+			Cwd: mustGetwd(), Area: *area}
 		var res proto.SyncResult
 		if code := syncCLICall(proto.MethodSyncAnnounce, &req, &res); code != exitOK {
 			return code
