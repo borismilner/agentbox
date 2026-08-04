@@ -1,7 +1,8 @@
 # Handoff - AgentBox: FR83 slice 3 (signals) is finished; slice 4 (shared values) is last
 
 *Written by session 43, which built signals, found its own gap check was wrong by
-running it, and then found a slice-1 defect hiding behind a flaky probe.*
+running it, found a slice-1 defect hiding behind a flaky probe, and then built FR89
+because Boris asked twice about toasts it kept leaving on his screen.*
 
 **Written:** 2026-08-04 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -10,8 +11,9 @@ running it, and then found a slice-1 defect hiding behind a flaky probe.*
 ```bash
 cd ~/me/projects/agentbox
 git status -sb              # expect clean, in sync with origin/main
-git log --oneline -11       # newest: a4a98c8 18faeae f522217 16a7a8d b653d09 1d6c49e
-make deployed               # 18faeae8c72e or newer, NOT "(dirty)"
+git log --oneline -13       # newest: 49bdd47 a82d5f2 16fe39b a4a98c8 18faeae f522217
+make deployed               # a82d5f267a83 or newer, NOT "(dirty)"
+agentbox pending            # expect "nothing pending" (FR89's read door)
 agentbox sync agents        # the roster, live
 agentbox sync locks         # expect "no locks held"
 tools/sync-probe.py rider   # slice 1's end-to-end check; must print PASS
@@ -100,9 +102,10 @@ Agents surface, the discovery rider, named locks with orphaning and deadlock
 refusal, and now signals - post/await over one global cursor, per-topic retention
 that confesses a gap, and the built-in `agents:<area>`, `to:<key>` and `lock:<name>`
 topics. **Only slice 4 (shared values) is left.** Three defects were fixed on the
-way through this session: the gap check (mine, same day), and FR90 (a slice-1 hole
-where a session that announced before it attached had no area at all). We stopped
-clean: nothing half-applied, `main` pushed, the deployed build equal to the newest
+way through: the gap check (mine, same day), FR90 (a slice-1 hole where a session
+that announced before it attached had no area at all), and FR89 (an item could not
+be retired without the mouse, which is what made a probe's toast a recurring tax).
+We stopped clean: nothing half-applied, `main` pushed, the deployed build equal to the newest
 Go commit.
 
 ## What this session changed, and why it matters
@@ -186,25 +189,28 @@ limit, not a defect).
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `18faeae8c72e`, clean stamp, verified with `make deployed`. HEAD is
-  `a4a98c8` and it is docs only, so a `make deployed` sha older than HEAD is
+- **Deployed:** `a82d5f267a83`, clean stamp, verified with `make deployed`. HEAD is
+  `49bdd47` and it is docs only, so a `make deployed` sha older than HEAD is
   expected - compare against the newest commit that touched Go, not against HEAD.
 - **Git:** clean, `main` pushed to `origin` (GitLab, which push-mirrors to GitHub).
   This session, oldest first: `ec236f1` (store + proto + migration 0008),
   `812434d` (the daemon hub, the listening chip, the built-in topics), `dc9a01b`
   (MCP tools, CLI, both manuals), `1d6c49e` (the gap fix + migration 0009),
   `b653d09` (the board fixture), `16a7a8d` (docs), `f522217` (record-before-delete),
-  `18faeae` (FR90), `a4a98c8` (docs). Plus `2534981` from session 42.
+  `18faeae` (FR90), `a4a98c8` (docs), `16fe39b` (this handoff), `a82d5f2` (FR89:
+  dismiss, retract, pending), `49bdd47` (docs). Plus `2534981` from session 42.
 - **Background jobs: none.** No probe children, no dev daemons, no stray
   `sync attach`; `/tmp/agbgap*` removed. `pgrep -ax agentbox` should show exactly
   the daemon plus one `agentbox mcp` per live session - if a second `agentbox
   daemon` appears, read its `/proc/<pid>/environ` for `AGENTBOX_INSTANCE` before
   touching it. **PRs:** none, ever - Boris pushes `main`.
-- **Two pending items are mine, from the acceptance probes.**
-  `tools/sync-probe.py locks` builds a lock cycle on purpose and a refused deadlock
-  toasts by design, so every run leaves one, and a warning stays pending until it is
-  clicked (FR89). `make deployed` reports "2 pending". If you run that probe, say so
-  before Boris asks.
+- **Nothing pending, and a probe no longer leaves anything.** FR89 shipped at the
+  end of this session because Boris asked twice about the toasts the locks probe kept
+  leaving: `agentbox pending` reads the queue from a terminal, `agentbox dismiss
+  ID... | --all` clears it, the `retract` tool is the agent's own version, and
+  `tools/sync-probe.py` now diffs the queue around its run and dismisses exactly what
+  it caused. If you post something that stops being true, retract it rather than
+  leaving it on his screen - a warning waits until it is CLICKED.
 - **The roster holds only real sessions.** No fixtures left. To put rows back for a
   visual check use `tools/sync-probe.py board` (real sessions, real locks, a real
   parked listener, 150s) rather than hand-rolled fakes.
@@ -239,18 +245,15 @@ which blocks work:
    and the migration pattern already established.
 2. **FR85 with FR86 together** - one identity colour, one project name, pinned by a
    test over a fixed table of identities.
-3. **FR89** - `agentbox dismiss [ID|--all]` plus a retraction for the agent that
-   posted an item. Small, and it is the only reason a probe's toast has to be
-   explained by hand twice a session now.
-4. **The lock chip's duplication** - a blocked row says "blocked: lock X, held by
+3. **The lock chip's duplication** - a blocked row says "blocked: lock X, held by
    Y" in the chip AND "waiting on X for 20s, held by Y" in the line below. Honest,
    but it reads twice. Trim the chip on the surface, not in the daemon (the CLI has
    no second line).
-5. **Two additions signals deliberately left out**, either of which is small: the
+4. **Two additions signals deliberately left out**, either of which is small: the
    row detail could list recent signals posted and received (it needs a bounded
    store read per row, so do it on expand rather than in the snapshot), and a
    listening row could show the wait's own age beside its topics.
-6. **FR84** last of these, mocked before built.
+5. **FR84** last of these, mocked before built.
 
 ## Facts - verified vs assumed
 
@@ -282,6 +285,10 @@ which blocks work:
   both reproduced and captured with `agentbox logs --follow`).
 - [verified] `make check` passes (gofmt, vet, race) with the new tests, and slices 1
   and 2's probes still PASS against this build.
+- [verified] **FR89 works from a terminal, on screen.** A warning posted, its window
+  seen (`agentbox · toast` in `wmctrl -l`), `agentbox dismiss --all` run, the window
+  gone and nothing pending. Then the locks probe run end to end: it reported
+  "dismissed 1 toast(s) this run caused" and left the queue empty.
 - [verified] No em-dashes, curly quotes or filler vocabulary in the lines this
   session added to the docs (checked over `git diff`, not by eye).
 - [assumed] **A Claude session's own `await_signal` parks correctly through a real
@@ -318,7 +325,7 @@ which blocks work:
    complete; read before any sync work, including what building each slice changed.
 2. [docs/STATUS.md](docs/STATUS.md) - current state, what works, known gaps.
 3. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers; FR90 is the
-   newest, FR84/FR85/FR86/FR89 are the open ones.
+   newest and FR89/FR90 are fixed; FR84/FR85/FR86 are the open ones.
 4. [docs/history.md](docs/history.md) - session by session; this session is
    "Forty-third".
 5. [docs/agent-manual.md](docs/agent-manual.md) - the tool reference, now including
