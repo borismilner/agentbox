@@ -256,6 +256,17 @@ rather than planned here; the design and every decision behind it are
 open: the custom HTML parameter panel (stored and editable, not yet run in
 the sandbox).
 
+## M13 - multi-agent sync [DONE 2026-08-04]
+
+Agents that can see, find and wait for each other, plus one surface where the
+human watches all of them (FR83): the roster with purpose and activity, the
+discovery rider, named locks with orphaning, signals with a global cursor, and
+the compare-and-swap blackboard - then the teaching that makes it the default
+rather than an option, which is hooks that put every session on the board with
+no tokens. Born as a field request rather than planned here; the design and
+every decision behind it are [09-sync.md](09-sync.md), the state is STATUS.md.
+Nothing open.
+
 ## Later / parked
 
 Field requests ([07-field-requests.md](07-field-requests.md)) outrank this

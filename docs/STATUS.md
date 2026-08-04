@@ -14,7 +14,7 @@ AgentBox is **deployed and live on this machine**: module
 `~/.config/agentbox/`, state `~/.local/state/agentbox/`, unit `agentbox.service` (enabled,
 active, systemd owns the daemon), MCP server `agentbox` (user scope, tools
 `mcp__agentbox__*`), artifact API `window.agentbox.emit`, wire methods `agentbox.v1.*`.
-Milestones M0 through M12 are done, **M12 (assignments) including its last
+Milestones M0 through M13 are done, **M12 (assignments) including its last
 piece**: the custom HTML panel runs in the artifact sandbox with a two-way
 channel - values out through `emit("params", ...)` into `SetAssignmentParams`,
 values in through `window.agentbox.params` and the `agentbox:params` event, and
@@ -24,161 +24,49 @@ agent's edit lands in a panel somebody is looking at. See
 FR81's visual pass over the remaining surfaces shipped in session 37, so the
 rail speaks one language end to end.
 
-**FR83's first slice is live: agents can see each other**
-([09-sync.md](09-sync.md)). Every session can say what it is for and what it is
-doing, find the peers sharing its repo, and appear on a new **Agents** rail
-surface with a state chip the daemon derives rather than the agent claims. The
-`~/.claude/CLAUDE.md` contract, the embedded manual and the hook recipes shipped
-in the same commit as the tools, so every session on this machine is told to
-announce itself. Two shipped bugs fell out of building it: `Conn.Serve` never
-told a blocking handler its caller had hung up (so FR45's caller-gone indicator
-had never fired), and the identity hue has two disagreeing implementations
-(FR85, deferred).
+**FR83 is complete: agents can see, find and wait for each other**
+([09-sync.md](09-sync.md)). What exists, deployed and verified live:
 
-**Slice 1 is finished, and the surface has now been seen.** Session 41 put four
-real rows on the roster and looked at the board, which found four defects, all
-fixed and re-checked on screen:
+- **Presence and discovery** - every session says what it is for and what it is
+  doing, finds the peers sharing its repo, and appears on the **Agents** rail
+  surface with a state chip the daemon derives rather than the agent claims. When
+  an area gains or loses a peer, one line rides back on the next tool result an
+  agent gets, so an agent deep in a file finds out without asking.
+- **Locks** - named advisory leases keyed to the session key (`acquire_lock`,
+  `try_lock`, `release_lock`, plus `agentbox sync lock|unlock|locks|break`), a
+  dead holder's lease going orphaned with the pid it recorded, deadlock refused by
+  name at acquire time, and Break lock behind a two-step confirm. `make deploy` is
+  the one resource this cannot arbitrate - it stops the daemon the lock lives in -
+  so it takes an flock instead.
+- **Signals** - `post_signal` and `await_signal` over one global cursor, stored so
+  delivery never depends on somebody listening at the time, with per-topic
+  retention that reports a gap rather than serving a batch with a hole in it. The
+  daemon posts `agents:<area>`, `lock:<name>` and `to:<key>` itself, which is how
+  direct messages ride the same rails with no mailbox subsystem.
+- **Shared values** - the compare-and-swap blackboard (`shared`, plus `agentbox
+  sync get|set|del`), where `if_version: 0` claims a key only if nobody holds it
+  yet and an owner whose process died reads as abandoned instead of blocking the
+  table. Nothing here is ever trimmed, deliberately. On the board in a block of
+  its own, abandoned claims sorted to the top.
+- **The teaching**, which is what makes this Boris's mandate rather than an option
+  - hooks in `~/.claude/settings.json` put every session on the board and hand it
+  its peers, with no tokens and no instruction.
 
-- A row never stopped saying `working`. State is derived at push time and every
-  push is caused by a verb, so an idle board froze: it read "3 working" beside
-  ages of 4m53s while the CLI called the same rows `quiet`. The roster ticks
-  itself once a second now, and pushes only when the board would otherwise be
-  wrong.
-- `roster.Flush` had no caller anywhere, though its own comment said the daemon
-  ticked it, so a push dropped inside the 250ms throttle waited for unrelated
-  traffic - over a minute, in the field. The same tick delivers it.
-- A group header was captioned with whichever member came first, which put
-  `LAPTOP-SETUP` over the agentbox path. The caption is the area's own path now,
-  and nothing at all when there is no honest answer.
-- Every hook-created row was named `systemd`, because the prescribed attach is
-  `setsid agentbox sync attach` and setsid reparents to init. Names now walk past
-  shells and wrappers, fall back to `agent`, and are replaced when the session's
-  own child announces. `AGENTBOX_AGENT` skips the guessing.
+The composition is the point, and it works end to end: park on a signal, take a
+lock, claim a chunk, and watch the chain on the board while it happens.
 
-**The discovery rider is built and verified live.** When an agent's area gains or
-loses a peer, one line rides back on the next tool result it gets - naming who
-arrived, their purpose and their state - so an agent deep in a file finds out
-without asking. Each arrival is reported once. `proto.Identity.Via` distinguishes
-an mcp child from a shell, because a session's hooks call the CLI with that
-session's key several times a minute and would otherwise eat every arrival before
-the model saw it.
+Two shipped bugs fell out of building it, both fixed: `Conn.Serve` never told a
+blocking handler its caller had hung up, so **FR45's caller-gone indicator had
+never fired in the field**, and every blocking card was on a 30-minute fuse
+(FR88), found while measuring the client's idle cap for the parked waits. The
+identity hue still has two disagreeing implementations - FR85 with FR86, open.
 
-**Slice 2 is live: agents take turns.** Named advisory leases keyed to the
-session key - `acquire_lock` parks in a FIFO queue, `try_lock` refuses at once,
-`release_lock` hands it on - plus the CLI (`agentbox sync lock|unlock|locks|break`)
-for Makefiles and hooks, the holds and waits on the Agents board, and Break lock
-behind a two-step confirm. Verified against the deployed daemon by two live mcp
-children and looked at on screen. Four things worth knowing:
-
-- **A dead session does not free a live resource.** Its hold goes orphaned with
-  the pid it recorded, and the next agent waits until that process is gone too.
-  The board shows it as `LOCKS WITH NO LIVE HOLDER`, with "its pid N is still
-  alive, so nobody gets this until it exits" - which is the only case where Break
-  lock is the right button.
-- **A deadlock is refused by name** at acquire time ("you asked for
-  probe:repo, held by codex; codex waits on probe:deploy, held by you") and toasts
-  the human. The two edges that cannot be refused - a holder parked on a question,
-  a holder driving the desktop - warn instead.
-- **`make deploy` could not use a sync lock.** It stops the daemon halfway, so a
-  hold in the daemon's memory vanishes mid-install. It takes an flock instead; the
-  one resource this daemon cannot arbitrate is the daemon.
-- **Every blocking card was on a 30-minute fuse** (FR88), found while measuring
-  the client's idle cap for the parked waits. Claude Code aborts a tool call
-  silent for 1800s and nothing in the child ever spoke, so a card answered at
-  minute 40 replied to a caller that was already gone. Fixed with a keep-alive
-  ticker over every tool call. The last guessed number in the design is now
-  measured: `tools/idlecap-probe.sh`.
-
-**Slice 3 is live: agents wake each other.** `post_signal` and `await_signal`
-(plus `agentbox sync post|await`), one global sequence as the only cursor, and
-retention per topic and by age. A signal is stored, so it is delivered whether or
-not anybody was listening: a peer that was busy picks it up later by cursor, and a
-daemon restart loses nothing inside the window. `await_signal` returns everything
-matching since the cursor in ONE batch, so three events that fired while an agent
-was editing arrive together. Three topics the daemon posts itself -
-`agents:<area>` on a join, announce or departure, `lock:<name>` when a lock
-changes hands, and `to:<key>` for a message addressed to one session, which is how
-direct messages ride the same rails with no mailbox subsystem. The composition is
-the point: `await_signal(["tests:green"])` then `acquire_lock("deploy:agentbox")`
-replaces a poll loop that spent a model turn per look. Three things worth knowing:
-
-- **The gap check as designed was wrong, and only running it showed that.** "A
-  cursor has fallen off the edge if it is below the oldest surviving sequence" is
-  false for per-topic retention: one quiet topic's ancient row holds the global
-  minimum down while the awaited topic is trimmed away underneath. Measured live
-  with `signal_keep = 1` - a batch with two sequences missing came back reported as
-  complete. Migration 0009 records what retention took, per topic, so a stale
-  cursor is told (`gap: true`, plus the sequence a whole read starts from). Per
-  topic and not globally, because `agents:<area>` is the chattiest topic here and a
-  global watermark would cry gap at every unrelated read.
-- **The `listening` chip finally has something behind it.** It had been on the
-  surface since slice 1's mock with no daemon ever setting it. It sits below
-  `blocked` deliberately - blocked is contention, listening is the feature working
-  - and a listening row holds its state instead of decaying to `quiet`, so a parked
-  agent does not look like a hung one. Photographed beside a row that had decayed.
-- **A lock keeps two paths on purpose.** "The human broke your lock" still rides
-  the discovery rider, because it is owed to the ex-holder personally; `lock:<name>`
-  is for whoever is watching that lock and would rather be told it freed than park
-  in `acquire_lock` again.
-
-**A slice-1 defect surfaced while verifying slice 3** (FR90, fixed): only the
-attach carried a cwd, and the attach is lazy, so an `announce` arriving first left
-a row with **no area** - invisible to every area-filtered read, so another
-session's `announce` could answer `alone: true` with a peer sitting in the same
-repo. Its rider cursor was never initialized either, and `peersOf` with an empty
-area returned every agent on the machine. The announce carries its cwd now, and an
-unknown area answers "cannot say" rather than "everybody".
-
-**FR89 is fixed** (session 43, after Boris asked a second time): `agentbox dismiss
-ID... | --all` for the human, the `retract` tool for an agent (its own items only),
-and `agentbox pending` to read the ids from a terminal. Items had four doors in and
-none out, so a warning waited until it was clicked and came back after every daemon
-restart. `tools/sync-probe.py` now clears the toasts its own run caused, which is
-what made this a recurring tax rather than a one-off.
-
-**Slice 4 is live: agents split work nobody doubles.** One `shared` tool with
-`op: get | set | delete` (plus `agentbox sync get|set|del`), migrations 0010 and
-0011, and `shared_max_bytes` in `[sync]`. A lock says whose turn it is and a
-signal says something happened; only this can say chunk 7 is mine. `if_version` is
-compare-and-swap and 0 is a real value: versions start at 1, so 0 means "only if
-this key does not exist" - ten workers over ten `claims/<chunk>` keys means
-first-writer-wins per item, no lock and no retry loop. A refusal carries the
-current value, version and owner, so a loser decides without a second call. Every
-write posts `shared:<key>`, so waiting on a value is
-`await_signal(["shared:claims/*"])` and there is still exactly one wake mechanism.
-Four things worth knowing:
-
-- **Ownership was checked against the roster alone, and the probe caught it.** The
-  roster is memory only, so a daemon restart empties it - and for the second every
-  mcp child takes to redial, EVERY owned claim read as abandoned, which invites a
-  peer to take over a chunk somebody is writing. Migration 0009's lesson a third
-  time: "gone" cannot be told from "not here yet" by looking at what is left.
-  Migration 0011 records the owning process, and a read answers in two steps - on
-  the roster means alive, otherwise the pid decides. Verified across a real
-  `systemctl --user restart`: live owners still live, the dead one still dead.
-- **Nothing here is ever trimmed**, which is the deliberate opposite of signals.
-  Retention exists because events are history; a claim is not, and dropping one
-  hands a chunk to two agents. Values leave when an agent deletes them, and a full
-  table refuses a NEW key rather than evicting somebody's claim.
-- **Every CAS is one SQL statement.** Read-then-write would have been atomic only
-  because the daemon is one process today - the kind of true a dev instance breaks
-  silently. `RETURNING` is what turns SQL's silence about a losing write into an
-  answer.
-- **A `get` on a key ending in `*` reads the family**, which is not in the design
-  and is what makes one-key-per-item usable: a ten-chunk table is one read.
-
-**The blackboard is on the Agents surface**, in a block of its own beside the lock
-table: global state rather than per-agent state, abandoned claims sorted to the top,
-and the abandoned count in the heading in the warning colour so a glance answers "is
-anything stuck?". Photographed with all three cases at once - two live claims, one
-abandoned by a process that really died, and an unowned counter. Looking at it
-turned up two things the diff did not: the key and value were touching, and an empty
-roster hid the blackboard and the orphaned locks behind "No agents attached", which
-is the state where leftover coordination state matters most.
-
-**Nothing remains of FR83.** Slice 5's hooks are installed in
-`~/.claude/settings.json`, so a session shows up on the board with no tokens and no
-instruction, and its SessionStart stdout tells it who else is in its area.
+**Each slice is worth reading about rather than summarised here**, because all five
+found something the design had wrong and every one was found by running the thing
+rather than by reading the diff. Each slice's record in
+[09-sync.md](09-sync.md) says what building it changed - including the un-shareable
+minted session key that four sessions missed by reading the hook recipe instead of
+installing it. Sessions 40 to 45 in [history.md](history.md) say what each cost.
 
 What else remains is the showcase re-record (decided, not yet scheduled) and the
 verification and refinement queue.
@@ -191,7 +79,7 @@ The resume brief with live state and exact commands is [../HANDOFF.md](../HANDOF
 
 AgentBox is not only a repo. `~/.local/bin/agentbox` holds the current build, and it is
 registered as a **user-scope** MCP server named `agentbox` in `~/.claude.json`, so
-all 30 tools are available in every Claude Code session in every project -
+all 39 tools are available in every Claude Code session in every project -
 not just in this one. Sessions that were running at the rename hold dead
 tools from the old registration and must restart. `~/.claude/CLAUDE.md`
 carries an AgentBox section telling an agent what the tools are for and when an
@@ -222,8 +110,8 @@ still on disk as a fallback; delete them once a few quiet days pass.
   authoritative in handleSubmit so it fires even while away/DND; daemon
   fills `[veto] default_window_s` (15) when the caller omits `--in`.
 - Agent integration (M4): `agentbox mcp` is an MCP stdio server (official
-  modelcontextprotocol/go-sdk v1.6.1) exposing 30 tools (the seven
-  assignment tools included since M12); each proxies to
+  modelcontextprotocol/go-sdk v1.6.1) exposing 39 tools (the seven
+  assignment tools since M12, the six sync tools since FR83); each proxies to
   the daemon over the socket (auto-spawn). `agentbox docs` / `docs agent` /
   `docs setup` serve the embedded manual; `agentbox schema` prints the wire JSON
   Schema. Recipes in docs/recipes.md.
@@ -652,9 +540,10 @@ agentbox webui-demo panel                  # the drop-down console with a canned
 ## Tests
 
 `make check` = gofmt + vet + `go test ./... -race`; **21 packages** (incl.
-`internal/hand`, `internal/session`, `internal/webui`, `internal/speech` and
-`frontend`), **568 tests**, all green as of the custom panel (session 38;
-the count is `grep -c "^func Test"` top-level tests, 2026-08-04). There is no
+`internal/hand`, `internal/session`, `internal/webui` and
+`internal/speech`), **685 tests**, all green as of FR83's last slice (session 45;
+the count is `grep -rh "^func Test"` top-level Go tests, 2026-08-04). The
+frontend has no test runner in the suite - `make check` is Go only. There is no
 automated *visual* check (see "Known gaps"); what a surface is *allowed to
 do* is tested, and so is the HTML Go hands it.
 

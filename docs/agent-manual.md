@@ -145,8 +145,15 @@ your tools or a restatement of your prompt.
   otherwise; `set_activity` is the per-step verb.
 
 You do not have to announce to be visible - the daemon registers what your child
-knows for free, so a silent session still appears. It appears dim and nameless,
-which tells the human nothing, which is the whole reason to announce.
+knows for free, so a silent session still appears. What it cannot know is why you
+exist, which is the whole reason to announce.
+
+Where the hooks in [recipes.md](recipes.md) are installed, your row is already there
+before your first tool call, wearing a placeholder purpose (`<dir> session (purpose
+not yet stated)`) that is deliberately worded as unfinished - a hook cannot know
+what you are for, and a confident guess would read as your own answer. Announce to
+replace it. Seeing a row that looks like yours is not a reason to skip announcing:
+after a `/clear` your own child keeps the previous conversation's purpose.
 
 ### list_agents  (non-blocking)
 The live roster: every session the daemon can see, with identity, purpose,

@@ -1922,7 +1922,7 @@ that always works by design. Concurrency is still one run per assignment.
 
 ---
 
-## FR83 [field] Agents that can see, find and wait for each other
+## FR83 [shipped 2026-08-04, sessions 40 to 45] Agents that can see, find and wait for each other
 
 **The design is [09-sync.md](09-sync.md).** This entry is the field case; that
 document is the feature, and it has already taken one adversarial review.
@@ -2030,8 +2030,12 @@ The Agents surface shows all four: rows with their purpose and activity, the loc
 table with its orphans, listening chips, and the blackboard in a block of its own
 with abandoned claims at the top.
 
-Still to build from the design: the teaching half of slice 5. See the slice list in
-09-sync.md.
+**And the teaching, slice 5, which is what makes it Boris's mandate rather than an
+option**: hooks in `~/.claude/settings.json` put every session on the board and tell
+it who its peers are, with no tokens and no instruction. Installing them found the
+recipe could not work as written, so the session key is derived from the agent
+process instead of minted - see "Identity: the session key" in 09-sync.md. Nothing
+of FR83 is left to build.
 
 Two things this work turned up that were nothing to do with sync, both recorded
 in [history.md](history.md) session 40: `Conn.Serve` never told a blocking

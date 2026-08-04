@@ -182,8 +182,11 @@ anything else. The human watches a live Agents board of every session; your
 purpose is the headline of your row, so write the line they would recognise
 ("porting the settings surface to the new theme"), not a summary of your tools.
 Call it again if the mission changes. A session that never announces still shows
-up - the daemon registers what your child knows - but it shows up dim and
-nameless, which tells the human nothing.
+up - the daemon registers what your child knows, and where the hook recipes are
+installed a SessionStart hook has already put your row there wearing a placeholder
+purpose - but neither can know what you are FOR, which is the one thing the row is
+for. Announce even if a row already looks like yours: after a `/clear` your own
+child still carries the previous conversation's purpose.
 
 **Keep the activity line current.** `set_activity("running make check")` as the
 work moves on. It is cheap, non-blocking, and it is the difference between "that

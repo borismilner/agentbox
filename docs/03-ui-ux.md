@@ -1,7 +1,14 @@
 # UI / UX
 
-Four surfaces plus a tray menu: the toast (glanceable), the card (the
-product), the inbox (support), the viewer (reading).
+The item surfaces plus a tray menu: the toast (glanceable), the card (the
+product), the inbox (support), the viewer (reading). This document is those four
+and the language they share - focus policy, keyboard map, motion, sound, states.
+
+The app window's own surfaces are each documented where their feature is, because
+each was designed with it rather than here: the **Agents** board in
+[09-sync.md](09-sync.md), the **assignments** surface in
+[08-assignments.md](08-assignments.md), and the **review board** and walkthrough
+library under FR58/FR59/FR61 in [07-field-requests.md](07-field-requests.md).
 
 ## Toast
 
