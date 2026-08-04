@@ -253,17 +253,23 @@ func (s *Store) TrimTopic(topic string, keepPerTopic int) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("trim topic %s: %w", topic, err)
 	}
+	// The watermark is written BEFORE the delete, and the order is the whole
+	// safety argument. These are two statements with no transaction around them, so
+	// a process that dies between them leaves one of two states: a watermark for
+	// signals that are still present (a reader is told about a gap that is not
+	// there - it re-reads, costing a call), or signals deleted with nothing
+	// recording it (a reader is served a hole and told nothing, which is the
+	// failure this whole mechanism exists to prevent). Only one of those is
+	// survivable, so the record goes first.
+	if err := s.recordTrim(topic, boundary.Int64); err != nil {
+		return 0, err
+	}
 	res, err := s.db.Exec(`DELETE FROM sync_signals WHERE topic = ? AND seq <= ?`,
 		topic, boundary.Int64)
 	if err != nil {
 		return 0, fmt.Errorf("trim topic %s: %w", topic, err)
 	}
 	n, _ := res.RowsAffected()
-	if n > 0 {
-		if err := s.recordTrim(topic, boundary.Int64); err != nil {
-			return int(n), err
-		}
-	}
 	return int(n), nil
 }
 
@@ -285,17 +291,19 @@ func (s *Store) TrimSignals(keepPerTopic int, maxAge time.Duration) (int, error)
 		if err != nil {
 			return trimmed, err
 		}
+		// Recorded before the delete, for the reason TrimTopic spells out: a crash
+		// in between must leave a gap over-reported rather than unreported.
+		for topic, hw := range marks {
+			if err := s.recordTrim(topic, hw); err != nil {
+				return trimmed, err
+			}
+		}
 		res, err := s.db.Exec(`DELETE FROM sync_signals WHERE at_ms < ?`, cutoff)
 		if err != nil {
 			return trimmed, fmt.Errorf("trim signals by age: %w", err)
 		}
 		n, _ := res.RowsAffected()
 		trimmed += int(n)
-		for topic, hw := range marks {
-			if err := s.recordTrim(topic, hw); err != nil {
-				return trimmed, err
-			}
-		}
 	}
 	if keepPerTopic <= 0 {
 		return trimmed, nil

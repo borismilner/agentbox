@@ -329,3 +329,30 @@ func TestSignalGapSurvivesATopicTrimmedToNothing(t *testing.T) {
 		t.Fatalf("a prefix pattern should match the trim record, got %d %v", trimmedTo, err)
 	}
 }
+
+// The watermark must be recorded before the rows go, so that a process dying
+// between the two over-reports a gap rather than hiding one. A reader told about a
+// gap that is not there re-reads and pays a call; a reader served a hole and told
+// nothing acts on a false history.
+func TestTrimRecordsTheWatermarkBeforeDeleting(t *testing.T) {
+	st := newSignalStore(t)
+	post(t, st, "anchor", "")
+	post(t, st, "t", "") // seq 2
+	post(t, st, "t", "") // seq 3
+
+	// A recordTrim that cannot write must abort the trim rather than delete first
+	// and lose the record. Forced by dropping the table the record goes into.
+	if _, err := st.db.Exec(`DROP TABLE sync_signal_trim`); err != nil {
+		t.Fatalf("drop: %v", err)
+	}
+	if _, err := st.TrimTopic("t", 1); err == nil {
+		t.Fatal("a trim whose record cannot be written must fail")
+	}
+	got, _, err := st.SignalsSince(0, []string{"t"}, 0)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("nothing may be deleted when the watermark could not be recorded, got %d", len(got))
+	}
+}
