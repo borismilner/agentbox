@@ -45,24 +45,7 @@ The roster is only as truthful as the agents on it, and a model that forgets to
 that gap: they are shell, so they cost no tokens and they run whether the model
 remembers anything or not.
 
-`AGENTBOX_SESSION_KEY` is what ties a hook to the session it belongs to. Set it
-once, in the same environment the agent runs in, and every `agentbox sync` call
-below acts on behalf of that session:
-
-```sh
-export AGENTBOX_SESSION_KEY="$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-export AGENTBOX_AGENT=claude   # optional, and worth it: see below
-```
-
-`AGENTBOX_AGENT` is who the row says is calling. Without it the name is worked out
-from the process tree, which is usually right and is occasionally embarrassing: a
-hook runs as claude -> sh -> agentbox, and anything wrapped in `setsid` has been
-reparented to init, so the tree says nothing. The walk skips shells and wrappers
-and falls back to `agent` rather than naming one of them, and a row wearing that
-placeholder is renamed the moment the session's own child announces. Setting the
-variable skips all of that guessing.
-
-Then in `~/.claude/settings.json`:
+Nothing to export: paste this into `~/.claude/settings.json` and you are done.
 
 ```json
 {
@@ -82,6 +65,45 @@ Then in `~/.claude/settings.json`:
   }
 }
 ```
+
+### Why there is no key in that snippet
+
+A hook has to write the row belonging to the session that ran it. Write a
+different row and the board shows one session twice, which is worse than showing
+it once badly: two half-stale rows read as two agents, and the whole point of the
+surface is knowing how many there are.
+
+So the session key cannot be a secret either side invents. `agentbox sync` works
+out which session it belongs to by walking up its own process tree to the agent
+that runs it - past the shell Claude Code ran the hook through - and names the
+session after that process. The model's own mcp child is a child of the same
+process, so both arrive at the same name without either being told it. `sync
+locks` shows it as `proc-<pid>-<starttime>`, which `ps` can check.
+
+Two earlier ideas that do not work, recorded because they look right:
+
+- **Exporting a random `AGENTBOX_SESSION_KEY`**, which is what this page used to
+  say. There is no moment to export it in: hooks run inside an environment Claude
+  Code has already built, so a key exported anywhere a user can reach it is either
+  too late or shared by every session on the machine.
+- **Using Claude's own session id.** The mcp child keeps the id it was spawned
+  with, and `/clear` gives the session a new one - so after a `/clear` the hook and
+  the child would disagree, which is the exact failure being avoided.
+
+`AGENTBOX_SESSION_KEY` still wins when it is set, for a non-Claude agent or a
+harness that would rather say than be inferred.
+
+### Naming the agent
+
+`AGENTBOX_AGENT` is who the row says is calling, and it is worth setting for
+anything that is not Claude Code. Without it the name comes off the same walk,
+which is usually right and is occasionally embarrassing: `setsid` reparents to
+init, so the tree says nothing. The walk skips shells, wrappers and terminals and
+falls back to `agent` rather than naming one of them, and a row wearing that
+placeholder is renamed the moment the session's own child announces.
+
+Under Claude Code the walk finds `claude` on its own, which is why the snippet
+above sets nothing.
 
 What that buys, in order of how much it matters:
 

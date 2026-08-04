@@ -201,22 +201,19 @@ func identityFlags(fs *flag.FlagSet) *proto.Identity {
 	fs.StringVar(&id.Session, "session", "", "agent session id")
 	// A CLI call is not a session and has no key of its own (FR83). It can act
 	// on behalf of one, which is what a hook script wrapping an agent's work
-	// does; AGENTBOX_SESSION_KEY is the default so a script inherits it without
-	// every recipe having to pass a flag.
-	fs.StringVar(&id.Key, "key", os.Getenv("AGENTBOX_SESSION_KEY"), "session key to act on behalf of")
+	// does; the default works that out from the environment and the process tree
+	// so no recipe has to pass a flag. See inheritedSessionKey.
+	fs.StringVar(&id.Key, "key", inheritedSessionKey(), "session key to act on behalf of")
 	return id
 }
 
 // sessionKey is the identity of one session (FR83). AgentBox's own session tab
 // already hands the child an id, and reusing it keeps one name for one session
-// across both doors; otherwise the child mints a key nobody else can guess and
-// nothing outside this process needs to.
+// across both doors; failing that the session is named after the process that
+// runs it, and only failing THAT does the child mint a key nobody else can guess.
 func sessionKey() string {
-	if k := os.Getenv("AGENTBOX_SESSION_KEY"); k != "" {
+	if k := inheritedSessionKey(); k != "" {
 		return k
-	}
-	if s := os.Getenv("AGENTBOX_SESSION_ID"); s != "" {
-		return s
 	}
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -225,6 +222,51 @@ func sessionKey() string {
 		binary.BigEndian.PutUint64(b[:], uint64(time.Now().UnixNano()))
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// inheritedSessionKey is the key of the session this process belongs to, or ""
+// if it belongs to none. It is what a hook needs and what a random key cannot be:
+// the hook and the model's own mcp child have to arrive at the SAME answer or the
+// board shows one session as two rows, and neither can pass the other a secret.
+//
+// So the answer is a fact both can look up - the agent process (see
+// agentProcess) - rather than something either one invents. The recipe used to
+// say "export a random key", which cannot work: a hook runs inside an
+// environment Claude Code has already built, so there is no moment left in which
+// to export anything. Claude's own session id cannot bridge them either, because
+// the mcp child keeps the id it was spawned with while a /clear gives the session
+// a new one.
+//
+// Unlike sessionKey this can come back empty, and the difference matters: a CLI
+// call that belongs to no session must say so and be refused, where minting a
+// random key would put a phantom row on the board for one invocation.
+func inheritedSessionKey() string {
+	if k := os.Getenv("AGENTBOX_SESSION_KEY"); k != "" {
+		return k
+	}
+	if s := os.Getenv("AGENTBOX_SESSION_ID"); s != "" {
+		return s
+	}
+	if pid, _, ok := agentProcess(); ok {
+		if key, err := procSessionKeyFor(pid); err == nil {
+			return key
+		}
+	}
+	return ""
+}
+
+// procSessionKeyFor names a session after the process that runs it.
+//
+// Readable on purpose: this key shows up in the daemon's log and in `sync locks`,
+// and "proc-361992-..." is a thing a human can check with ps where eight random
+// bytes are a thing they can only compare. The start time rides along because
+// pids are recycled - see procStartTime.
+func procSessionKeyFor(pid int) (string, error) {
+	start, err := procStartTime(pid)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("proc-%d-%d", pid, start), nil
 }
 
 func mustGetwd() string {
@@ -249,23 +291,47 @@ func agentName() string {
 	if v := strings.TrimSpace(os.Getenv("AGENTBOX_AGENT")); v != "" {
 		return v
 	}
+	if _, comm, ok := agentProcess(); ok {
+		return comm
+	}
+	return "agent"
+}
+
+// agentProcess is the process the caller belongs to: the nearest ancestor whose
+// name is an agent rather than a shell, a wrapper or a terminal.
+//
+// Both doors into one session land on the same process, which is the whole point.
+// An mcp child's parent IS the agent, and it already reports that pid as its own
+// (internal/mcp/sync.go). A hook reaches the same pid by stepping over the shell
+// that ran it. So the two can agree on who they are without either being told.
+//
+// It answers false rather than guessing when the walk finds nothing: under setsid
+// the tree is cut at init, and a caller with no agent above it is a caller that
+// belongs to no session.
+func agentProcess() (pid int, comm string, ok bool) {
+	return agentProcessFrom(os.Getppid())
+}
+
+// agentProcessFrom is agentProcess's walk, from a given starting pid so a test
+// can run it over a tree it built rather than over its own.
+func agentProcessFrom(from int) (pid int, comm string, ok bool) {
 	// Bounded, because a walk up /proc is a loop over data the kernel can change
 	// underneath it, and no real tree is this deep.
-	pid := os.Getppid()
+	pid = from
 	for range 12 {
 		if pid <= 1 {
-			break
+			return 0, "", false
 		}
-		comm, ppid, err := procParent(pid)
+		name, ppid, err := procParent(pid)
 		if err != nil {
-			break
+			return 0, "", false
 		}
-		if !proto.PlaceholderAgent(comm) {
-			return comm
+		if !proto.PlaceholderAgent(name) {
+			return pid, name, true
 		}
 		pid = ppid
 	}
-	return "agent"
+	return 0, "", false
 }
 
 // procParent is one step up the tree: this pid's name and its parent's pid.
@@ -276,25 +342,46 @@ func procParent(pid int) (comm string, ppid int, err error) {
 	}
 	// The name is read from comm rather than from stat, whose own comm field is
 	// parenthesised and may itself contain parentheses or spaces.
-	st, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	p, err := procStatField(pid, 4) // ppid
 	if err != nil {
 		return "", 0, err
 	}
-	// PPid is field 4, and fields 1-2 are the pid and the parenthesised name, so
-	// count from the LAST close paren rather than splitting the whole line.
+	return strings.TrimSpace(string(c)), p, nil
+}
+
+// procStartTime is the boot-clock tick a process started on. It is what makes a
+// pid safe to name a session after: pids are recycled, and without the start time
+// a new process landing on a dead agent's number would inherit its locks and its
+// claims.
+func procStartTime(pid int) (int64, error) {
+	v, err := procStatField(pid, 22) // starttime
+	if err != nil {
+		return 0, err
+	}
+	return int64(v), nil
+}
+
+// procStatField reads one numeric field of /proc/PID/stat by its documented
+// 1-based number (proc(5)).
+//
+// Fields 1 and 2 are the pid and the parenthesised name, and that name may itself
+// contain parentheses or spaces - so the line is cut at its LAST close paren and
+// counted from there rather than split whole.
+func procStatField(pid, field int) (int, error) {
+	st, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0, err
+	}
 	rest := string(st)
 	if i := strings.LastIndex(rest, ")"); i >= 0 {
 		rest = rest[i+1:]
 	}
 	f := strings.Fields(rest)
-	if len(f) < 2 {
-		return "", 0, fmt.Errorf("unreadable stat for %d", pid)
+	i := field - 3 // f[0] is field 3, the state
+	if i < 0 || i >= len(f) {
+		return 0, fmt.Errorf("unreadable stat for %d: no field %d", pid, field)
 	}
-	p, err := strconv.Atoi(f[1])
-	if err != nil {
-		return "", 0, err
-	}
-	return strings.TrimSpace(string(c)), p, nil
+	return strconv.Atoi(f[i])
 }
 
 type multiFlag []string
@@ -1826,6 +1913,24 @@ func printSetup() {
     ],
     "Stop": [
       {"hooks": [{"type": "command", "command": "` + exe + ` notify --level success --title \"Agent finished\""}]}
+    ]
+  }
+}`)
+	fmt.Println()
+	// The roster is only as truthful as the agents on it, and these cost no tokens
+	// because they never go through the model (FR83). No session key to set: the
+	// call finds the session it belongs to by itself - see docs/recipes.md.
+	fmt.Println("# Put every session on the Agents board, with no tokens spent (~/.claude/settings.json):")
+	fmt.Println(`{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "` + exe + ` sync announce \"$(basename \"$PWD\") session (purpose not yet stated)\""}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Edit|Write|NotebookEdit",
+       "hooks": [{"type": "command", "command": "` + exe + ` sync activity \"editing $(jq -r '.tool_input.file_path // \"a file\"')\""}]},
+      {"matcher": "Bash",
+       "hooks": [{"type": "command", "command": "` + exe + ` sync activity \"$(jq -r '.tool_input.command // \"running a command\"' | cut -c1-70)\""}]}
     ]
   }
 }`)

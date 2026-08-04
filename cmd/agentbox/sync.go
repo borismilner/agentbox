@@ -24,8 +24,10 @@ import (
 // aspirational.
 //
 // A CLI call is not itself a session and has no key of its own. It acts on
-// behalf of one with --key, defaulting to AGENTBOX_SESSION_KEY so a hook script
-// inherits it without every recipe repeating the flag.
+// behalf of one with --key, whose default is worked out from the environment and
+// then from the process tree (inheritedSessionKey) - so a hook acts for the
+// session that ran it, writing that session's OWN row rather than a second one
+// beside it, and no recipe has to repeat the flag.
 
 func syncUsage() {
 	fmt.Fprintln(os.Stderr, "usage: agentbox sync announce PURPOSE [--area A] [--activity LINE]")
@@ -44,7 +46,8 @@ func syncUsage() {
 	fmt.Fprintln(os.Stderr, "       agentbox sync del KEY [--if-version N]")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Who else is here, what they are for, and what they are doing right now.")
-	fmt.Fprintln(os.Stderr, "Every call acts on behalf of a session: --key, or AGENTBOX_SESSION_KEY.")
+	fmt.Fprintln(os.Stderr, "Every call acts on behalf of a session. Run from an agent's hook it finds")
+	fmt.Fprintln(os.Stderr, "that session by itself; otherwise say which with --key or AGENTBOX_SESSION_KEY.")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "A wrapped lock releases on ANY exit, signals included. If the shell that")
 	fmt.Fprintln(os.Stderr, "ran it is killed (an agent's foreground call dies at 120s), the hold is")
@@ -92,7 +95,7 @@ func runSync(args []string) int {
 	project := fs.String("project", "", "filter by project")
 	activity := fs.String("activity", "", "current activity (announce only)")
 	asJSON := fs.Bool("json", false, "machine-readable output")
-	key := fs.String("key", os.Getenv("AGENTBOX_SESSION_KEY"), "session key to act on behalf of")
+	key := fs.String("key", inheritedSessionKey(), "session key to act on behalf of")
 	timeout := fs.Int("timeout", 0, "seconds to wait for a lock; 0 waits as long as the daemon allows")
 	ttl := fs.Int("ttl", 0, "seconds a detached hold lives without a wrapped command")
 	note := fs.String("note", "", "what the lock is being held for")
