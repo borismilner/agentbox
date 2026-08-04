@@ -2003,9 +2003,78 @@ whether the other one is still alive.
 - A **session key** on `proto.Identity`, which is the prerequisite for all of
   it and fixes FR74's ownership check on the way past.
 
-**Not started.** Awaiting Boris's triage, the surface mock
-(`agentbox webui-demo agents` over canned roster data, per the working rule at
-the top of this file) and a throwaway CLI spike driven by two real sessions.
+**Triaged 2026-08-04**, all three open questions answered in the design's
+favour; the answers and the one sharpening they gained are at the foot of
+[09-sync.md](09-sync.md). Next: the surface mock (`agentbox webui-demo agents`
+over canned roster data, per the working rule at the top of this file) and a
+throwaway CLI spike driven by two real sessions.
+
+---
+
+## FR84 [field] A form's choice options are cut off mid-word
+
+**Session.** 2026-08-04, FR83 triage. The three design questions went to Boris
+as one `ask_user_form` card, each a choice field whose options were
+sentence-length ("As designed: sync verbs refuse, reads and presence never").
+
+**What was missing.** Observed on screen: every choice control clipped its
+label mid-word at about 38 characters, with no wrap, no widening and no
+tooltip, so the three options of a field were indistinguishable from each
+other by their visible text. The fields also sat below the fold of a scrolling
+body, so the card opened showing prose and no controls.
+
+**What was done instead.** The card was answerable only because the body above
+spelled every option out in prose and the recommended one arrived preselected,
+so Boris could submit without reading the controls at all. A form whose
+options were not explained in its own body would have been unanswerable, and
+that is the shape most forms will have.
+
+**Proposed shape.** Undecided on purpose, and it gets a mock like everything
+else here. The candidates: wrap an option to two lines; switch a choice field
+from a select to a radio list once any label passes a length threshold, which
+also puts every option on screen at once; at minimum carry the full text in a
+`title` so hovering says what the control cannot. Boris's own framing, sent
+with the screenshot: *"we'll have to think of a better visual approach"*.
+
+**Deferred by Boris the same day**, explicitly until FR83 is finished. Recorded
+now so it survives the session that found it.
+
+---
+
+## FR85 [field] One agent, two different identity colours
+
+**Session.** 2026-08-04, while building FR83's Agents surface, which needs an
+agent to be recognisable by colour across surfaces.
+
+**What is wrong.** There are two implementations of the identity hue and they
+disagree. `IdentityHue` in `internal/webui/tokens.go` hashes
+`agent + " " + project` with FNV-1a; `identityHue` in
+`frontend/src/lib/tokens.js` hashes `agent + "\0" + project`. Same stop table,
+same hash, different separator, so the same agent lands on different stops.
+Computed, not guessed: `claude-code`/`agentbox` is 205 in Go and 300 in JS, and
+four of five sampled identities differ.
+
+The Go value paints Home's rows, the inbox rows, the progress rows and the
+session list. The JS value paints `IdentityPill`, which is what cards, toasts
+and the session header wear. So the colour whose whole job is to say "this is
+the same agent" says the opposite between a card and the inbox row for that
+same item.
+
+**Why it survived.** The separator in the JS file is a **literal NUL byte** in
+the template literal, which makes `grep` and `rg` classify `tokens.js` as a
+binary file and skip it without printing a warning that reads as one. Every
+search for `identityHue` across the frontend comes back empty, so the second
+implementation is effectively invisible to the tools a session uses to find it.
+
+**Proposed shape.** One separator, asserted in one place: pick the Go value
+(it paints more surfaces), and if a NUL separator is kept at all, spell it as
+the six characters `\u0000` rather than as the byte, so the file stays
+text and stays greppable. Then pin both implementations to a fixed table of
+identities in a test, so they cannot drift apart again without something going
+red.
+
+**Not fixed.** FR83's Agents surface uses the Go-computed hue, so it joins the
+majority rather than widening the split.
 
 ---
 
