@@ -2197,7 +2197,7 @@ finished, and the temptation was to read it as noise from another live agent.
 Two consecutive runs failing *differently* is what said otherwise. A probe that
 asserts on real, shared state will occasionally be right when it looks wrong.
 
-## FR89 [field] A posted item cannot be taken back, or cleared without the mouse
+## FR89 [fixed 2026-08-04, session 43] A posted item cannot be taken back, or cleared without the mouse
 
 **Session.** 2026-08-04, session 42. Boris, mid-session: "Why do you keep popping
 this 'Deadlock refused' panel? Did you need me to see it or to close it or
@@ -2223,9 +2223,31 @@ call. A test-only escape hatch is not enough - the real case is an agent that
 posts "build failed", fixes it, and should be able to take it back before he ever
 looks.
 
-**Meanwhile:** anything a probe or a test posts is the tester's mess to explain.
-Say so in the handoff, and prefer a name (`probe:`) that makes it obvious on
-sight, which is the only thing that worked here.
+**Fixed, after he asked a second time.** Session 43 shipped it the moment the same
+toasts came back: `agentbox dismiss ID... | --all` (the human's door, and only his
+own may clear everything), the `retract` MCP tool (an agent's, and it may only ever
+touch items that session posted), and `agentbox pending` - added because dismiss by
+id is unusable without a terminal way to READ the ids, and `agentbox status` counts
+them without saying what they are. One method behind all three; the asymmetry
+between the callers is the safety model.
+
+Exercised live rather than by reading the diff: a warning posted, its window seen on
+screen (`agentbox · toast`), cleared with `agentbox dismiss --all`, and the window
+gone with nothing pending afterwards.
+
+**And the cause is fixed too, not only the symptom.** `tools/sync-probe.py` now
+diffs the pending queue around its own run and dismisses exactly what it caused, so
+an acceptance run that constructs a lock cycle on purpose no longer leaves a warning
+on his screen. The diff matters: `--all` would also clear a real item of his that
+happened to be waiting, and the deadlock warning is posted by `agentbox` itself
+rather than by the probe's sessions, so an ownership-scoped retract cannot reach it.
+That is the general shape - a warning about agents is the daemon's word, so the
+harness that provoked it has to clean up through the human's door.
+
+**The lesson about the lesson.** This sat on a solo-work list for a whole session
+after he first asked, and it took him asking twice. A defect whose only symptom is
+"the human keeps having to click something" reads as small on a list and is not: it
+is a tax on every future run of the thing that causes it.
 
 ## FR88 [fixed 2026-08-04, session 42] Every blocking card was on a 30-minute fuse
 

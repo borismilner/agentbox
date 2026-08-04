@@ -84,6 +84,23 @@ derives the area there too, and an unknown area now answers "cannot say" rather
 than "everybody". Slice 3 did not cause it - it made the attach fractionally slower
 and turned a latent race into a flake often enough to chase.
 
+**FR89 got built at the end of the session because he asked twice.** The same
+probe-generated "Deadlock refused" toasts came back, and the honest reading of that
+is not "let me explain why" - it is that a defect whose only symptom is "the human
+keeps having to click something" had been sitting on a solo-work list for a session
+while I generated three more of them. Shipped: `agentbox dismiss ID... | --all` for
+him, the `retract` tool for an agent (its own items only, because retiring another
+agent's question answers it for them), and `agentbox pending` for the ids, which
+dismiss-by-id is unusable without. Items had four doors in and none out.
+
+The cause is fixed as well as the symptom: `tools/sync-probe.py` diffs the pending
+queue around its run and dismisses exactly what it caused. The diff rather than
+`--all` matters twice over - a sweep would clear a real item of his that happened to
+be waiting, and the deadlock warning is posted by `agentbox` rather than by the
+probe's own sessions, so an ownership-scoped retract cannot reach it. A warning
+about agents is the daemon's word, so the harness that provoked it cleans up through
+the human's door.
+
 Verified live against the deployed daemon (`tools/sync-probe.py signals`, PASS):
 a parked wait woken by a post, two waiters on one topic both woken by one, a
 signal fired with nobody listening picked up afterwards by cursor, a timeout

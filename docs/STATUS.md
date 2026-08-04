@@ -126,6 +126,13 @@ repo. Its rider cursor was never initialized either, and `peersOf` with an empty
 area returned every agent on the machine. The announce carries its cwd now, and an
 unknown area answers "cannot say" rather than "everybody".
 
+**FR89 is fixed** (session 43, after Boris asked a second time): `agentbox dismiss
+ID... | --all` for the human, the `retract` tool for an agent (its own items only),
+and `agentbox pending` to read the ids from a terminal. Items had four doors in and
+none out, so a warning waited until it was clicked and came back after every daemon
+restart. `tools/sync-probe.py` now clears the toasts its own run caused, which is
+what made this a recurring tax rather than a one-off.
+
 **What remains of FR83:** shared values - slice 4 in [09-sync.md](09-sync.md).
 
 What else remains is the showcase re-record (decided, not yet scheduled) and the
@@ -898,7 +905,7 @@ fixed in session 42. Both are in [07-field-requests.md](07-field-requests.md).
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (FR83 slice 4, then FR85 with FR86, FR89, FR84,
+carries the current short order (FR83 slice 4, then FR85 with FR86, FR84,
 and the older FR73/FR65/FR74-marker queue); the numbered list below is the long
 tail behind it, kept for the items nothing else records.
 
