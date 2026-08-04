@@ -88,21 +88,32 @@ agentbox-data block in it becomes the run's `data` column.
 
 ## Live state (volatile - verify on resume)
 
-- **Background jobs:** none. **PRs:** none, ever (this repo pushes `main`).
-- **Git:** clean, `main` pushed and in sync with `origin` (GitLab). **GitLab
-  push-mirrors to GitHub on its own**: a direct `git push github` can lose the
-  race and be rejected with "cannot lock ref"; fetch and compare heads before
-  treating that as a real failure. Pushing `origin` is enough.
-- **Deployed:** this handoff's commit, clean stamp, daemon answering. The live
-  daemon has BOTH streams. It was briefly deployed dirty at 11:05 (built while
-  this file was uncommitted) and redeployed clean afterwards - if `make
-  deployed` ever reports `(dirty)`, that is the cause and a redeploy from a
-  clean tree fixes it.
-- **In-flight edits:** none from either stream.
+- **Background jobs:** none of this stream's. Two other agent sessions were
+  still live on this machine when this was written.
+- **Git:** at write time `main` was `ef1dc6c` (C's FR83 docs) over `3d56fe0`
+  (this handoff) over `e77029f` (B's k-md fix), with docs left uncommitted by
+  the other two. **GitLab push-mirrors to GitHub on its own**: a direct
+  `git push github` can lose the race and be rejected with "cannot lock ref";
+  fetch and compare heads before treating that as a real failure. Pushing
+  `origin` is enough.
+- **Deployed:** `3d56fe0`, which contains B's `e77029f`, so the live daemon has
+  all shipped code including the panel styling fix. The stamp reads `(dirty)`
+  because two other agents hold uncommitted docs - not code. With several
+  agents editing, `make deploy` from this tree will always stamp dirty; build
+  and deploy from a clean worktree at HEAD for an honest stamp.
+- **In-flight edits:** none of this stream's. Others' uncommitted docs were in
+  the tree (`docs/07-field-requests.md`, `docs/README.md`, `docs/STATUS.md`).
+- **A git hazard this tree proved, 2026-08-04:** `git commit --amend` rewrote
+  ANOTHER agent's commit, because they had committed on top between my commit
+  and my amend (recovered with `git reset --soft <their-sha>`, then recommitted
+  by explicit pathspec; nothing was pushed while broken). While more than one
+  agent shares a checkout: **never `--amend`, never `git add -A`, always
+  `git commit -m ... -- <explicit paths>`.**
 - **The parallel-agent ledger** lived at `/tmp/agentbox-agents.md` (file
-  ownership, dist rules, who may displace the desktop's one daemon). It is
-  volatile and probably gone; the pattern is recorded in history.md session 37
-  and is worth recreating if two agents ever share this tree again.
+  ownership, dist rules, who may displace the desktop's one daemon, and
+  messages between agents). Volatile - probably gone after a reboot. The
+  pattern is in history.md session 37, and FR83
+  ([docs/09-sync.md](docs/09-sync.md)) is the design that replaces it.
 - **Rename fallout still on disk, on purpose** (from session 36):
   `~/.config/qq`, `~/.local/state/qq`, `~/.cache/qq`, `~/.local/share/qq` are
   fallback copies (delete after a quiet few days); `~/.local/bin/qq` is a
@@ -149,6 +160,15 @@ Nothing - proceed autonomously. Two things when convenient:
   no-spec params fix works.
 - [verified] `agentbox control state` answers "the desktop is the human's";
   no control strip is stranded on screen.
+- [verified] **The panel's missing `k-md` scope was a live defect, not a
+  cosmetic one.** Boris watched the Assignments panel jitter on the deployed
+  build; the cause is that every `.k-artifact` rule in app.css is scoped under
+  `.k-md`, so the rule hiding whichever of code/preview is not current never
+  applied (both rendered) and `.k-md .k-artifact-frame{height:220px}` was
+  absent, leaving the frame unconstrained beside the code view. It stopped the
+  moment a build carrying `e77029f` reached the desktop - confirmed by Boris,
+  not by me. Worth remembering as a class of bug: an unscoped artifact
+  container looks merely unstyled and behaves badly.
 - [assumed] Every claim about the panel's behaviour beyond the run record
   above - the two-way channel, the daemon poke - is the other agent's
   verification, read from their commits and STATUS, not re-exercised here.
