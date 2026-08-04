@@ -2116,7 +2116,7 @@ FR85, since the two of them are the whole identity-colour story.
 
 ---
 
-## FR87 [field] A daemon restart rewinds an agent's activity line
+## FR87 [fixed 2026-08-04, session 42] A daemon restart rewinds an agent's activity line
 
 **Session.** 2026-08-04, session 41, watching my own row after `make deploy`.
 
@@ -2133,12 +2133,18 @@ is the same class of failure as the stale `working` chip fixed in `0566667`,
 arriving from the other direction: there the age was right and the state was
 wrong, here the state is right and the line is old.
 
-**Fix.** The child should replay its latest activity, not the announce's: keep
-the last line it sent in the child (it already keeps the attach state), and send
-it after the replayed announce. Alternatively the daemon could keep the row's
-activity across a restart, but it cannot - the roster is in memory by design, and
-persisting presence would resurrect rows for sessions that died while it was
-down.
+**Fixed** as described: the child remembers the newest line `set_activity` sent
+and replays the announce carrying that instead of the original. Verified live
+across a `systemctl --user restart agentbox.service` - the row came back on the
+line the session had moved to.
+
+Two limits, stated rather than hidden. The age restarts at the replay, because
+the roster is memory only by design and nothing survives to date the line from;
+the line is right, its age is the restart's. And a line a HOOK sent
+(`agentbox sync activity`) never passed through the child, so the child cannot
+replay it - a session whose activity comes only from hooks still comes back on
+whatever its model last said. Both are better than the confident lie, neither is
+free to fix.
 
 ---
 

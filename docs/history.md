@@ -80,6 +80,14 @@ One test bug worth remembering: a `t.Fatalf` while a tool handler was still
 parked deadlocked the SDK session's `Close`, so a broken keep-alive hung the
 suite instead of failing it. The parked handler is now released in cleanup.
 
+**FR87 fixed on the way past.** Every `make deploy` in this session rewound every
+row on the board to whatever its announce first said, an hour-old line stamped as
+fresh - so the child now remembers the newest `set_activity` and replays the
+announce carrying that. Verified across a real daemon restart. Its two limits are
+recorded with it: the age restarts (nothing survives a restart to date the line
+from), and a line a hook sent never passed through the child, so the child cannot
+replay it.
+
 ## Forty-first session (2026-08-04): looking at the board found four defects, and the rider shipped
 
 Resumed from session 40's handoff, whose one blocked item was that nobody had
