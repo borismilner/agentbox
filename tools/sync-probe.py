@@ -8,6 +8,9 @@ worth asking is about what session A is told when session B does something. So
 this keeps several children alive and speaks to each of them in turn.
 
     tools/sync-probe.py rider     # the discovery rider, end to end
+    tools/sync-probe.py locks     # slice 2's acceptance list
+    tools/sync-probe.py signals   # slice 3's acceptance list
+    tools/sync-probe.py board     # a fixture to look at the surface with
 
 Add a scenario as a function and a line in SCENARIOS. What it gives you:
 
@@ -363,7 +366,208 @@ def scenario_board():
     return []
 
 
-SCENARIOS = {"rider": scenario_rider, "locks": scenario_locks, "board": scenario_board}
+def scenario_signals():
+    """Slice 3's acceptance list, driven by live mcp children.
+
+    Every claim here is one the design makes about signals that only real
+    sessions against a real daemon can settle: that a parked call actually wakes,
+    that two waiters on one topic both do, that a signal fired while nobody
+    listened is still there afterwards, that a trimmed cursor is confessed rather
+    than served, and that a request and its reply are two ordinary posts.
+    """
+    bad = []
+    a = Session(agent="claude")
+    b = Session(agent="codex")
+    a.tool("announce", {"purpose": "sync-probe: the poster", "activity": "running the suite"})
+    b.tool("announce", {"purpose": "sync-probe: the listener", "activity": "waiting for green"})
+
+    # A signal posted with nobody parked is stored, not lost. This is the whole
+    # durability claim, and the note has to say so rather than reading as failure.
+    res = a.tool("post_signal", {"topic": "probe:tests", "data": {"suite": "race"}})
+    first = structured(res)
+    show("A post (nobody listening)", res)
+    if not first.get("seq"):
+        bad.append(f"a post did not come back with a sequence number: {first}")
+    if first.get("delivered"):
+        bad.append(f"nobody was parked, yet delivered={first.get('delivered')}")
+    if "not a failure" not in (first.get("note") or ""):
+        bad.append(f"the note does not say a stored signal is still delivered: {first.get('note')}")
+
+    # And it is picked up afterwards by cursor, which is what makes the handoff
+    # survive the two halves not overlapping.
+    res = b.tool("await_signal", {"topics": ["probe:tests"], "after_seq": first["seq"] - 1,
+                                  "timeout_s": 5}, timeout=30)
+    got = structured(res)
+    show("B await (catching up by cursor)", res)
+    sigs = got.get("signals") or []
+    if len(sigs) != 1 or sigs[0].get("topic") != "probe:tests":
+        bad.append(f"the stored signal was not picked up by cursor: {got}")
+    elif (sigs[0].get("data") or {}).get("suite") != "race":
+        bad.append(f"the payload did not survive the round trip: {sigs[0].get('data')}")
+    if got.get("cursor") != first["seq"]:
+        bad.append(f"the cursor should be the last delivered seq: {got}")
+
+    # A parked wait wakes on a live post, and two waiters on one topic BOTH do.
+    # Fan-out is the one genuinely new behaviour in this hub.
+    woken = {}
+
+    def park(name, session, topics):
+        woken[name] = structured(session.tool(
+            "await_signal", {"topics": topics, "timeout_s": 20}, timeout=40))
+
+    c = Session(agent="aider")
+    c.tool("announce", {"purpose": "sync-probe: the second listener", "activity": "listening"})
+    threads = [threading.Thread(target=park, args=("b", b, ["probe:done:*"])),
+               threading.Thread(target=park, args=("c", c, ["probe:done:one"]))]
+    for t in threads:
+        t.start()
+    # Long enough for both parks to register with the daemon before the post.
+    time.sleep(2.0)
+    print("--- both listening, as the board sees it:")
+    for row in json.loads(cli("sync", "agents", "--json").stdout or "{}").get("agents", []):
+        if row.get("purpose", "").startswith("sync-probe"):
+            print(f"    {row['agent']} [{row['state']}] {row.get('detail', '')}")
+            if row["purpose"].endswith("listener") and row["state"] != "listening":
+                bad.append(f"a parked session reads as {row['state']}, not listening")
+
+    res = a.tool("post_signal", {"topic": "probe:done:one", "data": {"chunk": 1}})
+    fan = structured(res)
+    show("A post (two parked waiters)", res)
+    if fan.get("delivered") != 2:
+        bad.append(f"fan-out woke {fan.get('delivered')} of 2 waiters")
+    for t in threads:
+        t.join(timeout=40)
+    for name in ("b", "c"):
+        sigs = (woken.get(name) or {}).get("signals") or []
+        if len(sigs) != 1 or sigs[0].get("seq") != fan.get("seq"):
+            bad.append(f"waiter {name} did not wake with the signal: {woken.get(name)}")
+
+    # A timeout is a result: the cursor comes back unchanged, so re-arming misses
+    # nothing that happened in between.
+    res = b.tool("await_signal", {"topics": ["probe:never"], "after_seq": fan["seq"],
+                                  "timeout_s": 2}, timeout=30)
+    got = structured(res)
+    show("B await (times out)", res)
+    if not got.get("timed_out") or got.get("received"):
+        bad.append(f"expected an empty timeout: {got}")
+    if got.get("cursor") != fan["seq"]:
+        bad.append(f"a timeout must not move the cursor: {got}")
+
+    # A request and its reply, both ordinary posts on private topics. This is the
+    # whole "direct messages ride the same rails" claim.
+    a_key = structured(a.tool("list_agents", {}))
+    a_key = next((r["key"] for r in (a_key.get("agents") or [])
+                  if r.get("purpose") == "sync-probe: the poster"), None)
+    if not a_key:
+        bad.append("could not find A's key on the roster to address it")
+    else:
+        reply = {}
+
+        def wait_reply():
+            reply["got"] = structured(a.tool(
+                "await_signal", {"topics": ["to:@me"], "timeout_s": 20}, timeout=40))
+
+        t = threading.Thread(target=wait_reply)
+        t.start()
+        time.sleep(2.0)
+        res = b.tool("post_signal", {"topic": "to:" + a_key,
+                                     "data": {"ask": "is the suite green?"}})
+        show("B post (addressed to A)", res)
+        t.join(timeout=40)
+        sigs = (reply.get("got") or {}).get("signals") or []
+        if len(sigs) != 1:
+            bad.append(f"the addressed signal did not arrive: {reply.get('got')}")
+        else:
+            if sigs[0].get("topic") != "to:" + a_key:
+                bad.append(f"the private topic was not expanded from @me: {sigs[0]}")
+            if not sigs[0].get("key"):
+                bad.append("a message carries no sender key, so a reply is impossible")
+
+    # A cursor older than retention is confessed. The daemon's own retention is
+    # 1000 per topic, so this asks with a cursor from before the table existed.
+    res = b.tool("await_signal", {"topics": ["probe:tests"], "after_seq": 1,
+                                  "timeout_s": 2}, timeout=30)
+    got = structured(res)
+    show("B await (a cursor from the distant past)", res)
+    if got.get("gap"):
+        if not got.get("oldest_seq"):
+            bad.append("a gap was reported without the oldest surviving sequence")
+        if "cannot be complete" not in (got.get("note") or ""):
+            bad.append(f"the gap note does not say the batch is incomplete: {got.get('note')}")
+        print("    (gap confessed, as it must be on a trimmed store)")
+    else:
+        # Not a failure: on this machine the store may be young enough that seq 1
+        # is still there. Say which case ran rather than passing silently.
+        print("    (no gap: seq 1 is still in the store, so there was nothing to confess)")
+
+    # A departure is a signal too, so an idle agent can park on its area.
+    area_seen = {}
+
+    def wait_area():
+        area_seen["got"] = structured(a.tool(
+            "await_signal", {"topics": ["agents:repo:agentbox"], "timeout_s": 20}, timeout=40))
+
+    t = threading.Thread(target=wait_area)
+    t.start()
+    time.sleep(2.0)
+    c.close()
+    t.join(timeout=40)
+    sigs = (area_seen.get("got") or {}).get("signals") or []
+    if not sigs:
+        bad.append(f"a session leaving posted no agents:<area> signal: {area_seen.get('got')}")
+    else:
+        events = [(s.get("data") or {}).get("event") for s in sigs]
+        if "leave" not in events:
+            bad.append(f"the area topic carried {events}, not a leave")
+
+    # A lock changing hands is announced on its own topic, which is how an agent
+    # that gave up queueing learns the resource freed.
+    lock_seen = {}
+    a.tool("acquire_lock", {"name": "probe:signal-lock", "timeout_s": 5})
+
+    def wait_lock():
+        lock_seen["got"] = structured(b.tool(
+            "await_signal", {"topics": ["lock:probe:signal-lock"], "timeout_s": 20}, timeout=40))
+
+    t = threading.Thread(target=wait_lock)
+    t.start()
+    time.sleep(2.0)
+    a.tool("release_lock", {"name": "probe:signal-lock"})
+    t.join(timeout=40)
+    sigs = (lock_seen.get("got") or {}).get("signals") or []
+    if not sigs:
+        bad.append(f"a release posted no lock:NAME signal: {lock_seen.get('got')}")
+    else:
+        data = sigs[0].get("data") or {}
+        if data.get("reason") != "released" or data.get("free") is not True:
+            bad.append(f"the lock signal does not describe the release: {data}")
+
+    # The CLI's two verbs, which is how a Makefile or a hook joins the same fabric.
+    out = cli("sync", "post", "probe:cli", '{"from":"a shell"}', "--json", key=a_key)
+    if out.returncode != 0:
+        bad.append(f"`sync post` failed: {out.stderr.strip()}")
+    else:
+        seq = json.loads(out.stdout or "{}").get("seq")
+        out = cli("sync", "await", "probe:cli", "--after", str(seq - 1),
+                  "--timeout", "5", key=a_key)
+        if out.returncode != 0 or "probe:cli" not in out.stdout:
+            bad.append(f"`sync await` did not read back the posted signal: {out.stdout} {out.stderr}")
+        else:
+            print("--- CLI round trip")
+            print("   ", out.stdout.strip().replace("\n", " | "))
+        # An await that finds nothing exits 1, per the house grammar.
+        out = cli("sync", "await", "probe:nothing", "--timeout", "1", key=a_key)
+        if out.returncode != 1:
+            bad.append(f"a timed-out `sync await` should exit 1, got {out.returncode}")
+
+    a.close()
+    b.close()
+    print("--- leaving no state: the signals stay (that is the point), the locks do not")
+    return bad
+
+
+SCENARIOS = {"rider": scenario_rider, "locks": scenario_locks,
+             "signals": scenario_signals, "board": scenario_board}
 
 
 def main():
