@@ -9,6 +9,47 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Thirty-ninth session (2026-08-04): the sync design, proved by writing it
+
+Boris asked for multi-agent coordination and, across four follow-ups, for the
+half that matters more: he must be able to see what every agent is doing right
+now, every agent must declare its purpose and current activity and keep them
+current, agents must find others working the same area, and they should discover
+and message each other. Designed, not built: [09-sync.md](09-sync.md), with the
+field case as FR83.
+
+The design was written while two other agents worked this same checkout, and the
+session became its own evidence. Coordination happened through session 37's
+hand-written ledger at `/tmp/agentbox-agents.md` - file claims standing in for
+locks, a `Current holder: NOBODY` line standing in for a lease, timestamped
+notes standing in for messages, and re-reading the file standing in for delivery.
+Three things went wrong in one hour, each one a requirement in the doc now:
+a catch-all `git add` from the parallel agent swept the unfinished design doc
+into an unrelated commit; a `git reset` dropped a finished commit off main while
+its author was still working (recovered from the reflog, nothing lost); and the
+parallel agent's handoff declared "nothing is in flight" while a third stream
+was mid-write. Not one of the three was reachable by asking - no agent could see
+another's state, so each acted on a stale reading of a shared tree.
+
+What that put in the design, beyond the obvious roster: the mandate is enforced
+in four layers because one that trusts model discipline is a wish; a dead mcp
+child **orphans** a lock rather than releasing it, since a dead child does not
+mean a dead `make deploy` and a five-second grace would hand a live resource to
+a second agent; discovery pushes a rider on ordinary tool results rather than
+expecting a working Claude session to park on a topic; and every parked wait
+gets a ceiling under the client's own idle cap, with a cursor so re-arming
+misses nothing.
+
+An adversarial review of the first draft is folded in. The three findings that
+forced real design changes: the session key never travelled on per-call
+requests, so every ownership check would have collapsed to agent-name equality
+and inherited FR74's collision bug as a "precedent"; indefinite parking does
+not exist in the runtime the agents actually have, which invalidated the
+central efficiency claim until the child learned to keep a parked call alive;
+and the first draft's `timeout_s: 0` meant try-acquire, the exact inverse of
+what six shipped tools teach, which would have trained agents into the poll
+loop the feature exists to end.
+
 ## Thirty-eighth session (2026-08-04): the custom panel runs
 
 M12's last open piece shipped: an assignment's `panel_html` hydrates in the

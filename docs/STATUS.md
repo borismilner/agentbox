@@ -16,9 +16,13 @@ the daemon pokes open surfaces (`agentbox:assignments`) on every mutation so an
 agent's edit lands in a panel somebody is looking at. See
 [08-assignments.md](08-assignments.md).
 FR81's visual pass over the remaining surfaces shipped in session 37, so the
-rail speaks one language end to end. What else remains is the showcase
-re-record (decided, not yet scheduled) and the verification and refinement
-queue.
+rail speaks one language end to end.
+
+**The next feature is designed and not built: FR83, multi-agent coordination
+and a live Agents surface** ([09-sync.md](09-sync.md)), asked for by Boris on
+2026-08-04 and written in session 39. It is where new work starts once he
+triages it. What else remains is the showcase re-record (decided, not yet
+scheduled) and the verification and refinement queue.
 
 This file is the current state. The session-by-session narrative - what each
 session shipped, broke, learned and verified - is in [history.md](history.md).
@@ -768,6 +772,17 @@ depends on.
 
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
+
+**Newest ask, 2026-08-04 (session 39): FR83, multi-agent sync and the Agents
+surface** - designed in [09-sync.md](09-sync.md), nothing built. Three gates
+before slice 1, in order: Boris triages the three open questions at the foot of
+that doc, the surface is mocked (`agentbox webui-demo agents` over canned roster
+data, the working rule at the top of
+[07-field-requests.md](07-field-requests.md)), and a throwaway CLI spike is
+driven by two real sessions. One piece can ship on its own if a small win is
+wanted: the session key on `proto.Identity`, which every sync primitive needs
+and which fixes FR74's agent-name ownership check, where a second same-named
+session can write the first's hands-off activity line.
 
 **Priority reset by Boris on 2026-08-01 (session 34):** the main panel and
 recurring AI assignments (FR81/FR82) come first. M12 finished in session 35
