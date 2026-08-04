@@ -517,6 +517,11 @@ shared_max_bytes = 16384
 Seven knobs, defaults chosen so nobody opens the file (vision principle 8).
 Coalescing rates and emit throttles are constants, not knobs.
 
+`wait_max_s` bounds a **parked MCP call** and nothing else. A CLI hold is
+bounded by whatever runs the CLI, which for an agent's shell tool is 120s by
+default and 600s at most (measured; see "Mock it before building it"). The two
+ceilings are unrelated and the manual must not let them read as one number.
+
 ## What this is not
 
 - Not cross-machine. Local only, one daemon, one socket (vision principle
@@ -658,10 +663,24 @@ answer, so they need their own small probes rather than being assumed:
   07-field-requests.md) and parking a call past the cap, once without progress
   notifications and once with. Until that runs, every wait-ceiling number in
   this document is a review-derived guess.
-- **The Bash-tool timeout on a CLI hold.** An agent that wraps a command in
-  `agentbox sync lock NAME -- CMD` is subject to its own shell timeout, which
-  is far shorter than `wait_max_s`. Measure it and let it set the default, or
-  the flock wrapper will look broken the first time a real deploy runs long.
+- **The Bash-tool timeout on a CLI hold. MEASURED 2026-08-04, and it is much
+  shorter than this document assumed.** A foreground shell call from a Claude
+  Code session is killed at **exactly 120s** (SIGTERM, exit 143) with no
+  timeout argument, and the tool's own schema caps an explicit timeout at
+  **600s**. So an agent that wraps a real command in
+  `agentbox sync lock NAME -- CMD` loses the command, and the hold with it, two
+  minutes in - long before `wait_max_s`'s 1500s means anything. Consequences,
+  which are design decisions rather than notes:
+  - `make deploy` takes longer than 120s on this repo, so the Makefile wrap
+    cannot be the naive `agentbox sync lock deploy:agentbox -- make deploy`
+    from an agent's shell. The agent must either pass the 600s ceiling
+    explicitly or, better, take the lock and release it as two calls with
+    `--ttl` covering the gap.
+  - `--ttl` is therefore not the corner case the Locks section implies. It is
+    the normal path for any wrapped command that outlives two minutes, and the
+    manual has to say so or the first real deploy looks like a broken feature.
+  - A wrapped hold must release on **any** exit, including SIGTERM at the
+    120s mark, or a killed wrapper leaves an orphan on every long command.
 
 ## Owner calls (triaged 2026-08-04)
 
