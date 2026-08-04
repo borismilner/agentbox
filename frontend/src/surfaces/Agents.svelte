@@ -334,7 +334,13 @@
                         <span class="act">{a.activity}</span>
                         <span class="when">{ago(a.activity_since_ms)}</span>
                       {:else if a.state === "detached"}
-                        <span class="act quietly">last seen through an item</span>
+                        <!-- "through an item" was written when a card was the only
+                             way a keyless row could appear. Since FR83 slice 5 the
+                             usual way is a SessionStart hook, so the line said
+                             something false about nearly every new session. This
+                             wording is true of both: somebody spoke for the session
+                             and the session itself has not. -->
+                        <span class="act quietly">announced on its behalf</span>
                         <span class="when">{ago(a.age_ms)}</span>
                       {:else if !a.wait}
                         <!-- A blocked row says nothing here: its wait line below
