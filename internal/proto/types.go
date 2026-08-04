@@ -72,6 +72,33 @@ type Identity struct {
 	Key string `json:"key,omitempty"`
 }
 
+// placeholderAgents are the process names that name no agent. Agent is read from
+// the parent process, and for anything but an mcp child the parent is whatever
+// happened to exec it: a shell, sudo, timeout - and under setsid, init. That last
+// one is not hypothetical. The attach recipe in docs/recipes.md is
+// `setsid agentbox sync attach`, so every hook-driven row arrived on Boris's
+// board labelled `systemd`, and the same mechanism had already displayed a
+// control holder as `timeout`.
+var placeholderAgents = map[string]bool{
+	"": true, "unknown": true, "agent": true,
+	"systemd": true, "init": true, "setsid": true,
+	"sh": true, "bash": true, "zsh": true, "fish": true, "dash": true, "ksh": true,
+	"su": true, "sudo": true, "env": true, "nohup": true, "timeout": true,
+	"xargs": true, "make": true, "tmux": true, "screen": true, "script": true,
+	"login": true, "systemd-run": true,
+	// Terminals, because the walk up the tree from a human's own shell ends at
+	// one, and "alacritty" is no more an agent than "zsh" was.
+	"gnome-terminal-": true, "gnome-terminal-server": true, "konsole": true,
+	"xterm": true, "urxvt": true, "st": true, "alacritty": true, "kitty": true,
+	"wezterm": true, "wezterm-gui": true, "foot": true, "footclient": true,
+	"tilix": true, "terminator": true, "ghostty": true, "kgx": true,
+}
+
+// PlaceholderAgent reports whether a name says nothing about which agent this is.
+// It is the licence to rename: a row wearing a placeholder may be relabelled by a
+// later call that knows better, and a row with a real name never is.
+func PlaceholderAgent(name string) bool { return placeholderAgents[strings.TrimSpace(name)] }
+
 // SameSession reports whether two identities are the same session, for the
 // ownership checks that predate the key.
 //

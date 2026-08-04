@@ -74,11 +74,25 @@ const workingFor = 90 * time.Second
 // to look live.
 const rosterEmitEvery = 250 * time.Millisecond
 
+// rosterTickEvery is how often the roster re-examines itself with nobody having
+// called anything. It has to exist: every push is caused by a verb, so without a
+// tick the two ways the board goes stale are both invisible. A dropped throttled
+// push waits for unrelated traffic (measured at over a minute in the field), and
+// a state that decayed with no traffic at all never decays on screen at all -
+// the row keeps saying "working" while the CLI says "quiet". One second, because
+// the cost is a snapshot of a handful of rows and the payoff is that the board
+// stops lying within a second of the truth changing.
+const rosterTickEvery = time.Second
+
 type rosterRow struct {
 	identity proto.Identity
 	cwd      string
 	pid      int
 	area     string
+	// areaPath is where the area lives, when the row's own cwd is evidence of it.
+	// Computed once here rather than per snapshot: it stats the filesystem, and a
+	// row's cwd does not move.
+	areaPath string
 	tags     []string
 
 	purpose    string
@@ -114,6 +128,20 @@ type roster struct {
 	push    func([]proto.SyncAgent, bool)
 	lastGen time.Time
 	dirty   bool
+
+	// lastState is the state of every row as the surface last saw it, and
+	// lastPartial the notice that went with it. The tick compares against these
+	// rather than pushing every second: an idle board should stay silent, and a
+	// board whose truth moved should not.
+	lastState   map[string]string
+	lastPartial bool
+
+	// pushMu serialises snapshot, record and push so the recorded states always
+	// describe the payload the surface actually received. Held across the emit,
+	// which is one-way into the webview and cannot call back in here.
+	pushMu sync.Mutex
+
+	stop chan struct{}
 }
 
 func newRoster(log *slog.Logger) *roster {
@@ -140,6 +168,29 @@ func (r *roster) SetPush(push func([]proto.SyncAgent, bool)) {
 	r.mu.Unlock()
 }
 
+// betterIdentity keeps the most informative version of a session's identity
+// across the several calls that describe it.
+//
+// One session is described by more than one caller: a SessionStart hook attaches
+// on its behalf, and its own mcp child announces later. The hook's attach knows
+// the least - under setsid its parent is init - so taking the newest wholesale
+// stamped `systemd` over `claude` and left it there, which is what Boris's board
+// showed. Newest wins on every field except a name, where a real one outranks a
+// placeholder whichever order they arrive in.
+func betterIdentity(have, incoming proto.Identity) proto.Identity {
+	out := incoming
+	if proto.PlaceholderAgent(out.Agent) && !proto.PlaceholderAgent(have.Agent) {
+		out.Agent = have.Agent
+	}
+	if out.Project == "" {
+		out.Project = have.Project
+	}
+	if out.Session == "" {
+		out.Session = have.Session
+	}
+	return out
+}
+
 // Attach registers a session and blocks until its context ends, which is the
 // session ending. The caller gets nothing back but the fact it was registered:
 // the value of this call is entirely that it is still open.
@@ -161,12 +212,13 @@ func (r *roster) Attach(ctx context.Context, p proto.SyncAttachParams) (proto.Sy
 		row = &rosterRow{attachedAt: now}
 		r.rows[key] = row
 	}
-	row.identity = p.Identity
+	row.identity = betterIdentity(row.identity, p.Identity)
 	row.attached, row.touched = true, now
 	row.cwd, row.pid = p.Cwd, p.PID
 	if p.Area != "" {
 		row.area = p.Area
 	}
+	row.areaPath = areaPathOf(row.cwd, row.area)
 	if len(p.Tags) > 0 {
 		row.tags = p.Tags
 	}
@@ -218,6 +270,12 @@ func (r *roster) Announce(p proto.SyncAnnounceParams) (proto.SyncResult, *proto.
 		row = &rosterRow{attachedAt: now}
 		r.rows[key] = row
 		row.identity = p.Identity
+	} else if proto.PlaceholderAgent(row.identity.Agent) && !proto.PlaceholderAgent(p.Identity.Agent) {
+		// The row exists because a hook announced or attached on this session's
+		// behalf before its own child was up, so it is wearing whatever exec'd
+		// the hook. This caller knows better. Only the name: the rest of an
+		// existing row is not this call's business.
+		row.identity.Agent = p.Identity.Agent
 	}
 	row.touched = now
 	row.purpose = strings.TrimSpace(p.Purpose)
@@ -227,6 +285,7 @@ func (r *roster) Announce(p proto.SyncAnnounceParams) (proto.SyncResult, *proto.
 	}
 	if p.Area != "" {
 		row.area = p.Area
+		row.areaPath = areaPathOf(row.cwd, row.area)
 	}
 	if len(p.Tags) > 0 {
 		row.tags = p.Tags
@@ -365,7 +424,7 @@ func (r *roster) snapshot() ([]proto.SyncAgent, bool) {
 		a := proto.SyncAgent{
 			Key: key, Agent: row.identity.Agent, Project: row.identity.Project,
 			Session: row.identity.Session, Cwd: row.cwd, PID: row.pid,
-			Area: row.area, Tags: row.tags,
+			Area: row.area, AreaPath: row.areaPath, Tags: row.tags,
 			Purpose: row.purpose, Activity: row.activity,
 			AgeMS: now.Sub(row.attachedAt).Milliseconds(),
 		}
@@ -415,6 +474,8 @@ func derivedState(row *rosterRow, key string, asking map[string]bool, driving st
 
 // changed pushes the roster at the surface, throttled. Called from every verb,
 // so it must be cheap and must never hold the lock across the push.
+//
+// A push dropped here is not lost: it leaves dirty set, and the tick sends it.
 func (r *roster) changed() {
 	r.mu.Lock()
 	push := r.push
@@ -433,25 +494,118 @@ func (r *roster) changed() {
 	r.dirty = false
 	r.mu.Unlock()
 
+	r.emit(push)
+}
+
+// emit takes the snapshot, records what it says, and pushes it, all under
+// pushMu. Recording inside the same critical section is the point: the tick
+// decides whether to push by comparing against what the surface last received,
+// so a record that described some other payload would make it skip a repaint the
+// board needs.
+func (r *roster) emit(push func([]proto.SyncAgent, bool)) {
+	r.pushMu.Lock()
+	defer r.pushMu.Unlock()
+
 	rows, partial := r.snapshot()
+
+	r.mu.Lock()
+	states := make(map[string]string, len(rows))
+	for _, a := range rows {
+		states[a.Key] = a.State
+	}
+	r.lastState, r.lastPartial = states, partial
+	r.mu.Unlock()
+
 	push(rows, partial)
 }
 
-// Flush sends whatever the throttle held back. The daemon ticks this so a final
-// activity line is never the one that got dropped.
-func (r *roster) Flush() {
+// tick is the roster looking at itself with nobody having called anything. It
+// pushes when the board would otherwise be wrong, and stays silent when it would
+// not, so an idle board costs one snapshot a second and no repaints.
+//
+// Two failures need it, and they look the same on screen. A throttled push left
+// dirty has no other way out: the next verb might be a minute away, and in the
+// field one was. And a row whose state decayed on time alone - "working" past
+// workingFor with nothing to report since - is never recomputed by anything else,
+// because every other push is caused by a change. That one is the worse of the
+// two: a session that died mid-task keeps its "working" chip forever, which is
+// precisely the hung session this surface exists to expose.
+func (r *roster) tick() {
 	r.mu.Lock()
-	dirty, push := r.dirty, r.push
-	if !dirty || push == nil {
+	push := r.push
+	if push == nil {
 		r.mu.Unlock()
 		return
 	}
+	r.mu.Unlock()
+
+	r.pushMu.Lock()
+	rows, partial := r.snapshot()
+
+	r.mu.Lock()
+	stale := r.dirty || partial != r.lastPartial || len(rows) != len(r.lastState)
+	if !stale {
+		for _, a := range rows {
+			if was, ok := r.lastState[a.Key]; !ok || was != a.State {
+				stale = true
+				break
+			}
+		}
+	}
+	if !stale {
+		r.mu.Unlock()
+		r.pushMu.Unlock()
+		return
+	}
+	states := make(map[string]string, len(rows))
+	for _, a := range rows {
+		states[a.Key] = a.State
+	}
+	r.lastState, r.lastPartial = states, partial
 	r.dirty = false
 	r.lastGen = time.Now()
 	r.mu.Unlock()
+	r.pushMu.Unlock()
 
-	rows, partial := r.snapshot()
 	push(rows, partial)
+}
+
+// Start begins the tick. Idempotent, and safe to leave unstarted: a roster with
+// no tick still answers every read correctly, it only lets the surface go stale,
+// which is why the tests that care start it themselves.
+func (r *roster) Start() {
+	r.mu.Lock()
+	if r.stop != nil {
+		r.mu.Unlock()
+		return
+	}
+	stop := make(chan struct{})
+	r.stop = stop
+	r.mu.Unlock()
+
+	go func() {
+		t := time.NewTicker(rosterTickEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				r.tick()
+			}
+		}
+	}()
+}
+
+// Stop ends the tick. The roster keeps every row: sessions outlive a shutdown of
+// this loop, and a restarted tick picks them up as they are.
+func (r *roster) Stop() {
+	r.mu.Lock()
+	if r.stop != nil {
+		close(r.stop)
+		r.stop = nil
+	}
+	r.mu.Unlock()
 }
 
 // askingKeys is the set of session keys with a blocking item of their own still
@@ -491,6 +645,14 @@ func (d *Daemon) SetRosterSurface(push func([]proto.SyncAgent, bool)) {
 	d.roster.SetPush(push)
 }
 
+// StartRoster begins the roster's own tick, which is what keeps the Agents
+// surface honest between calls. Wire the surface first: a tick with nowhere to
+// push is a no-op.
+func (d *Daemon) StartRoster() { d.roster.Start() }
+
+// StopRoster ends it.
+func (d *Daemon) StopRoster() { d.roster.Stop() }
+
 // RosterSnapshot is the roster as a caller outside the package sees it, for the
 // surface's pull on mount.
 func (d *Daemon) RosterSnapshot() ([]proto.SyncAgent, bool) { return d.roster.snapshot() }
@@ -503,20 +665,44 @@ func (d *Daemon) RosterSnapshot() ([]proto.SyncAgent, bool) { return d.roster.sn
 // The git top-level is the honest key. It is read from the filesystem rather
 // than by running git, so this cannot block on a slow repo or a missing binary.
 func DeriveArea(cwd string) string {
-	dir := strings.TrimSpace(cwd)
+	area, _ := deriveArea(cwd)
+	return area
+}
+
+// deriveArea also answers WHERE the area is, which is a different question from
+// where the agent is: two agents in one repo stand in different subdirectories,
+// and the area they share is the root above both.
+func deriveArea(cwd string) (area, dir string) {
+	dir = strings.TrimSpace(cwd)
 	if dir == "" {
-		return ""
+		return "", ""
 	}
 	for {
 		if _, err := os.Stat(dir + "/.git"); err == nil {
-			return "repo:" + baseName(dir)
+			return "repo:" + baseName(dir), dir
 		}
 		parent := parentDir(dir)
 		if parent == dir {
-			return "dir:" + baseName(cwd)
+			return "dir:" + baseName(cwd), strings.TrimSpace(cwd)
 		}
 		dir = parent
 	}
+}
+
+// areaPathOf is the path a surface may caption an area group with, and empty when
+// there is no honest answer. It is empty whenever the row's area is not the one
+// its cwd would derive: an agent that declares `repo:laptop-setup` while standing
+// in the agentbox tree belongs to that area, but the agentbox path is not where
+// that area lives, and a header saying otherwise states a falsehood.
+func areaPathOf(cwd, area string) string {
+	if cwd == "" || area == "" {
+		return ""
+	}
+	derived, dir := deriveArea(cwd)
+	if derived != area {
+		return ""
+	}
+	return dir
 }
 
 func baseName(p string) string {

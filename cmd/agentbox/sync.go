@@ -65,7 +65,7 @@ func runSync(args []string) int {
 	text := strings.TrimSpace(strings.Join(words, " "))
 
 	id := proto.Identity{
-		Agent: parentComm(), Project: filepath.Base(mustGetwd()),
+		Agent: agentName(), Project: filepath.Base(mustGetwd()),
 		Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: *key,
 	}
 

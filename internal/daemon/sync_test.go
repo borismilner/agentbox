@@ -343,6 +343,95 @@ func TestDeriveAreaPutsOneRepoInOneArea(t *testing.T) {
 	}
 }
 
+func TestAHooksPlaceholderNameIsReplacedByTheSessionsOwn(t *testing.T) {
+	// Live on Boris's board: every row a hook created read `systemd`, because the
+	// prescribed attach is `setsid agentbox sync attach` and setsid reparents to
+	// init. The attach also stamped its identity over the row wholesale, so the
+	// child's later announce could not put the real name back.
+	r := newTestRoster()
+
+	// The hook, which knows nothing: it attaches under init on the session's behalf.
+	defer attached(t, r, id("systemd", "agentbox", "k1"), "/repo", "repo:agentbox")()
+	rows, _ := r.snapshot()
+	if len(rows) != 1 || rows[0].Agent != "systemd" {
+		t.Fatalf("setup: expected the hook's row, got %+v", rows)
+	}
+
+	// The session's own child, which does.
+	r.Announce(proto.SyncAnnounceParams{
+		Identity: id("claude", "agentbox", "k1"), Purpose: "the discovery rider",
+	})
+	rows, _ = r.snapshot()
+	if rows[0].Agent != "claude" {
+		t.Errorf("the row still reads %q after the session announced itself", rows[0].Agent)
+	}
+
+	// And it does not work backwards: a later hook call must not undo it.
+	r.Announce(proto.SyncAnnounceParams{
+		Identity: id("zsh", "agentbox", "k1"), Purpose: "the discovery rider",
+	})
+	rows, _ = r.snapshot()
+	if rows[0].Agent != "claude" {
+		t.Errorf("a shell renamed a known agent to %q", rows[0].Agent)
+	}
+}
+
+func TestAnAreaIsCaptionedWithItsOwnPathOrWithNothing(t *testing.T) {
+	// The board captions each group with a path, and it was taking whichever
+	// member happened to be first. That put "LAPTOP-SETUP" over the agentbox path
+	// on screen. Two distinct ways to be wrong, and the caption has to survive
+	// both: a member deep inside the tree is not where the area is, and a member
+	// that declared some other area is no evidence about that area at all.
+	root := t.TempDir()
+	if err := os.Mkdir(root+"/.git", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	deep := root + "/frontend/src"
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	area := "repo:" + baseName(root)
+
+	if got := areaPathOf(deep, area); got != root {
+		t.Errorf("an agent in a subdirectory captions its area %q, want the root %q", got, root)
+	}
+	if got := areaPathOf(root, area); got != root {
+		t.Errorf("an agent at the root captions its area %q, want %q", got, root)
+	}
+	// The live case: declaring an area you are not standing in.
+	if got := areaPathOf(root, "repo:laptop-setup"); got != "" {
+		t.Errorf("a declared foreign area was captioned %q, want nothing at all", got)
+	}
+	if got := areaPathOf("", area); got != "" {
+		t.Errorf("a row with no cwd captioned its area %q", got)
+	}
+}
+
+func TestADeclaredAreaCarriesNoPathThroughTheRoster(t *testing.T) {
+	// End to end, because the surface reads the row and not the helper.
+	r := newTestRoster()
+	here := t.TempDir()
+	if err := os.Mkdir(here+"/.git", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	defer attached(t, r, id("claude", "agentbox", "home"), here, "repo:"+baseName(here))()
+	defer attached(t, r, id("claude", "agentbox", "guest"), here, "repo:elsewhere")()
+
+	rows, _ := r.snapshot()
+	for _, a := range rows {
+		switch a.Key {
+		case "home":
+			if a.AreaPath != here {
+				t.Errorf("the row in its own area carries path %q, want %q", a.AreaPath, here)
+			}
+		case "guest":
+			if a.AreaPath != "" {
+				t.Errorf("a row declaring repo:elsewhere carries path %q, and the header would state it", a.AreaPath)
+			}
+		}
+	}
+}
+
 func TestListIsUngatedSoVisibilityNeverDependsOnManners(t *testing.T) {
 	// The design's rule: the sync verbs may refuse an unannounced session, but
 	// the reads never do. A human and an agent must not be able to see different
@@ -377,5 +466,109 @@ func TestTheSurfaceIsPushedWhenTheRosterChanges(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("attaching an agent pushed nothing at the surface")
+	}
+}
+
+// nextFrom reads the next push the surface got, or fails.
+func nextFrom(t *testing.T, ch <-chan string, what string) string {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(3 * time.Second):
+		t.Fatalf("the surface was never pushed %s", what)
+		return ""
+	}
+}
+
+func TestARowStopsSayingWorkingWithNobodyCallingAnything(t *testing.T) {
+	// This one was on screen. The board's header read "3 working" beside activity
+	// ages of nearly five minutes, while `agentbox sync agents`, reading the very
+	// same roster, said all four rows were quiet - and the design's whole promise
+	// is that the human and the agents never see different answers.
+	//
+	// The cause is that state is derived at push time and every push is caused by
+	// a verb. A session that stops reporting causes nothing, so its "working" chip
+	// outlives it for as long as nothing else on the machine happens to call
+	// anything. A hung agent then looks exactly like a busy one, which is the one
+	// thing this surface exists to prevent.
+	r := newTestRoster()
+	defer attached(t, r, id("claude", "agentbox", "k1"), "/repo", "repo:agentbox")()
+	r.Announce(proto.SyncAnnounceParams{
+		Identity: id("claude", "agentbox", "k1"), Purpose: "the discovery rider",
+	})
+	r.Activity(proto.SyncActivityParams{
+		Identity: id("claude", "agentbox", "k1"), Activity: "compiling",
+	})
+
+	states := make(chan string, 32)
+	r.SetPush(func(rows []proto.SyncAgent, _ bool) {
+		if len(rows) == 1 {
+			states <- rows[0].State
+		}
+	})
+
+	r.tick() // the surface learns this row, and learns it as working
+	if got := nextFrom(t, states, "the first state"); got != StateWorking {
+		t.Fatalf("a row with a fresh activity line reads %q", got)
+	}
+
+	// An idle board must stay silent, or the fix is a repaint every second.
+	r.tick()
+	select {
+	case got := <-states:
+		t.Fatalf("an unchanged roster repainted the surface anyway (%q)", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// Now nothing happens except time. No verb, no traffic, no other session.
+	r.mu.Lock()
+	r.rows["k1"].activityAt = time.Now().Add(-2 * workingFor)
+	r.mu.Unlock()
+
+	// Start rather than tick, so this also pins the wiring: a roster nobody ticks
+	// is how the bug shipped. Flush existed and read correctly, and no caller ever
+	// called it.
+	r.Start()
+	defer r.Stop()
+	if got := nextFrom(t, states, "the decayed state"); got != StateQuiet {
+		t.Fatalf("a row whose last word was %s ago still reads %q", 2*workingFor, got)
+	}
+}
+
+func TestAPushTheThrottleDroppedStillArrives(t *testing.T) {
+	// The throttle drops intermediate pushes instead of queueing them, which is
+	// right for a snapshot: only the newest one is worth sending. But a dropped
+	// push has to come back, and nothing brought it back - the next unrelated verb
+	// did, whenever that was. In the field a peer's first activity line sat
+	// invisible for over a minute, and the row read "quiet, nothing reported"
+	// while the CLI showed the line.
+	r := newTestRoster()
+	lines := make(chan string, 32)
+	r.SetPush(func(rows []proto.SyncAgent, _ bool) {
+		if len(rows) == 1 {
+			lines <- rows[0].Activity
+		}
+	})
+	defer attached(t, r, id("claude", "agentbox", "k1"), "/repo", "repo:agentbox")()
+	nextFrom(t, lines, "the attach") // and the throttle window opens with it
+
+	// Pin the window open rather than racing it, so the drop is certain.
+	r.mu.Lock()
+	r.lastGen = time.Now()
+	r.mu.Unlock()
+
+	r.Activity(proto.SyncActivityParams{
+		Identity: id("claude", "agentbox", "k1"), Activity: "installing gnome-shell-extensions",
+	})
+	select {
+	case got := <-lines:
+		t.Fatalf("the throttle did not drop this push, so the test proves nothing: %q", got)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	r.tick()
+	if got := nextFrom(t, lines, "the dropped line"); got != "installing gnome-shell-extensions" {
+		t.Errorf("the surface never got the dropped activity line, it has %q", got)
 	}
 }

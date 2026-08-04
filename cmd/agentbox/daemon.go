@@ -310,6 +310,11 @@ func runDaemon() {
 	d.SetRosterSurface(u.ShowRoster)
 	// And the pull, so a window opened between two pushes does not start blank.
 	u.ShowRoster(d.RosterSnapshot())
+	// The tick, started after the surface is wired. Without it the board is only
+	// ever as fresh as the last verb somebody happened to call: a state that
+	// decays on time alone never decays on screen, and a throttled push waits for
+	// unrelated traffic.
+	d.StartRoster()
 	d.SetPresence(presence.New()) // FR29/FR44 presence signals; no-op without X11
 	d.SetDriver(driver{})         // synthetic input (agentbox drive / drive_desktop); refuses itself without X11
 	// Assignments (M12/FR82): the daemon owns the schedule, the webui carries a
@@ -346,6 +351,7 @@ func runDaemon() {
 			hk.Close() // release the key grab before the process goes
 		}
 		d.StopAssignments() // no new runs; one in flight is left to finish
+		d.StopRoster()      // stop repainting a board that is about to go
 		u.ShutdownApp()     // close button only hides to tray; quit ends the sessions
 		d.BeginShutdown()   // a disconnect now is teardown, not a caller drop (FR45)
 		cancel()

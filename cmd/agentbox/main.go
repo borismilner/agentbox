@@ -189,7 +189,7 @@ func runtimeDir() string {
 // defaults: the parent process name and the working directory.
 func identityFlags(fs *flag.FlagSet) *proto.Identity {
 	id := &proto.Identity{}
-	fs.StringVar(&id.Agent, "agent", parentComm(), "calling agent name")
+	fs.StringVar(&id.Agent, "agent", agentName(), "calling agent name")
 	fs.StringVar(&id.Project, "project", filepath.Base(mustGetwd()), "project the agent works on")
 	fs.StringVar(&id.Session, "session", "", "agent session id")
 	// A CLI call is not a session and has no key of its own (FR83). It can act
@@ -228,12 +228,66 @@ func mustGetwd() string {
 	return wd
 }
 
-func parentComm() string {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", os.Getppid()))
-	if err != nil {
-		return "unknown"
+// agentName is who to say is calling. The parent process alone is not an answer:
+// a hook runs as claude -> sh -> agentbox and would be called "sh", and the
+// prescribed `setsid agentbox sync attach` is reparented to init and was called
+// "systemd" on Boris's board for every hook-driven session.
+//
+// So: an explicit AGENTBOX_AGENT wins, because it is the only thing that survives
+// setsid cutting the process tree. Failing that, walk up the tree past the shells
+// and the wrappers to the first name that means something. Failing that, say
+// "agent" - honest, and a placeholder a later call is allowed to replace, which
+// "systemd" would not have been.
+func agentName() string {
+	if v := strings.TrimSpace(os.Getenv("AGENTBOX_AGENT")); v != "" {
+		return v
 	}
-	return strings.TrimSpace(string(data))
+	// Bounded, because a walk up /proc is a loop over data the kernel can change
+	// underneath it, and no real tree is this deep.
+	pid := os.Getppid()
+	for range 12 {
+		if pid <= 1 {
+			break
+		}
+		comm, ppid, err := procParent(pid)
+		if err != nil {
+			break
+		}
+		if !proto.PlaceholderAgent(comm) {
+			return comm
+		}
+		pid = ppid
+	}
+	return "agent"
+}
+
+// procParent is one step up the tree: this pid's name and its parent's pid.
+func procParent(pid int) (comm string, ppid int, err error) {
+	c, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
+	if err != nil {
+		return "", 0, err
+	}
+	// The name is read from comm rather than from stat, whose own comm field is
+	// parenthesised and may itself contain parentheses or spaces.
+	st, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return "", 0, err
+	}
+	// PPid is field 4, and fields 1-2 are the pid and the parenthesised name, so
+	// count from the LAST close paren rather than splitting the whole line.
+	rest := string(st)
+	if i := strings.LastIndex(rest, ")"); i >= 0 {
+		rest = rest[i+1:]
+	}
+	f := strings.Fields(rest)
+	if len(f) < 2 {
+		return "", 0, fmt.Errorf("unreadable stat for %d", pid)
+	}
+	p, err := strconv.Atoi(f[1])
+	if err != nil {
+		return "", 0, err
+	}
+	return strings.TrimSpace(string(c)), p, nil
 }
 
 type multiFlag []string
@@ -1136,7 +1190,7 @@ func runControl(args []string) int {
 	req := proto.ControlRequestParams{
 		Action: action,
 		Identity: proto.Identity{
-			Agent: parentComm(), Project: filepath.Base(mustGetwd()),
+			Agent: agentName(), Project: filepath.Base(mustGetwd()),
 			Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: os.Getenv("AGENTBOX_SESSION_KEY"),
 		},
 		Reason:  text,
@@ -1705,7 +1759,7 @@ func runMCP(args []string) int {
 	// the rest of the session (FR83). One child is one session, so this is the
 	// only place in the system with the standing to say what that session is.
 	id := proto.Identity{
-		Agent: parentComm(), Project: filepath.Base(mustGetwd()),
+		Agent: agentName(), Project: filepath.Base(mustGetwd()),
 		Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: sessionKey(),
 	}
 	if err := agentboxmcp.Serve(context.Background(), runtimeDir(), version.Get().Revision, id); err != nil {

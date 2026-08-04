@@ -262,6 +262,12 @@ type SyncAgent struct {
 
 	Area string   `json:"area,omitempty"`
 	Tags []string `json:"tags,omitempty"`
+	// AreaPath is where the area itself lives - the repo root, not this row's
+	// cwd, and empty when the two have nothing to do with each other. A surface
+	// that captions a group of agents with a path needs this rather than any one
+	// member's cwd: agents in one repo sit in different subdirectories, and an
+	// agent may declare an area it is not standing in.
+	AreaPath string `json:"area_path,omitempty"`
 
 	Purpose  string `json:"purpose,omitempty"`
 	Activity string `json:"activity,omitempty"`

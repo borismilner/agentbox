@@ -51,7 +51,16 @@ below acts on behalf of that session:
 
 ```sh
 export AGENTBOX_SESSION_KEY="$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+export AGENTBOX_AGENT=claude   # optional, and worth it: see below
 ```
+
+`AGENTBOX_AGENT` is who the row says is calling. Without it the name is worked out
+from the process tree, which is usually right and is occasionally embarrassing: a
+hook runs as claude -> sh -> agentbox, and anything wrapped in `setsid` has been
+reparented to init, so the tree says nothing. The walk skips shells and wrappers
+and falls back to `agent` rather than naming one of them, and a row wearing that
+placeholder is renamed the moment the session's own child announces. Setting the
+variable skips all of that guessing.
 
 Then in `~/.claude/settings.json`:
 

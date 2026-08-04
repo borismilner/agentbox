@@ -56,6 +56,7 @@ type wireAgent struct {
 
 	Area      string   `json:"area"`       // the group key: derived, never declared
 	AreaLabel string   `json:"area_label"` // what to show as the heading
+	AreaPath  string   `json:"area_path"`  // where the area lives, empty if this row is no evidence of it
 	Tags      []string `json:"tags"`       // declared kind:scope refinements
 
 	Purpose  string `json:"purpose"`  // the announce line, empty if never announced
@@ -178,7 +179,7 @@ func (u *UI) ShowRoster(agents []proto.SyncAgent, partial bool) {
 			Key: a.Key, Agent: a.Agent, Project: a.Project, Session: a.Session,
 			Hue: IdentityHue(a.Agent, a.Project, dark),
 			Cwd: a.Cwd, PID: a.PID,
-			Area: a.Area, AreaLabel: areaLabel(a.Area), Tags: a.Tags,
+			Area: a.Area, AreaLabel: areaLabel(a.Area), AreaPath: a.AreaPath, Tags: a.Tags,
 			Purpose: a.Purpose, Activity: a.Activity,
 			State: a.State, Detail: a.Detail,
 			ActivitySinceMS: a.ActivitySinceMS, AgeMS: a.AgeMS,

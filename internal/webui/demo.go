@@ -92,7 +92,7 @@ func (u *UI) DemoAgents() {
 	// through a file in /tmp.
 	deployer := wireAgent{
 		Key: "9f2a4c81", Agent: "claude", Project: "agentbox", Hue: hue("claude", "agentbox"),
-		Cwd: boxCwd, PID: 41207, Area: boxArea, AreaLabel: "agentbox",
+		Cwd: boxCwd, PID: 41207, Area: boxArea, AreaLabel: "agentbox", AreaPath: boxCwd,
 		Tags:     []string{"subsystem:daemon"},
 		Purpose:  "shipping FR83 slice 1: the roster and discovery",
 		Activity: "make deploy",
@@ -118,7 +118,7 @@ func (u *UI) DemoAgents() {
 
 	checker := wireAgent{
 		Key: "3c81dd04", Agent: "claude", Project: "agentbox", Hue: hue("claude", "agentbox"),
-		Cwd: boxCwd, PID: 41333, Area: boxArea, AreaLabel: "agentbox",
+		Cwd: boxCwd, PID: 41333, Area: boxArea, AreaLabel: "agentbox", AreaPath: boxCwd,
 		Tags:     []string{"subsystem:webui"},
 		Purpose:  "FR73: making a closed card's body readable again",
 		Activity: "editing frontend/src/surfaces/Inbox.svelte",
@@ -139,7 +139,7 @@ func (u *UI) DemoAgents() {
 	// "blocked" with nobody named is the state the human already has today.
 	releaser := wireAgent{
 		Key: "b0417e9a", Agent: "claude", Project: "agentbox", Hue: hue("claude", "agentbox"),
-		Cwd: boxCwd, PID: 41402, Area: boxArea, AreaLabel: "agentbox",
+		Cwd: boxCwd, PID: 41402, Area: boxArea, AreaLabel: "agentbox", AreaPath: boxCwd,
 		Purpose: "cutting the 0.9 tag once the tree is deployed",
 		State:   agentBlocked, Detail: "deploy:agentbox", AgeMS: age(4 * time.Minute),
 		// No activity line on purpose: the wait line below carries the whole
@@ -160,13 +160,13 @@ func (u *UI) DemoAgents() {
 	// knows without asking the model for anything.
 	rude := wireAgent{
 		Key: "77c1e5b2", Agent: "claude", Project: "agentbox", Hue: hue("claude", "agentbox"),
-		Cwd: boxCwd, PID: 41880, Area: boxArea, AreaLabel: "agentbox",
+		Cwd: boxCwd, PID: 41880, Area: boxArea, AreaLabel: "agentbox", AreaPath: boxCwd,
 		State: agentUnannounced, AgeMS: age(6 * time.Minute),
 	}
 
 	asking := wireAgent{
 		Key: "5ab90c37", Agent: "claude", Project: "grabbit", Hue: hue("claude", "grabbit"),
-		Cwd: "~/me/projects/grabbit", PID: 39115, Area: grbArea, AreaLabel: "grabbit",
+		Cwd: "~/me/projects/grabbit", PID: 39115, Area: grbArea, AreaLabel: "grabbit", AreaPath: "~/me/projects/grabbit",
 		Purpose: "adding range requests to the downloader",
 		State:   agentAsking, AgeMS: age(34 * time.Minute),
 		Activity: "asked about the state file's shape", ActivitySinceMS: age(38 * time.Second),
@@ -184,7 +184,7 @@ func (u *UI) DemoAgents() {
 	// what success looks like for an agent whose turn has not come.
 	listener := wireAgent{
 		Key: "c4d20f6e", Agent: "claude", Project: "grabbit", Hue: hue("claude", "grabbit"),
-		Cwd: "~/me/projects/grabbit", PID: 39240, Area: grbArea, AreaLabel: "grabbit",
+		Cwd: "~/me/projects/grabbit", PID: 39240, Area: grbArea, AreaLabel: "grabbit", AreaPath: "~/me/projects/grabbit",
 		Tags:    []string{"role:release"},
 		Purpose: "release captain: publish the moment the tests go green",
 		State:   agentListening, Detail: "tests:green", AgeMS: age(12 * time.Minute),
@@ -196,7 +196,7 @@ func (u *UI) DemoAgents() {
 
 	quiet := wireAgent{
 		Key: "e18b7a55", Agent: "codex", Project: "grabbit", Hue: hue("codex", "grabbit"),
-		Cwd: "~/me/projects/grabbit", PID: 38004, Area: grbArea, AreaLabel: "grabbit",
+		Cwd: "~/me/projects/grabbit", PID: 38004, Area: grbArea, AreaLabel: "grabbit", AreaPath: "~/me/projects/grabbit",
 		Purpose:  "reviewing the resume path for off-by-one offsets",
 		Activity: "reading internal/dl/resume.go",
 		State:    agentQuiet, ActivitySinceMS: age(14*time.Minute + 30*time.Second), AgeMS: age(52 * time.Minute),
@@ -204,7 +204,7 @@ func (u *UI) DemoAgents() {
 
 	driving := wireAgent{
 		Key: "a7e34b18", Agent: "claude", Project: "dispatch", Hue: hue("claude", "dispatch"),
-		Cwd: "~/me/projects/dispatch", PID: 37220, Area: dspArea, AreaLabel: "dispatch",
+		Cwd: "~/me/projects/dispatch", PID: 37220, Area: dspArea, AreaLabel: "dispatch", AreaPath: "~/me/projects/dispatch",
 		Purpose:  "checking the fullscreen marker on the real desktop",
 		Activity: "moving the pointer to the tray icon",
 		State:    agentDriving, ActivitySinceMS: age(2 * time.Second), AgeMS: age(3 * time.Minute),
@@ -219,7 +219,7 @@ func (u *UI) DemoAgents() {
 
 	reporting := wireAgent{
 		Key: "d90c6f42", Agent: "claude", Project: "dispatch", Hue: hue("claude", "dispatch"),
-		Cwd: "~/me/projects/dispatch", PID: 37455, Area: dspArea, AreaLabel: "dispatch",
+		Cwd: "~/me/projects/dispatch", PID: 37455, Area: dspArea, AreaLabel: "dispatch", AreaPath: "~/me/projects/dispatch",
 		Purpose:  "migrating the events table",
 		Activity: "812 of 1204 rows",
 		State:    agentReporting, Detail: "64%", ActivitySinceMS: age(1 * time.Second), AgeMS: age(6 * time.Minute),
@@ -230,7 +230,7 @@ func (u *UI) DemoAgents() {
 	// partial. Absence is never asserted on partial data.
 	detached := wireAgent{
 		Key: "", Agent: "claude", Project: "snapper", Hue: hue("claude", "snapper"),
-		Cwd: "~/me/projects/snapper", Area: snpArea, AreaLabel: "snapper",
+		Cwd: "~/me/projects/snapper", Area: snpArea, AreaLabel: "snapper", AreaPath: "~/me/projects/snapper",
 		State: agentDetached, AgeMS: age(3 * time.Minute),
 		Items: []wireItemRef{
 			{Title: "Rebased onto main", Kind: "notify", State: "expired", SinceMS: age(3 * time.Minute)},

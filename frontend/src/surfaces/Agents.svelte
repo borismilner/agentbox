@@ -56,10 +56,15 @@
     for (const a of agents) {
       let g = at.get(a.area);
       if (!g) {
-        g = { key: a.area, label: a.area_label || a.area, cwd: a.cwd, rows: [] };
+        // The caption is the area's own path, never a member's cwd. Members of one
+        // repo sit in different subdirectories, and an agent can declare an area it
+        // is not standing in - both used to make this header state a falsehood
+        // (LAPTOP-SETUP captioned with the agentbox path). Empty means say nothing.
+        g = { key: a.area, label: a.area_label || a.area, cwd: "", rows: [] };
         at.set(a.area, g);
         out.push(g);
       }
+      if (!g.cwd && a.area_path) g.cwd = a.area_path;
       g.rows.push(a);
     }
     return out;
@@ -228,7 +233,7 @@
         <div class="area">
           <div class="head">
             <span class="label">{area.label}</span>
-            <span class="path">{area.cwd}</span>
+            {#if area.cwd}<span class="path">{area.cwd}</span>{/if}
             <span class="grow"></span>
             <span class="n">{area.rows.length}</span>
           </div>
