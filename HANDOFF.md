@@ -11,8 +11,8 @@ heard of AgentBox put itself on the board in one second.*
 ```bash
 cd ~/me/projects/agentbox
 git status -sb              # expect clean, in sync with origin/main
-git log --oneline -12       # newest four: 940ce52 0112716 67c8e9c 0fd62bf
-make deployed               # 940ce52ac690 or newer, NOT "(dirty)"
+git log --oneline -12       # newest five: b63d3a1 940ce52 0112716 67c8e9c 0fd62bf
+make deployed               # b63d3a123df3 or newer, NOT "(dirty)"
 agentbox pending            # expect "nothing pending"
 agentbox sync agents        # your own row should be here, put there by a hook
 agentbox sync locks         # expect "no locks held"
@@ -191,12 +191,14 @@ thought about it; the ten-minute comment says why.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `940ce52ac690`, clean stamp, verified with `make deployed`. HEAD is
-  `940ce52` plus this handoff's own commit, so the newest code commit is deployed.
+- **Deployed:** `b63d3a123df3`, clean stamp, verified with `make deployed`. The
+  embedded manual changed in that commit, so the deploy was needed to serve it;
+  confirmed with `agentbox docs agent`.
 - **Git:** clean, `main` pushed to `origin` (GitLab, which push-mirrors to GitHub).
   This session, oldest first: `0fd62bf` (the derived key + its tests), `67c8e9c` (the
   records), `0112716` (the `|| true` fix), `940ce52` (the board's wording, found by looking at
-  it), and this handoff.
+  it), `b63d3a1` (every doc brought up to date, and STATUS decluttered by ~156
+  lines of narrative that history.md already held), and this handoff.
 - **`~/.claude/settings.json` carries three new hooks** (see above). Not under
   version control, so no commit records it.
 - **Background jobs: none.** `pgrep -ax agentbox` should show the daemon plus one
