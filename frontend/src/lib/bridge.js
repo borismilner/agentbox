@@ -113,6 +113,13 @@ export const bridge = {
   aloud: (action, region, text) =>
     Call.ByName(svc("Aloud"), action, region ?? "", text ?? ""),
 
+  // The Agents surface (FR83). agents() is the roster to paint on mount, so a
+  // window opened between two pushes does not start blank; the roster then
+  // arrives on agentbox:agents whenever it changes. breakLock answers "" or a
+  // sentence to show, and it reassigns the lock without stopping its holder.
+  agents: () => Call.ByName(svc("Agents")),
+  breakLock: (name) => Call.ByName(svc("BreakLock"), name),
+
   // The hands-off strip (FR74). control() is the run to paint on mount, so a
   // window that opens mid-run does not start blank; the two answers go back the
   // same way, which is what makes the strip the place the decision happens.

@@ -5,12 +5,14 @@
 
   // pending badges the inbox with items nobody has answered yet - the number
   // that decides whether you go and look. working marks the session icon while
-  // an agent is mid-turn.
-  let { tab = $bindable("home"), pending = 0, working = 0 } = $props();
+  // an agent is mid-turn, and attached does the same for Agents: with several
+  // agents running, that any of them is live is the thing worth a glance (FR83).
+  let { tab = $bindable("home"), pending = 0, working = 0, attached = 0 } = $props();
 
   const items = [
     { id: "home", label: "Home" },
     { id: "session", label: "Session" },
+    { id: "agents", label: "Agents" },
     { id: "assignments", label: "Assignments" },
     { id: "inbox", label: "Inbox" },
     { id: "history", label: "History" },
@@ -32,6 +34,15 @@
           <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l.9-5.1A8 8 0 1 1 21 12z" />
         </svg>
         {#if working > 0}<span class="live" title="{working} working"></span>{/if}
+      {:else if it.id === "agents"}
+        <!-- Two nodes and the line between them: this surface is about agents
+             that can see each other, not about one agent talking. -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="7" cy="7" r="3.2" />
+          <circle cx="17" cy="17" r="3.2" />
+          <path d="m9.4 9.4 5.2 5.2" />
+        </svg>
+        {#if attached > 0}<span class="live" title="{attached} attached"></span>{/if}
       {:else if it.id === "assignments"}
         <!-- Work that happens on a clock: the hands say scheduled, the dot at
              the centre says something runs from it. -->

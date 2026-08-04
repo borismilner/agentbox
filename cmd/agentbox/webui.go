@@ -388,6 +388,30 @@ func runWebUIDemo(args []string) {
 		return
 	}
 
+	// `agentbox webui-demo agents` opens the Agents surface over a canned roster
+	// (FR83, gate 2). Nothing behind it: no daemon, no roster, no locks. It is the
+	// mock the working rule asks for, and the point is to settle what a row says
+	// and how a wait, an orphan and an unannounced session read before any of it
+	// is built. Break lock works, on the canned data, so the confirm can be
+	// judged too.
+	if len(args) > 0 && args[0] == "agents" {
+		u.DemoSessions() // so the rail's other surfaces are not empty beside it
+		u.SetSource(demoSource{})
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			u.ShowApp("agents")
+			// After the window exists: the surface pulls on mount, and this is
+			// also the push path, so both doors are exercised in one run.
+			time.Sleep(400 * time.Millisecond)
+			u.DemoAgents()
+		}()
+		if err := u.Run(); err != nil {
+			fmt.Fprintln(os.Stderr, "webui:", err)
+			os.Exit(exitError)
+		}
+		return
+	}
+
 	// `agentbox webui-demo ask` opens the session surface and presents session-tagged
 	// items through the real Present path, so the routing rule decides where they
 	// land exactly as it will in the daemon - the panel is not a canned picture.

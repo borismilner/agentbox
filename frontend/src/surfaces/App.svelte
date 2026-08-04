@@ -2,6 +2,7 @@
   import { bridge, on } from "../lib/bridge.js";
   import Home from "./Home.svelte";
   import Session from "./Session.svelte";
+  import Agents from "./Agents.svelte";
   import Assignments from "./Assignments.svelte";
   import Inbox from "./Inbox.svelte";
   import History from "./History.svelte";
@@ -42,6 +43,15 @@
     sessions = list ?? [];
     if (closing && !sessions.some((s) => s.id === closing)) closing = null;
   });
+  // The shell keeps the attached count for the same reason it keeps the pending
+  // one: the rail's dot has to be right whichever surface is in front (FR83).
+  let attached = $state(0);
+  on("agentbox:agents", (r) => (attached = (r?.agents ?? []).length));
+  bridge
+    .agents()
+    .then((r) => (attached = (r?.agents ?? []).length))
+    .catch(() => {});
+
   on("agentbox:surface", (name) => (tab = name || "home"));
   on("agentbox:inbox", (v) => {
     if (v) inbox = v;
@@ -64,7 +74,7 @@
     <button class="winbtn" title="Close to tray" onclick={() => bridge.hideApp()}>&#x2715;</button>
   </div>
 
-  <Rail bind:tab pending={inbox.pending} {working} />
+  <Rail bind:tab pending={inbox.pending} {working} {attached} />
 
   <aside class="sessions">
     <div class="head">
@@ -137,6 +147,8 @@
       <Home bind:tab {inbox} {sessions} />
     {:else if tab === "session"}
       <Session session={selected} />
+    {:else if tab === "agents"}
+      <Agents />
     {:else if tab === "assignments"}
       <Assignments />
     {:else if tab === "inbox"}

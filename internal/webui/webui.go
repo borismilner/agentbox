@@ -92,11 +92,12 @@ type UI struct {
 	// (construction order - the daemon needs this UI as its Presenter).
 	src Source
 
-	sess  *sessions
-	inbox *inbox
-	view  *viewer
-	prog  *progress
-	ctrl  *control
+	sess   *sessions
+	inbox  *inbox
+	view   *viewer
+	prog   *progress
+	ctrl   *control
+	agents *agents
 	// top owns the top-centre column, so no surface places itself there (FR75).
 	top   *topStack
 	pan   *panel
@@ -117,6 +118,10 @@ type UI struct {
 	// handover answers the control strip's Deny and Allow (FR74). Nil until the
 	// daemon is wired, and legitimately nil in a demo build.
 	handover Handover
+
+	// roster answers the Agents surface's break-lock (FR83), wired the same way
+	// and nil while the surface is still a mock over canned rows.
+	roster Roster
 
 	// OnView mirrors internal/ui so the tray badge keeps working.
 	OnView      func(v daemon.View)
@@ -212,6 +217,7 @@ func New(res Resolver, log *slog.Logger, cfg config.Config) *UI {
 	u.view = newViewer(u)
 	u.prog = newProgress(u)
 	u.ctrl = newControlStrip(u)
+	u.agents = newAgents(u)
 	u.top = newTopStack(u)
 	u.pan = newPanel(u)
 	u.board = newBoard(u)
