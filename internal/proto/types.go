@@ -70,7 +70,22 @@ type Identity struct {
 	// A CLI caller is not a session and normally has none; it can act on behalf
 	// of one with --key.
 	Key string `json:"key,omitempty"`
+
+	// Via says what kind of caller this is: an mcp child making a tool call for a
+	// model, or a shell. It exists for the discovery rider (FR83), which is a line
+	// for a model to read and must therefore be spent on a call that has somewhere
+	// to put it. A session's hooks call the CLI with that session's own key several
+	// times a minute, and without this each of those calls would consume the news
+	// the child was supposed to deliver.
+	Via string `json:"via,omitempty"`
 }
+
+// The two kinds of caller. Empty means unknown, which is treated as a shell:
+// assuming a model is listening when none is would lose the message.
+const (
+	ViaMCP = "mcp"
+	ViaCLI = "cli"
+)
 
 // placeholderAgents are the process names that name no agent. Agent is read from
 // the parent process, and for anything but an mcp child the parent is whatever

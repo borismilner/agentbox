@@ -2,9 +2,11 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -340,6 +342,114 @@ func TestDeriveAreaPutsOneRepoInOneArea(t *testing.T) {
 	}
 	if got := DeriveArea(""); got != "" {
 		t.Errorf("an empty cwd derived %q, want empty", got)
+	}
+}
+
+func TestTheRiderTellsASessionWhatItHasNotBeenTold(t *testing.T) {
+	// The rider is the piece that makes discovery work for an agent that is
+	// already deep in a file. announce answers "who is here" and list_agents
+	// answers it on demand, but both need the agent to think of asking - and the
+	// collision this feature exists to prevent happens to somebody who is not
+	// asking anything.
+	r := newTestRoster()
+	defer attached(t, r, id("claude", "agentbox", "mine"), "/repo", "repo:agentbox")()
+
+	// Alone, and told nothing: "you are alone" is a claim the roster does not make
+	// on this path, so silence.
+	if got := r.riderFor("mine"); got != "" {
+		t.Errorf("a session alone in its area was told %q", got)
+	}
+
+	// A peer arrives.
+	defer attached(t, r, id("codex", "agentbox", "peer"), "/repo", "repo:agentbox")()
+	r.Announce(proto.SyncAnnounceParams{
+		Identity: id("codex", "agentbox", "peer"), Purpose: "FR85: one separator for identity colours",
+	})
+	got := r.riderFor("mine")
+	for _, want := range []string{"1 agent", "repo:agentbox", "codex", "FR85", "Coordinate"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the rider %q does not mention %q", got, want)
+		}
+	}
+
+	// Said once. An agent told twice about the same peer learns to ignore riders.
+	if again := r.riderFor("mine"); again != "" {
+		t.Errorf("the same arrival was reported twice: %q", again)
+	}
+
+	// Another area is not this session's business.
+	defer attached(t, r, id("aider", "elsewhere", "far"), "/other", "repo:elsewhere")()
+	if got := r.riderFor("mine"); got != "" {
+		t.Errorf("an agent in another area was reported as company: %q", got)
+	}
+}
+
+func TestTheRiderReportsADepartureOnceAndNamesNobodyElse(t *testing.T) {
+	r := newTestRoster()
+	defer attached(t, r, id("claude", "agentbox", "mine"), "/repo", "repo:agentbox")()
+	stopPeer := attached(t, r, id("codex", "agentbox", "peer"), "/repo", "repo:agentbox")
+
+	if got := r.riderFor("mine"); !strings.Contains(got, "codex") {
+		t.Fatalf("setup: the arrival was not reported (%q)", got)
+	}
+	stopPeer()
+
+	got := r.riderFor("mine")
+	if !strings.Contains(got, "left") || !strings.Contains(got, "peer") {
+		t.Errorf("the departure was reported as %q", got)
+	}
+	// Nothing to coordinate with somebody who has gone.
+	if strings.Contains(got, "Coordinate") {
+		t.Errorf("a departure told the agent to coordinate: %q", got)
+	}
+	if again := r.riderFor("mine"); again != "" {
+		t.Errorf("the same departure was reported twice: %q", again)
+	}
+}
+
+func TestAHooksShellCallDoesNotEatTheChildsNews(t *testing.T) {
+	// The rider is a line for a model to read, and only the mcp child has anywhere
+	// to put it. A session's hooks call the CLI with that session's own key several
+	// times a minute (docs/recipes.md), so a rider spent on one of those calls is a
+	// rider the model never sees - and every arrival would be swallowed by
+	// whichever hook happened to fire next.
+	d := &Daemon{roster: newRoster(slog.New(slog.NewTextHandler(io.Discard, nil)))}
+	r := d.roster
+	defer attached(t, r, id("claude", "agentbox", "mine"), "/repo", "repo:agentbox")()
+	defer attached(t, r, id("codex", "agentbox", "peer"), "/repo", "repo:agentbox")()
+
+	shell := paramsFor(t, proto.Identity{Agent: "zsh", Key: "mine", Via: proto.ViaCLI})
+	if got := d.SyncRider(proto.MethodSyncActivity, shell); got != "" {
+		t.Errorf("a shell was handed the rider: %q", got)
+	}
+	child := paramsFor(t, proto.Identity{Agent: "claude", Key: "mine", Via: proto.ViaMCP})
+	if got := d.SyncRider(proto.MethodSyncActivity, child); !strings.Contains(got, "codex") {
+		t.Errorf("the child got %q, so the hook had already spent the news", got)
+	}
+}
+
+func paramsFor(t *testing.T, i proto.Identity) json.RawMessage {
+	t.Helper()
+	raw, err := json.Marshal(struct {
+		Identity proto.Identity `json:"identity"`
+	}{i})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func TestASessionWithNoRowIsToldNothing(t *testing.T) {
+	// Every call carries a key, including calls from sessions that never attached
+	// and from CLI callers acting on nobody's behalf. None of them has an area, so
+	// none of them has news, and the rider must not invent any.
+	r := newTestRoster()
+	defer attached(t, r, id("claude", "agentbox", "mine"), "/repo", "repo:agentbox")()
+	if got := r.riderFor("nosuchkey"); got != "" {
+		t.Errorf("a key with no row was told %q", got)
+	}
+	if got := r.riderFor(""); got != "" {
+		t.Errorf("an empty key was told %q", got)
 	}
 }
 

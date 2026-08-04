@@ -67,6 +67,9 @@ func runSync(args []string) int {
 	id := proto.Identity{
 		Agent: agentName(), Project: filepath.Base(mustGetwd()),
 		Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: *key,
+		// A shell, even when it acts for a session: a rider spent here would be
+		// read by nobody, and a session's hooks call this several times a minute.
+		Via: proto.ViaCLI,
 	}
 
 	switch verb {

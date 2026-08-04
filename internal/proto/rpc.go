@@ -416,6 +416,14 @@ type response struct {
 	ID      *int64          `json:"id"`
 	Result  json.RawMessage `json:"result,omitempty"`
 	Error   *RPCError       `json:"error,omitempty"`
+
+	// Sync is the discovery rider (FR83): one line about company that arrives on
+	// the way back from an unrelated call, when the caller's area gained or lost
+	// an agent since the last time it called anything. It rides the envelope
+	// rather than the result so that every method carries it without every result
+	// type knowing about it - and so an agent that is mid-task hears about a peer
+	// at the moment it is about to act, instead of whenever it next thinks to ask.
+	Sync string `json:"sync,omitempty"`
 }
 
 // Handler serves one request. Blocking methods (ask) may take minutes; the
@@ -435,6 +443,7 @@ type Conn struct {
 	pending map[int64]chan response
 	readErr error
 	reading bool
+	rider   func(method string, params json.RawMessage) string
 }
 
 func NewConn(rwc io.ReadWriteCloser) *Conn {
@@ -447,6 +456,22 @@ func NewConn(rwc io.ReadWriteCloser) *Conn {
 
 func (c *Conn) Close() error { return c.rwc.Close() }
 
+// SetRider installs the function that decides what rides back on each envelope.
+// Called after the handler, with the method and params of the request just
+// served, so a peer that arrived DURING the call is still reported by it. An
+// empty answer adds nothing. Set it before Serve.
+func (c *Conn) SetRider(f func(method string, params json.RawMessage) string) {
+	c.mu.Lock()
+	c.rider = f
+	c.mu.Unlock()
+}
+
+func (c *Conn) riderFn() func(string, json.RawMessage) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.rider
+}
+
 func (c *Conn) send(v any) error {
 	c.encMu.Lock()
 	defer c.encMu.Unlock()
@@ -456,9 +481,17 @@ func (c *Conn) send(v any) error {
 // Call sends a request and blocks until the response arrives, the context
 // is done, or the connection fails.
 func (c *Conn) Call(ctx context.Context, method string, params, result any) error {
+	_, err := c.CallRidden(ctx, method, params, result)
+	return err
+}
+
+// CallRidden is Call, and also hands back whatever the daemon rode along on the
+// envelope (FR83's discovery rider). Every existing caller stays on Call: only
+// the mcp child has anywhere to put the line, and only it needs to know.
+func (c *Conn) CallRidden(ctx context.Context, method string, params, result any) (string, error) {
 	raw, err := json.Marshal(params)
 	if err != nil {
-		return fmt.Errorf("marshal params: %w", err)
+		return "", fmt.Errorf("marshal params: %w", err)
 	}
 	id := c.nextID.Add(1)
 	ch := make(chan response, 1)
@@ -467,7 +500,7 @@ func (c *Conn) Call(ctx context.Context, method string, params, result any) erro
 	if c.readErr != nil {
 		err := c.readErr
 		c.mu.Unlock()
-		return err
+		return "", err
 	}
 	c.pending[id] = ch
 	if !c.reading {
@@ -483,28 +516,30 @@ func (c *Conn) Call(ctx context.Context, method string, params, result any) erro
 	}()
 
 	if err := c.send(request{JSONRPC: "2.0", ID: &id, Method: method, Params: raw}); err != nil {
-		return fmt.Errorf("send %s: %w", method, err)
+		return "", fmt.Errorf("send %s: %w", method, err)
 	}
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return "", ctx.Err()
 	case resp, ok := <-ch:
 		if !ok {
 			c.mu.Lock()
 			err := c.readErr
 			c.mu.Unlock()
-			return fmt.Errorf("connection closed during %s: %w", method, err)
+			return "", fmt.Errorf("connection closed during %s: %w", method, err)
 		}
 		if resp.Error != nil {
-			return resp.Error
+			// The rider is dropped with a failed call on purpose: an agent being
+			// told why its call failed does not also need news about company.
+			return "", resp.Error
 		}
 		if result != nil {
 			if err := json.Unmarshal(resp.Result, result); err != nil {
-				return fmt.Errorf("unmarshal %s result: %w", method, err)
+				return "", fmt.Errorf("unmarshal %s result: %w", method, err)
 			}
 		}
-		return nil
+		return resp.Sync, nil
 	}
 }
 
@@ -595,6 +630,12 @@ func (c *Conn) Serve(ctx context.Context, h Handler) error {
 					resp.Error = &RPCError{Code: CodeInternal, Message: "marshal result: " + err.Error()}
 				} else {
 					resp.Result = raw
+					// Only a successful call carries news (FR83). Computed here,
+					// after the handler, so a peer who arrived during the call is
+					// still in it.
+					if rider := c.riderFn(); rider != nil {
+						resp.Sync = rider(req.Method, req.Params)
+					}
 				}
 			}
 			_ = c.send(resp)

@@ -315,6 +315,9 @@ func runDaemon() {
 	// decays on time alone never decays on screen, and a throttled push waits for
 	// unrelated traffic.
 	d.StartRoster()
+	// And the rider, which is how an agent already deep in a file hears that it
+	// has company: it rides back on whatever call it makes next (FR83).
+	lst.SetRider(d.SyncRider)
 	d.SetPresence(presence.New()) // FR29/FR44 presence signals; no-op without X11
 	d.SetDriver(driver{})         // synthetic input (agentbox drive / drive_desktop); refuses itself without X11
 	// Assignments (M12/FR82): the daemon owns the schedule, the webui carries a

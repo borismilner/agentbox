@@ -188,7 +188,7 @@ func runtimeDir() string {
 // identityFlags wires the common caller-identity flags with discoverable
 // defaults: the parent process name and the working directory.
 func identityFlags(fs *flag.FlagSet) *proto.Identity {
-	id := &proto.Identity{}
+	id := &proto.Identity{Via: proto.ViaCLI}
 	fs.StringVar(&id.Agent, "agent", agentName(), "calling agent name")
 	fs.StringVar(&id.Project, "project", filepath.Base(mustGetwd()), "project the agent works on")
 	fs.StringVar(&id.Session, "session", "", "agent session id")
@@ -1192,6 +1192,7 @@ func runControl(args []string) int {
 		Identity: proto.Identity{
 			Agent: agentName(), Project: filepath.Base(mustGetwd()),
 			Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: os.Getenv("AGENTBOX_SESSION_KEY"),
+			Via: proto.ViaCLI,
 		},
 		Reason:  text,
 		WindowS: *window,
@@ -1761,6 +1762,9 @@ func runMCP(args []string) int {
 	id := proto.Identity{
 		Agent: agentName(), Project: filepath.Base(mustGetwd()),
 		Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: sessionKey(),
+		// This child is a model's hands, so it is the one caller a discovery
+		// rider can be spent on (FR83).
+		Via: proto.ViaMCP,
 	}
 	if err := agentboxmcp.Serve(context.Background(), runtimeDir(), version.Get().Revision, id); err != nil {
 		fmt.Fprintf(os.Stderr, "agentbox mcp: %v\n", err)

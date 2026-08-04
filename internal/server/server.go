@@ -5,12 +5,14 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -49,6 +51,23 @@ type Listener struct {
 	lock *os.File
 	ln   *net.UnixListener
 	log  *slog.Logger
+
+	mu    sync.Mutex
+	rider func(method string, params json.RawMessage) string
+}
+
+// SetRider installs FR83's discovery rider on every connection accepted from now
+// on. Set it before Serve; a listener without one behaves exactly as before.
+func (l *Listener) SetRider(f func(method string, params json.RawMessage) string) {
+	l.mu.Lock()
+	l.rider = f
+	l.mu.Unlock()
+}
+
+func (l *Listener) riderFn() func(string, json.RawMessage) string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.rider
 }
 
 // Listen acquires the instance lock and binds the socket. Order matters:
@@ -109,7 +128,14 @@ func (l *Listener) Serve(ctx context.Context, h proto.Handler) error {
 					l.log.Error(logging.EvPanic, "component", "server", "panic", fmt.Sprint(r))
 				}
 			}()
-			if err := proto.NewConn(conn).Serve(ctx, h); err != nil {
+			pc := proto.NewConn(conn)
+			// FR83's discovery rider, installed per connection: whatever this
+			// caller has not been told about its area rides back on its next
+			// answer, whichever method that answer belongs to.
+			if rider := l.riderFn(); rider != nil {
+				pc.SetRider(rider)
+			}
+			if err := pc.Serve(ctx, h); err != nil {
 				l.log.Warn("ipc.conn_closed", "component", "server", "err", err.Error())
 			}
 		}()

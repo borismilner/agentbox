@@ -37,6 +37,9 @@ type server struct {
 func Serve(ctx context.Context, runtimeDir, version string, id proto.Identity) error {
 	s := &server{runtimeDir: runtimeDir, id: id, base: ctx}
 	srv := sdk.NewServer(&sdk.Implementation{Name: "agentbox", Version: version}, nil)
+	// FR83's discovery rider: news about company, appended to whatever tool
+	// result it came back on (rider.go).
+	srv.AddReceivingMiddleware(riderMiddleware)
 	// The standards an agent can ask for mid-task (standards.go): resources and
 	// a prompt, so a review kit does not have to be written from memory.
 	addStandards(srv)
@@ -202,9 +205,11 @@ func (s *server) call(ctx context.Context, method string, it *proto.Item) (proto
 	}
 	defer conn.Close()
 	var res proto.Result
-	if err := conn.Call(ctx, method, it, &res); err != nil {
+	rider, err := conn.CallRidden(ctx, method, it, &res)
+	if err != nil {
 		return proto.Result{}, err
 	}
+	noteRider(ctx, rider)
 	return res, nil
 }
 
@@ -561,7 +566,9 @@ func (s *server) callInto(ctx context.Context, method string, params, out any) e
 		return fmt.Errorf("cannot reach agentbox daemon: %w", err)
 	}
 	defer conn.Close()
-	return conn.Call(ctx, method, params, out)
+	rider, err := conn.CallRidden(ctx, method, params, out)
+	noteRider(ctx, rider)
+	return err
 }
 
 // sendShow opens the reading window on a request. Show is one-way: it returns as

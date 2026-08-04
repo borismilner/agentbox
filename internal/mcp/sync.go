@@ -135,7 +135,9 @@ func (s *server) syncCall(ctx context.Context, method string, req, res any) erro
 		return fmt.Errorf("cannot reach agentbox daemon: %w", err)
 	}
 	defer conn.Close()
-	return conn.Call(ctx, method, req, res)
+	rider, err := conn.CallRidden(ctx, method, req, res)
+	noteRider(ctx, rider)
+	return err
 }
 
 type announceIn struct {

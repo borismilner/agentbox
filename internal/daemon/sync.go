@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"sort"
@@ -106,6 +108,13 @@ type rosterRow struct {
 	// not attached yet: real, but not evidence anybody is still there.
 	attached bool
 	touched  time.Time
+
+	// knownPeers is this session's cursor on its own area: the peers it has
+	// already been told about, by key. The rider reports the difference and moves
+	// the cursor, so each arrival and departure is mentioned exactly once. Nil
+	// means nothing has been reported to this session yet, which is not the same
+	// as an empty set - an empty set says it has been told it is alone.
+	knownPeers map[string]bool
 }
 
 type roster struct {
@@ -331,6 +340,123 @@ func (r *roster) Activity(p proto.SyncActivityParams) (proto.SyncResult, *proto.
 
 	r.changed()
 	return proto.SyncResult{OK: true}, nil
+}
+
+// riderFor is the discovery rider: what this session has not yet been told about
+// its own area, in one line, and nothing when there is nothing new.
+//
+// It is the mechanism that makes discovery work for an agent that is mid-task.
+// announce answers "who is here" at the start of a session and list_agents
+// answers it on demand, but both need the agent to think of asking, and the
+// collision this feature exists to prevent happens to an agent that is already
+// deep in a file. So the news comes back attached to whatever it calls next.
+//
+// Each arrival and departure is reported exactly once: the row carries the set of
+// peers it has been told about, and this moves that cursor. A session that has
+// never been told anything gets the peers already present, because from its point
+// of view they are all news.
+func (r *roster) riderFor(key string) string {
+	if key == "" {
+		return ""
+	}
+	now := time.Now()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	row := r.rows[key]
+	if row == nil || row.area == "" {
+		return ""
+	}
+	current := map[string]bool{}
+	for k, other := range r.rows {
+		if k != key && other.area == row.area {
+			current[k] = true
+		}
+	}
+	known := row.knownPeers
+	row.knownPeers = current
+
+	var joined, left []string
+	for k := range current {
+		if !known[k] {
+			joined = append(joined, k)
+		}
+	}
+	for k := range known {
+		if !current[k] {
+			left = append(left, k)
+		}
+	}
+	if known == nil {
+		// Nothing has been said to this session yet, so everybody present is news
+		// and nobody has left. Silence when it really is alone: "you are alone" is
+		// a claim, and the roster only makes it where it can be sure (see partial).
+		left = nil
+		if len(joined) == 0 {
+			return ""
+		}
+	}
+	if len(joined) == 0 && len(left) == 0 {
+		return ""
+	}
+	// Stable wording for a stable event, so two identical situations read the same.
+	sort.Strings(joined)
+	sort.Strings(left)
+
+	asking := map[string]bool{}
+	if r.askingFn != nil {
+		asking = r.askingFn()
+	}
+	driving := ""
+	if r.drivingFn != nil {
+		driving = r.drivingFn()
+	}
+	describe := func(k string) string {
+		peer := r.rows[k]
+		if peer == nil {
+			return k
+		}
+		name := peer.identity.Agent
+		if name == "" {
+			name = k
+		}
+		what := "no purpose given"
+		if peer.purpose != "" {
+			what = `"` + peer.purpose + `"`
+		}
+		state, _ := derivedState(peer, k, asking, driving, now)
+		return fmt.Sprintf("%s %s (%s)", name, what, state)
+	}
+
+	var parts []string
+	if len(joined) > 0 {
+		who := make([]string, 0, len(joined))
+		for _, k := range joined {
+			who = append(who, describe(k))
+		}
+		verb := "is also in"
+		if known != nil {
+			verb = "joined"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s %s %s: %s",
+			len(joined), plural(len(joined), "agent"), verb, row.area, strings.Join(who, ", ")))
+	}
+	if len(left) > 0 {
+		gone := make([]string, 0, len(left))
+		for _, k := range left {
+			// A row that has gone cannot be described, so it is named by the only
+			// thing that outlives it here: its key.
+			gone = append(gone, k)
+		}
+		parts = append(parts, fmt.Sprintf("%d %s left %s (%s)",
+			len(left), plural(len(left), "agent"), row.area, strings.Join(gone, ", ")))
+	}
+	line := "sync: " + strings.Join(parts, "; ") + "."
+	if len(joined) > 0 {
+		line += " Coordinate before you edit a shared file: split the work or wait."
+	}
+	return line
 }
 
 // List answers the roster read, filtered. It is deliberately ungated: the human
@@ -643,6 +769,53 @@ func (d *Daemon) drivingKey() string { return d.control.holderKey() }
 // connect it, not to reach into it.
 func (d *Daemon) SetRosterSurface(push func([]proto.SyncAgent, bool)) {
 	d.roster.SetPush(push)
+}
+
+// SyncRider is what rides back on a response envelope (FR83). It answers for any
+// method, because the point is that news reaches an agent through whatever it
+// happened to be doing.
+//
+// Two families are excluded, and both for the same reason: they already answer
+// the question. announce and list_agents return the roster in their own result,
+// so a rider would say it twice; the cursor still moves, so the next call does
+// not repeat what they just showed. attach is excluded because it returns once,
+// at the end of the session.
+func (d *Daemon) SyncRider(method string, params json.RawMessage) string {
+	id := identityOf(params)
+	if id.Via != proto.ViaMCP {
+		// A shell cannot show the line, and spending the news on it would lose it:
+		// a session's hooks call the CLI with that session's own key several times
+		// a minute, so this is the difference between the rider working and the
+		// rider being eaten before the model ever sees it.
+		return ""
+	}
+	key := strings.TrimSpace(id.Key)
+	switch method {
+	case proto.MethodSyncAttach:
+		return ""
+	case proto.MethodSyncAnnounce, proto.MethodSyncList:
+		// Move the cursor and say nothing: whatever is here was in that result.
+		d.roster.riderFor(key)
+		return ""
+	}
+	return d.roster.riderFor(key)
+}
+
+// identityOf reads the caller identity out of any params object. Every method's
+// params carry it in the same place, so this does not need to know which method it
+// is looking at - and a params blob without one simply has no session to tell
+// anything to.
+func identityOf(params json.RawMessage) proto.Identity {
+	if len(params) == 0 {
+		return proto.Identity{}
+	}
+	var p struct {
+		Identity proto.Identity `json:"identity"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return proto.Identity{}
+	}
+	return p.Identity
 }
 
 // StartRoster begins the roster's own tick, which is what keeps the Agents
