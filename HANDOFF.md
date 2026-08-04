@@ -82,7 +82,16 @@ Consequences worth knowing before you touch this:
   exits 4 with no daemon and `make deploy` stops the daemon on purpose, so without
   it one deploy prints a hook failure into every live session on the machine.
 
-### The change that lives OUTSIDE this repo
+### The changes that live OUTSIDE this repo
+
+**`~/.claude/CLAUDE.md`, Boris's global instructions**, had its AgentBox section
+brought up to the shipped state (session 45, at his ask): locks/signals/shared as
+things that exist rather than things "arriving as that work lands", the hook that
+has already put your row on the board with a placeholder purpose you are expected
+to replace, the peer list as a session-start snapshot rather than a standing
+answer, and `request_control` as a tool rather than a shell-out. A backup of the
+previous version is in this session's scratchpad; the change is additive prose in
+one section, so reverting it means restoring that section alone.
 
 `~/.claude/settings.json` now has three AgentBox hooks (one SessionStart, two
 PostToolUse). Boris's own hooks - atuin, fingerprint-guard - and everything outside

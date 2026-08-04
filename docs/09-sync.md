@@ -925,7 +925,14 @@ doors, each reaching a different kind of agent:
    shared tree, and take the lock before a shared resource (the deploy, the
    repo, the VM, the desktop). Written as a habit with a reason, the way the
    interruption-cost paragraph already is, because a rule an agent understands
-   survives paraphrase.
+   survives paraphrase. **Refreshed in session 45** once all five slices were
+   real: it had been written while locks were still "arriving as that work lands"
+   and while a row with no announce was "dim and nameless", and it still sent
+   agents to a shell for `request_control`, which has had a tool since session 32.
+   It now says what exists - the hook that has already put the row there, the
+   placeholder purpose that is the agent's job to replace, the peer list that is a
+   snapshot of session start rather than a standing answer, and signals and shared
+   values as the way to wait and divide rather than to ask Boris to sequence you.
 2. **The embedded manual, `internal/manual/agent.md`** (served by
    `agentbox docs agent`, and mirrored in the fuller
    [agent-manual.md](agent-manual.md)) - the reference an agent reads when it
