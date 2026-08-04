@@ -40,6 +40,10 @@ func Serve(ctx context.Context, runtimeDir, version string, id proto.Identity) e
 	// FR83's discovery rider: news about company, appended to whatever tool
 	// result it came back on (rider.go).
 	srv.AddReceivingMiddleware(riderMiddleware)
+	// The keep-alive ticker (keepalive.go): a parked call tells the client it is
+	// alive, or the client aborts it after 1800s of silence and the human's
+	// answer arrives at nobody.
+	srv.AddReceivingMiddleware(keepaliveMiddleware)
 	// The standards an agent can ask for mid-task (standards.go): resources and
 	// a prompt, so a review kit does not have to be written from memory.
 	addStandards(srv)

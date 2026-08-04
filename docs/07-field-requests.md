@@ -2142,6 +2142,55 @@ down.
 
 ---
 
+## FR88 [fixed 2026-08-04, session 42] Every blocking card was on a 30-minute fuse
+
+**Session.** 2026-08-04, session 42, measuring the MCP client's idle cap before
+building FR83's parked lock waits.
+
+**What was wrong.** Claude Code aborts a stdio tool call that has said nothing
+for **1800s**, and nothing in the child ever said anything. So a card the human
+had not answered within half an hour was already dead at the agent's end while it
+was still on his screen: he answers at minute 40, the answer goes to a caller
+that is gone, and the agent got
+
+    MCP server "agentbox" tool "ask_user" sent no response or progress for 1800s;
+    aborting.
+
+instead of an answer. Every blocking tool had this - `ask_user`,
+`confirm_action`, `ask_user_form`, `request_review`, `await_walkthrough`,
+`await_artifact_event`, `request_secret`, `act_unless_stopped` - and `timeout_s:
+0`, documented as "waits forever", was the worst case rather than the safest one.
+
+Never seen in the field because nobody had left a card up for half an hour and
+then answered it, which is exactly the case AgentBox exists for: the human is away
+from the terminal.
+
+**Measured, not guessed.** `tools/idlecap-probe.sh` runs two headless Claude
+sessions against `tools/idlecap-server.py`, one parking silently and one ticking
+progress notifications. The silent call was aborted at 1800s with the message
+above; the ticking one was still alive past it and returned normally. Two
+mechanics fell out that the design had wrong:
+
+- **The client sends `_meta.progressToken` on every `tools/call`**, so a server
+  may always answer with `notifications/progress`. Its own `onprogress` handler
+  resets the idle clock, which is why ticking works.
+- **The client does NOT tell the server it gave up.** No
+  `notifications/cancelled`, no closed pipe - the request is simply abandoned. A
+  parked daemon call therefore has to have a ceiling of its own; nothing will
+  arrive to cancel it.
+- Two independent timers exist: the 1800s idle cap (stdio; 300s for
+  http/sse) and a hard per-call ceiling of 1e8 ms, ~27.8 hours, which is
+  effectively no limit. Only the idle one bites, and only progress resets it.
+  `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` (ms, 0 disables) and a per-server
+  `timeout` in the MCP settings are the escape hatches; the ticker means neither
+  is needed.
+
+**Fixed** in `internal/mcp/keepalive.go`: receiving middleware over `tools/call`
+sends one progress notification a minute while a call is parked, starting only
+after the call has already lasted a minute so the fast tools - which is nearly
+all of them - never tick at all. It covers every blocking tool at once, including
+FR83's lock waits, which is why it is middleware rather than a change per tool.
+
 ## Authoring rules for walkthroughs - MOVED
 
 This section shipped. It lives in `internal/manual/walkthrough.md`, embedded in

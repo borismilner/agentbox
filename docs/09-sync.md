@@ -415,18 +415,27 @@ that is neither a turn nor an event - claim tables for fanned-out work, a
 The efficiency claim has to be honest about the runtime the agents actually
 have. A Claude session is a turn loop: a parked tool call spends no tokens,
 but it does occupy the turn - and MCP clients abort a call that stays silent
-too long (Claude Code caps idle tool calls at around half an hour). The
-design works with that, not against it:
+too long. **Measured 2026-08-04 (session 42) against the real client, not
+guessed: Claude Code aborts a stdio tool call after exactly 1800s of silence,
+and a progress notification resets that clock.** The probe is
+`tools/idlecap-probe.sh`; the numbers and the two surprises are FR88. The design
+works with that, not against it:
 
-- **The child keeps parked calls alive.** While any blocking sync call is
-  parked, the mcp child emits MCP progress notifications on a ticker, which
-  is what marks the call live rather than hung to a client that caps silent
-  calls.
-- **Every wait has a ceiling anyway.** `[sync] wait_max_s` (default 1500s,
-  under the known client cap) bounds any park; hitting it returns an honest
-  `timed_out` with the cursor, and re-arming is one call that misses
-  nothing. A wait is not a promise to sleep forever; it is the cheapest
-  possible unit of waiting, repeated as needed.
+- **The child keeps parked calls alive.** While any call is parked, the mcp child
+  emits MCP progress notifications on a ticker (`internal/mcp/keepalive.go`),
+  which is what marks the call live rather than hung. This turned out to be a
+  shipped defect fix rather than new machinery for sync: nothing ticked before it,
+  so every blocking card was already dying at 1800s with the human's answer
+  arriving at nobody (FR88). It is middleware over `tools/call`, so the sync waits
+  inherit it.
+- **Every wait has a ceiling anyway.** `[sync] wait_max_s` (default 1500s, under
+  the measured 1800s cap even if the ticker ever fails) bounds any park; hitting
+  it returns an honest `timed_out` with the cursor, and re-arming is one call that
+  misses nothing. A wait is not a promise to sleep forever; it is the cheapest
+  possible unit of waiting, repeated as needed. The ceiling is load-bearing for a
+  second reason the measurement turned up: **the client does not tell the server
+  it gave up** - no cancellation, no closed pipe - so nothing outside the daemon
+  will ever end a park that the client has already abandoned.
 - **A lock wait stalling the agent is correct.** It cannot proceed anyway;
   what sync removes is the poll spin and the human-as-mutex, not the wait
   itself. What an agent must not do is park speculatively mid-mission on a
@@ -711,12 +720,17 @@ driven, not by being looked at, and the spike is throwaway by construction (a
 build tag, a dev instance, no migration). Two things the CLI spike cannot
 answer, so they need their own small probes rather than being assumed:
 
-- **The client's tool-call idle cap and the progress-notification fix.** No
-  MCP client is involved in a CLI spike. Probe it by speaking stdio JSON-RPC
-  to a fresh `agentbox mcp` (the recipe is in "Mechanics discovered" in
-  07-field-requests.md) and parking a call past the cap, once without progress
-  notifications and once with. Until that runs, every wait-ceiling number in
-  this document is a review-derived guess.
+- **The client's tool-call idle cap and the progress-notification fix. MEASURED
+  2026-08-04, and it was a shipped defect rather than a number.** A silent stdio
+  tool call is aborted at **1800s**; a progress notification resets that clock, and
+  the client sends a `progressToken` on every call so the server may always send
+  one. The probe is `tools/idlecap-probe.sh`, which drives two headless Claude
+  sessions against a throwaway MCP server whose only job is to park - the real
+  client, because the cap lives in the client and no probe written as an MCP
+  client can measure it. Consequences, all now in the design above: the ticker
+  ships (FR88), `wait_max_s` at 1500s is comfortably under the cap, and the
+  ceiling matters more than it looked because **the client abandons an aborted
+  call without telling the server**.
 - **The Bash-tool timeout on a CLI hold. MEASURED 2026-08-04, and it is much
   shorter than this document assumed.** A foreground shell call from a Claude
   Code session is killed at **exactly 120s** (SIGTERM, exit 143) with no
