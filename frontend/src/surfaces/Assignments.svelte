@@ -10,8 +10,9 @@
   // The knobs are drawn from a descriptor Go builds (assignpanel.go paramsFor),
   // not from the spec: a control's shape is decided in one place, so a knob type
   // added to assign.Param cannot half-exist because the frontend was not told.
-  import { bridge } from "../lib/bridge.js";
+  import { bridge, on } from "../lib/bridge.js";
   import { markdown } from "../lib/markdown.svelte.js";
+  import { onPanelParams, pushPanelParams } from "../lib/artifact.svelte.js";
 
   let rows = $state(null); // null until the first load; empty is a real answer
   let err = $state("");
@@ -21,6 +22,7 @@
   let saved = $state(null); // the last save's warnings
   let asking = $state(false); // delete confirmation
   let busy = $state(false);
+  let panelHost = $state(null); // the element the custom panel hydrates in
 
   const current = $derived((rows ?? []).find((r) => r.id === sel) ?? null);
   const knobs = $derived(open?.knobs ?? []);
@@ -53,21 +55,43 @@
 
   load(false);
 
-  // A run takes minutes and finishes without telling this window, so while one
-  // is in flight the surface asks again. It stops the moment nothing is running:
-  // a poll that never ends is a poll nobody remembers writing.
-  let timer = null;
+  // The daemon pokes on every assignment mutation, whoever made it - this
+  // surface, an agent's update_assignment, the scheduler starting or finishing
+  // a run - so the surface follows all of them without polling. Registered in
+  // an effect because the app remounts a surface on every tab switch, and a
+  // subscription with no unsubscribe would stack a refresh per visit.
+  $effect(() => on("agentbox:assignments", () => refresh()));
+
+  // The custom panel's two-way channel. Values go IN whenever they might have
+  // changed: open holds fresh state after every load/refresh, and reading it
+  // here makes the effect re-run on each one, so an agent's edit reaches a
+  // panel somebody is looking at. pushPanelParams also remembers the values on
+  // the block, so a frame still loading replays them when it is ready.
   $effect(() => {
-    const live = (rows ?? []).some((r) => r.running) || open?.running;
-    if (live && !timer) timer = setInterval(() => refresh(), 3000);
-    if (!live && timer) {
-      clearInterval(timer);
-      timer = null;
-    }
-    return () => {
-      if (timer) clearInterval(timer);
-      timer = null;
-    };
+    if (panelHost && open?.panelBlock) pushPanelParams(panelHost, currentValues());
+  });
+
+  // ...and values coming OUT are merged over everything stored and written
+  // through the same entry point the knobs use. The panel emits what it
+  // manages; keys it never mentions survive, the same rule update_assignment
+  // follows. The id is checked twice: a frame outliving a selection switch
+  // writes nowhere, and a switch during the write must not smear the reply
+  // onto whatever is open now.
+  $effect(() => {
+    onPanelParams(async (id, patch) => {
+      if (id !== sel) return;
+      const values = { ...currentValues(), ...patch };
+      const msg = await bridge.setAssignmentParams(id, JSON.stringify(values));
+      if (id !== sel) return;
+      if (msg) {
+        err = msg;
+        return;
+      }
+      err = "";
+      for (const k of knobs) if (k.key && k.key in patch) k.value = patch[k.key];
+      if (open?.assignment) open.assignment.params = values;
+    });
+    return () => onPanelParams(null);
   });
 
   async function refresh() {
@@ -138,16 +162,26 @@
     }
   }
 
+  // Everything the assignment's values are right now: what is stored, under
+  // what the knobs show. Starting from the stored map is what keeps a value
+  // only the custom panel manages from being erased by turning a knob.
+  function currentValues() {
+    const values = { ...(open?.assignment?.params ?? {}) };
+    for (const k of knobs) if (k.key) values[k.key] = k.value;
+    return values;
+  }
+
   // A knob writes as it is turned. The values are the assignment's, not this
   // window's, so there is no Save button to forget: the next run uses what the
   // control says.
   async function setKnob(key, value) {
     if (!sel) return;
-    const values = {};
-    for (const k of knobs) if (k.key) values[k.key] = k.key === key ? value : k.value;
+    const values = currentValues();
+    values[key] = value;
     for (const k of knobs) if (k.key === key) k.value = value;
     const msg = await bridge.setAssignmentParams(sel, JSON.stringify(values));
     if (msg) err = msg;
+    else if (open?.assignment) open.assignment.params = values;
   }
 
   async function act(fn) {
@@ -402,11 +436,13 @@
         </div>
       {/if}
 
-      {#if a.panelHtml}
-        <p class="note">
-          This assignment carries a custom parameter panel. It is stored and an agent can rewrite it;
-          this build still edits its values through the knobs above, which is the way in that always works.
-        </p>
+      {#if open.panelBlock}
+        <h2>Custom panel</h2>
+        <!-- The escape hatch, running: agent-authored controls in the artifact
+             sandbox. Its emits go to setAssignmentParams (artifact.svelte.js
+             routes on the block's data-panel mark), never to a waiting agent,
+             and the knobs above stay the way in that always works. -->
+        <div class="panelhost" bind:this={panelHost} use:markdown={open.panelBlock}>{@html open.panelBlock}</div>
       {/if}
 
       <h2>Prompt</h2>
@@ -694,12 +730,8 @@
     color: var(--k-ink-2);
     font-size: 0.84em;
   }
-  .note {
-    font-size: 0.84em;
-    color: var(--k-ink-2);
-    border-left: 2px solid var(--k-edge);
-    padding-left: 10px;
-    max-width: 74ch;
+  .panelhost {
+    max-width: 92ch;
   }
   .quiet {
     color: var(--k-ink-2);

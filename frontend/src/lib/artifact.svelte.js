@@ -209,7 +209,60 @@ function emit(block, msg) {
     }
     if (json.length > DATA_MAX) return;
   }
+
+  // A parameter panel (M12) is not talking to an agent: nothing awaits it, and
+  // an event routed to artifactEvent would queue for nobody. Its values go to
+  // the surface hosting it, which writes them through SetAssignmentParams -
+  // the same entry point the typed knobs use. One event name is the whole
+  // vocabulary; anything else is named in the bar rather than swallowed,
+  // because "I emitted and nothing happened" is the debugging session this
+  // line saves the panel's author.
+  if (block.dataset.panel === "1") {
+    if (name !== "params") {
+      note(block, `a panel speaks emit("params", {...}); "${name}" went nowhere`);
+      return;
+    }
+    const values = msg.data;
+    if (!values || typeof values !== "object" || Array.isArray(values)) {
+      note(block, 'emit("params", ...) needs an object of values');
+      return;
+    }
+    panelCb?.(block.dataset.artifactId || "", values);
+    return;
+  }
+
   bridge.artifactEvent(block.dataset.artifactId || "", name, json);
+}
+
+// The panel sink: one listener, the surface that hosts assignment panels. The
+// same single-callback arrangement as onArtifactFound, for the same reason -
+// only one surface ever hosts one.
+let panelCb = null;
+
+// onPanelParams registers the handler for values a parameter panel emits. The
+// callback gets (assignmentId, values) with values already vetted: a plain
+// object that serialises under the size cap.
+export function onPanelParams(cb) {
+  panelCb = cb;
+}
+
+// pushPanelParams hands the current values to every panel frame under root, and
+// remembers them on the block so a frame that has not finished loading (or is
+// reloaded later) still gets them - run()'s load listener replays them. This is
+// the inbound half of the panel's two-way channel; the bootstrap turns the
+// message into window.agentbox.params plus an "agentbox:params" event.
+export function pushPanelParams(root, values) {
+  let json;
+  try {
+    json = JSON.stringify(values ?? {});
+  } catch {
+    return;
+  }
+  for (const block of root.querySelectorAll('.k-artifact[data-panel="1"]')) {
+    block.dataset.panelParams = json;
+    const frame = block.querySelector(".k-artifact-frame");
+    frame?.contentWindow?.postMessage({ from: "agentbox", type: "params", values: JSON.parse(json) }, "*");
+  }
 }
 
 // filled is true when the artifact has a window to itself: the reader marks its
@@ -302,6 +355,17 @@ async function run(block) {
     // A find typed before this artifact (re)loaded is re-run in the fresh
     // document, or a reload would quietly blank the matches.
     if (artFind) frame.contentWindow?.postMessage({ from: "agentbox", type: "find", query: artFind }, "*");
+    // A panel's values arrive whenever the surface pushes them, which can be
+    // before the frame exists; replaying the remembered set here means load
+    // order does not matter and a reload keeps its values.
+    if (block.dataset.panel === "1" && block.dataset.panelParams) {
+      try {
+        frame.contentWindow?.postMessage(
+          { from: "agentbox", type: "params", values: JSON.parse(block.dataset.panelParams) }, "*");
+      } catch {
+        // a torn dataset write is not worth a broken load
+      }
+    }
   });
 }
 

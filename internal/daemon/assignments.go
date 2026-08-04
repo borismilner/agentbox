@@ -60,6 +60,11 @@ type scheduler struct {
 	store  *store.Store
 	log    *slog.Logger
 	runner Runner
+	// changed, when set, is called after anything the surface shows moves: a
+	// run starting, finishing, or being recorded as skipped. The daemon wires it
+	// to the Presenter's AssignmentsChanged; nil (the tests') means nobody is
+	// watching.
+	changed func()
 
 	mu      sync.Mutex
 	running map[string]bool // assignment id -> a run is in flight
@@ -68,6 +73,12 @@ type scheduler struct {
 
 func newScheduler(st *store.Store, log *slog.Logger) *scheduler {
 	return &scheduler{store: st, log: log, running: map[string]bool{}}
+}
+
+func (s *scheduler) notify() {
+	if s.changed != nil {
+		s.changed()
+	}
 }
 
 // SetRunner wires the surface that can carry an assignment out. Nil is valid and
@@ -110,6 +121,13 @@ func (d *Daemon) Assignment(id string) (*assign.Assignment, error) {
 	return d.st.GetAssignment(id)
 }
 
+// assignmentsChanged tells the surface something moved. Every mutation below
+// ends with it, whoever asked - the editor, an MCP tool, the scheduler - so an
+// open surface follows all of them the same way.
+func (d *Daemon) assignmentsChanged() {
+	d.ui.AssignmentsChanged()
+}
+
 // SaveAssignment writes a definition and re-places its next run, so a schedule
 // edited in the panel takes effect without waiting for whatever the old one had
 // queued.
@@ -122,17 +140,25 @@ func (d *Daemon) SaveAssignment(a *assign.Assignment) error {
 	} else if d.sched != nil {
 		d.sched.setSchedule(a, a.LastRunMS, 0)
 	}
+	d.assignmentsChanged()
 	return nil
 }
 
 // DeleteAssignment removes one with its history.
-func (d *Daemon) DeleteAssignment(id string) (bool, error) { return d.st.DeleteAssignment(id) }
+func (d *Daemon) DeleteAssignment(id string) (bool, error) {
+	gone, err := d.st.DeleteAssignment(id)
+	if gone {
+		d.assignmentsChanged()
+	}
+	return gone, err
+}
 
 // SetAssignmentEnabled pauses or resumes one, re-arming on the way back.
 func (d *Daemon) SetAssignmentEnabled(id string, on bool) error {
 	if err := d.st.SetAssignmentEnabled(id, on); err != nil {
 		return err
 	}
+	defer d.assignmentsChanged()
 	a, err := d.st.GetAssignment(id)
 	if err != nil || a == nil || d.sched == nil {
 		return err
@@ -147,7 +173,11 @@ func (d *Daemon) SetAssignmentEnabled(id string, on bool) error {
 
 // SetAssignmentParams saves just the knob values, which is what the panel does.
 func (d *Daemon) SetAssignmentParams(id string, params map[string]any) error {
-	return d.st.SetAssignmentParams(id, params)
+	if err := d.st.SetAssignmentParams(id, params); err != nil {
+		return err
+	}
+	d.assignmentsChanged()
+	return nil
 }
 
 // RunAssignmentNow starts one outside its schedule. overrides apply to this run
@@ -320,6 +350,7 @@ func (s *scheduler) recordSkipped(a *assign.Assignment, n int) {
 	_ = s.store.FinishRun(r.ID, store.RunSkipped, r.Summary, "", "")
 	s.log.Info(logging.EvAssignmentRun, "component", "assignments", "id", a.ID,
 		"state", store.RunSkipped, "missed", n)
+	s.notify()
 }
 
 func plural(n int, word string) string {
@@ -371,14 +402,18 @@ func (s *scheduler) launch(a *assign.Assignment, trigger string, overrides map[s
 		msg := "no runner: agentbox has a schedule for this but nothing to carry it out"
 		_ = s.store.FinishRun(r.ID, store.RunFailed, "", msg, "")
 		s.done(a.ID)
+		s.notify()
 		return r.ID, errors.New(msg)
 	}
 
 	s.log.Info(logging.EvAssignmentRun, "component", "assignments", "id", a.ID,
 		"run", r.ID, "trigger", trigger, "state", "started")
+	s.notify() // the run row exists and the running flag is up: the surface can show both
 
 	go func() {
-		defer s.done(a.ID)
+		// done before notify: a poke that lands while the running flag is still
+		// up would show the surface a finished run with a greyed Run button.
+		defer func() { s.done(a.ID); s.notify() }()
 		summary, data, err := runner.RunAssignment(RunRequest{
 			AssignmentID: a.ID, RunID: r.ID, Name: a.Name, Prompt: prompt,
 			Model: a.Model, Mode: a.Mode, Dir: a.Dir, Trigger: trigger,

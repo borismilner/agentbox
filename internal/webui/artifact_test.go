@@ -107,7 +107,7 @@ func TestIsArtifactFence(t *testing.T) {
 
 func TestArtifactBlockCarriesSourceAndSpec(t *testing.T) {
 	src := "export default function App() {\n  return <b>x &amp; y</b>;\n}\n"
-	html := artifactBlock(src, "Deploy plan", "a1")
+	html := artifactBlock(src, "Deploy plan", "a1", false)
 
 	for _, want := range []string{
 		`class="k-artifact"`,
@@ -134,9 +134,30 @@ func TestArtifactBlockCarriesSourceAndSpec(t *testing.T) {
 	}
 }
 
+// A parameter panel is the same block with the routing mark: data-panel is what
+// sends its emits to SetAssignmentParams instead of to a waiting agent, and the
+// id is the assignment's, so the surface knows whose values arrived. An ordinary
+// artifact must never carry the mark - it would silence its events.
+func TestPanelBlockCarriesTheRoutingMark(t *testing.T) {
+	src := "export default function Panel() { return <input />; }"
+
+	panel := RenderPanel(src, "custom parameters", "a1b2c3")
+	for _, want := range []string{`data-panel="1"`, `data-artifact-id="a1b2c3"`, `class="k-artifact-stage"`} {
+		if !strings.Contains(panel, want) {
+			t.Errorf("panel block is missing %q", want)
+		}
+	}
+	if RenderPanel("  ", "t", "a1") != "" {
+		t.Error("an assignment with no panel produced a block anyway")
+	}
+	if strings.Contains(RenderArtifact(src, "t", "a1"), "data-panel") {
+		t.Error("an ordinary artifact carries the panel mark; its events would go nowhere")
+	}
+}
+
 func TestArtifactRefusesSomethingHuge(t *testing.T) {
 	src := "<div>" + strings.Repeat("x", artifactMaxBytes+1) + "</div>"
-	html := artifactBlock(src, "", "")
+	html := artifactBlock(src, "", "", false)
 	if !strings.Contains(html, `data-toobig="1"`) || !strings.Contains(html, `data-view="code"`) {
 		t.Error("an oversized artifact should arrive as code, marked refused")
 	}
@@ -275,8 +296,8 @@ func TestArtifactEventValidation(t *testing.T) {
 // artifact's events carry has to come from the artifact rather than from a counter.
 func TestArtifactFenceIDIsStableForTheSameSource(t *testing.T) {
 	src := "<button onclick=\"agentbox.emit('go')\">go</button>"
-	first := artifactBlock(src, "", "")
-	if first != artifactBlock(src, "", "") {
+	first := artifactBlock(src, "", "", false)
+	if first != artifactBlock(src, "", "", false) {
 		t.Error("the same fence rendered twice produced two different blocks")
 	}
 	if artifactFenceID(src) == artifactFenceID(src+" ") {
@@ -286,7 +307,7 @@ func TestArtifactFenceIDIsStableForTheSameSource(t *testing.T) {
 		t.Errorf("the block does not carry its id:\n%s", first)
 	}
 	// A minted id wins: the caller that will wait on it chose the name.
-	if !strings.Contains(artifactBlock(src, "", "a9f"), `data-artifact-id="a9f"`) {
+	if !strings.Contains(artifactBlock(src, "", "a9f", false), `data-artifact-id="a9f"`) {
 		t.Error("a minted id should be used as given")
 	}
 }

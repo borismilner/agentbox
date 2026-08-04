@@ -37,6 +37,14 @@ func (u *UI) SetAssignmentStore(as AssignmentStore) {
 	u.mu.Unlock()
 }
 
+// AssignmentsChanged pushes the poke to every open window, the way the inbox
+// does it: the surface showing assignments re-reads what it shows, so an
+// agent's update_assignment lands in a panel somebody is looking at rather than
+// waiting for the next open.
+func (u *UI) AssignmentsChanged() {
+	u.emit("agentbox:assignments", nil)
+}
+
 func (u *UI) assignments() AssignmentStore {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -79,7 +87,13 @@ type wireAssignment struct {
 	Unused       []string              `json:"unused,omitempty"`
 	Problems     []string              `json:"problems,omitempty"`
 	Runs         []proto.AssignmentRun `json:"runs,omitempty"`
-	Err          string                `json:"err,omitempty"`
+	// PanelBlock is the custom parameter panel as an inert artifact block
+	// (RenderPanel), ready for the surface to hydrate into the sandbox. Only the
+	// markup travels here; the current values are pushed into the frame by the
+	// surface, so this string stays stable while values change and the running
+	// panel is not remounted by every refresh.
+	PanelBlock string `json:"panelBlock,omitempty"`
+	Err        string `json:"err,omitempty"`
 }
 
 // wireParam is one control, with everything the surface needs to draw it and
@@ -147,6 +161,7 @@ func (b *Bridge) Assignment(id string) wireAssignment {
 		Knobs:        paramsFor(res.Assignment.Spec, res.Assignment.Params),
 		Placeholders: res.Placeholders, Unfilled: res.Unfilled, Unused: res.Unused,
 		Problems: res.Problems, Runs: res.Runs,
+		PanelBlock: RenderPanel(res.Assignment.PanelHTML, "custom parameters", res.Assignment.ID),
 	}
 }
 

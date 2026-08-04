@@ -178,7 +178,10 @@ func TestNoSurfaceHTMLEverAutoFetches(t *testing.T) {
 		// Viewer.svelte: doc.html, both ways it is produced
 		"a document with a base": RenderMarkdownIn(src, t.TempDir()),
 		"an artifact document":   RenderArtifact("<script src=\"https://cdn.evil.example/x.js\"></script><img src=\"https://evil.example/a.gif\">", "t", "id1"),
-		"one line (ParseInline)": ParseInline("![x](https://evil.example/inline.gif) and text"),
+		// Assignments.svelte: open.panelBlock - an assignment's custom parameter
+		// panel, agent-authored like any artifact and held to the same rule.
+		"a parameter panel (RenderPanel)": RenderPanel("<script src=\"https://cdn.evil.example/p.js\"></script><img src=\"https://evil.example/p.gif\">", "t", "id2"),
+		"one line (ParseInline)":          ParseInline("![x](https://evil.example/inline.gif) and text"),
 		// Board.svelte: ln.html - a cited file whose CONTENT is hostile, plus
 		// hostile snippet text; the walkthrough spec is agent-authored and the
 		// files it cites are whatever sits in the repo.

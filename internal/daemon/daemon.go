@@ -83,6 +83,12 @@ type Presenter interface {
 	PanelOpen() bool
 	ShowProgress(reports []ProgressState) // the live progress bars (FR21); empty clears the window
 	ShowBoard(id string)                  // the review board for a stored walkthrough (FR58)
+	// AssignmentsChanged says something about an assignment or its runs is
+	// different (M12): a save, a value written, a run starting or finishing -
+	// whoever did it. The open surface refreshes on it instead of polling, which
+	// is what lets an agent's update_assignment reach a panel somebody is
+	// looking at. A poke, not a payload: the surface re-reads what it shows.
+	AssignmentsChanged()
 }
 
 // Sounder is agentbox's audio channel: the earcon that classifies an event, and the
@@ -462,6 +468,7 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	// still records every due run as failed-with-a-reason rather than quietly
 	// not running it.
 	d.sched = newScheduler(st, log)
+	d.sched.changed = d.assignmentsChanged
 	if n, err := st.Prune(cfg.RetentionAge, cfg.KeepLevel); err != nil {
 		log.Error("store.prune_failed", "component", "daemon", "err", err.Error())
 	} else if n > 0 {

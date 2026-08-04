@@ -74,6 +74,11 @@ const BOOTSTRAP = `(() => {
     // through here; there is no other way out, by construction.
     emit(name, data) { post({ type: "event", name: String(name == null ? "" : name), data: data }); },
     resize: report,
+    // For a parameter panel (M12): the assignment's current values, pushed in
+    // by the surface on load and whenever they change elsewhere - a knob, an
+    // agent's update_assignment. Plain {} until the first push, so reading it
+    // is always safe; listen for "agentbox:params" on window to follow changes.
+    params: {},
   };
   const fail = (message) => post({ type: "error", message: String(message).slice(0, 400) });
   window.addEventListener("error", (e) => fail(e.message || e.error || "error"));
@@ -193,6 +198,13 @@ const BOOTSTRAP = `(() => {
     }
     if (e.data.type === "find") findRun(e.data.query);
     if (e.data.type === "find-jump") findJump(e.data.delta);
+    // The other half of a panel's two-way channel: values arriving from the
+    // surface. The event detail is the same object window.agentbox.params now
+    // holds, so a React panel can setState(e.detail) and be current.
+    if (e.data.type === "params") {
+      window.agentbox.params = (e.data.values && typeof e.data.values === "object") ? e.data.values : {};
+      window.dispatchEvent(new CustomEvent("agentbox:params", { detail: window.agentbox.params }));
+    }
   });
   const start = () => {
     report();

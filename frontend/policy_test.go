@@ -230,10 +230,13 @@ func TestEveryHTMLInjectionComesFromGo(t *testing.T) {
 		"seg.html":      true,
 		"seg.toolHtml":  true,
 		"view.bodyHtml": true,
-		"ask.bodyHtml":  true,
-		"doc.html":      true,
-		"l.html":        true,
-		"dl.html":       true,
+		// Assignments.svelte: an assignment's custom parameter panel, rendered by
+		// RenderPanel (internal/webui/artifact.go) and covered by the sweep.
+		"open.panelBlock": true,
+		"ask.bodyHtml":    true,
+		"doc.html":        true,
+		"l.html":          true,
+		"dl.html":         true,
 	}
 
 	files, err := svelteAndJS()

@@ -29,12 +29,25 @@ type fakeUI struct {
 	progress    [][]ProgressState
 	panelOpen   bool
 	boards      []string // walkthrough ids passed to ShowBoard, in call order
+	assignPokes int      // AssignmentsChanged calls
 }
 
 func (f *fakeUI) ShowBoard(id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.boards = append(f.boards, id)
+}
+
+func (f *fakeUI) AssignmentsChanged() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.assignPokes++
+}
+
+func (f *fakeUI) assignmentPokes() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.assignPokes
 }
 
 func (f *fakeUI) ShowDocument(req proto.ShowRequest) {

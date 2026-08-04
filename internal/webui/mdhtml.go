@@ -186,7 +186,7 @@ func (c *codeRenderer) render(w util.BufWriter, source []byte, node ast.Node, en
 
 	// An artifact fence is markup to run rather than markup to read (artifact.go).
 	if isArtifactFence(lang, src) {
-		w.WriteString(artifactBlock(src, "", ""))
+		w.WriteString(artifactBlock(src, "", "", false))
 		return ast.WalkSkipChildren, nil
 	}
 

@@ -157,7 +157,11 @@ func isArtifactFence(lang, src string) bool {
 // this artifact rather than on anything that happens to emit (M10 slice 3). A
 // caller that will wait mints its own; a fence gets one derived from its source,
 // which keeps it stable across the re-renders a streaming turn causes.
-func artifactBlock(src, title, id string) string {
+//
+// panel marks an assignment's parameter panel (M12): same sandbox, same chrome,
+// but its emits go to the surface hosting it rather than to a waiting agent
+// (artifact.svelte.js routes on the attribute), and its id is the assignment's.
+func artifactBlock(src, title, id string, panel bool) string {
 	spec := specFor(src)
 	var b strings.Builder
 
@@ -165,6 +169,9 @@ func artifactBlock(src, title, id string) string {
 		id = artifactFenceID(src)
 	}
 	b.WriteString(`<div class="k-artifact" data-artifact-id="` + template(id) + `" data-runtime="` + spec.Runtime + `"`)
+	if panel {
+		b.WriteString(` data-panel="1"`)
+	}
 	if spec.React {
 		b.WriteString(` data-react="1"`)
 	}
@@ -211,7 +218,18 @@ func RenderArtifact(src, title, id string) string {
 	if strings.TrimSpace(src) == "" {
 		return ""
 	}
-	return artifactBlock(src, title, id)
+	return artifactBlock(src, title, id, false)
+}
+
+// RenderPanel is an assignment's custom parameter panel (M12): the same block
+// RenderArtifact emits, marked so the surface routes its emits to
+// SetAssignmentParams instead of to a waiting agent. id is the assignment's id,
+// which is how the surface knows whose values arrived.
+func RenderPanel(src, title, id string) string {
+	if strings.TrimSpace(src) == "" {
+		return ""
+	}
+	return artifactBlock(src, title, id, true)
 }
 
 // artifactFenceID names an artifact nobody minted an id for. It is derived from

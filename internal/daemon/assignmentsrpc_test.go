@@ -51,6 +51,32 @@ func usageWatch() proto.AssignmentSave {
 	}
 }
 
+// Every mutation pokes the surface, whoever asked: this is what lets an
+// agent's update land in a panel somebody is looking at, instead of waiting
+// for the next open (the agentbox:assignments event on the other end).
+func TestEveryAssignmentMutationPokesTheSurface(t *testing.T) {
+	d, ui, _, _ := newTestDaemon(t, Config{})
+
+	created := mustSave(t, d, usageWatch())
+	after := ui.assignmentPokes()
+	if after == 0 {
+		t.Fatal("a save never poked the surface")
+	}
+	for name, mutate := range map[string]func() error{
+		"params":  func() error { return d.SetAssignmentParams(created.ID, map[string]any{"window": "24h"}) },
+		"enabled": func() error { return d.SetAssignmentEnabled(created.ID, false) },
+		"delete":  func() error { _, err := d.DeleteAssignment(created.ID); return err },
+	} {
+		before := ui.assignmentPokes()
+		if err := mutate(); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if ui.assignmentPokes() == before {
+			t.Errorf("%s never poked the surface", name)
+		}
+	}
+}
+
 // The rule the whole update path exists for: an agent that sends a better
 // prompt must not blank the schedule, the model or the knobs by not mentioning
 // them. Everything a human tuned survives an edit it was not part of.

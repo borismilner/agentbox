@@ -12,10 +12,11 @@ import (
 // not that a save works - the daemon's own suite covers that - but that the
 // editor's flat string map arrives as the right partial update.
 type fakeAssignStore struct {
-	saved  proto.AssignmentSave
-	params map[string]any
-	ran    string
-	err    *proto.RPCError
+	saved     proto.AssignmentSave
+	params    map[string]any
+	ran       string
+	panelHTML string
+	err       *proto.RPCError
 }
 
 func (f *fakeAssignStore) AssignmentList() (proto.AssignmentListResult, *proto.RPCError) {
@@ -24,8 +25,10 @@ func (f *fakeAssignStore) AssignmentList() (proto.AssignmentListResult, *proto.R
 
 func (f *fakeAssignStore) AssignmentRead(req proto.AssignmentRead) (proto.AssignmentReadResult, *proto.RPCError) {
 	return proto.AssignmentReadResult{
-		Assignment: &assign.Assignment{ID: req.ID, Name: "Watch", Prompt: "Check {{window}}."},
-		Kind:       "ad-hoc",
+		Assignment: &assign.Assignment{
+			ID: req.ID, Name: "Watch", Prompt: "Check {{window}}.", PanelHTML: f.panelHTML,
+		},
+		Kind: "ad-hoc",
 	}, f.err
 }
 
@@ -137,6 +140,26 @@ func TestParamsForBuildsDrawableKnobs(t *testing.T) {
 
 // A knob writes just the values. A slider that could rewrite a prompt would be
 // a slider one bad payload away from destroying an assignment.
+// The custom panel travels as an inert block only when there is one, marked and
+// stamped with the assignment's id so the surface can route its values home. An
+// assignment without one must not send an empty block the surface would try to
+// hydrate.
+func TestAssignmentCarriesItsPanelBlock(t *testing.T) {
+	b, store := panelBridge(t)
+
+	if got := b.Assignment("a1").PanelBlock; got != "" {
+		t.Errorf("no panel_html, yet a block travelled: %q", got)
+	}
+
+	store.panelHTML = "export default function Panel() { return <input />; }"
+	got := b.Assignment("a1").PanelBlock
+	for _, want := range []string{`data-panel="1"`, `data-artifact-id="a1"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("panel block is missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestSetAssignmentParamsWritesOnlyValues(t *testing.T) {
 	b, store := panelBridge(t)
 	if msg := b.SetAssignmentParams("a1", `{"window":"24h"}`); msg != "" {
