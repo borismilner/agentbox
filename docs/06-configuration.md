@@ -167,6 +167,28 @@ idle_timeout_s = 600       # release the engine after this long with nothing to
 prewarm = false            # true loads the model at daemon start, so the first
                            # notification of the day is instant instead of late
 
+[sync]                     # several agents taking turns, and one board to watch
+                           # them on (FR83). Nothing here turns the roster on or
+                           # off: presence and the Agents surface are not knobs
+wait_max_s = 1500          # the ceiling on a PARKED tool call - a lock wait
+                           # today, a signal wait later. It exists because the
+                           # MCP client aborts a call it has heard nothing about
+                           # for 1800s (measured, FR88), so a wait that promised
+                           # more would be a lie the transport eventually tells.
+                           # Hitting it returns a resumable timeout instead. A
+                           # CLI hold is bounded by whatever runs the CLI, which
+                           # is a different number entirely (120s from an agent's
+                           # shell): the two must not be read as one
+wait_warn_s = 600          # toast when a LOCK wait passes this; 0 disables. A
+                           # signal wait never warns, because listening is the
+                           # intended steady state and warning on it would train
+                           # you to ignore the toast that matters
+holder_gone_grace_s = 5    # a hold whose session died goes orphaned, not free.
+                           # This is how long before its recorded pid being gone
+                           # counts as proof the work is over. Short, because the
+                           # pid check is the real evidence and this only keeps
+                           # the probe from racing a process that is exiting
+
 [markdown]
 code_theme = "auto"        # auto | nord | gruvbox | github | onedark | dracula; auto follows the ground
 chart_palette = "theme"    # chart colors come from the active theme

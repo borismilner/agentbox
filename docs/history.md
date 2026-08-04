@@ -9,6 +9,77 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Forty-second session (2026-08-04): locks, and the 30-minute fuse under every card
+
+Resumed from session 41's handoff. Its "do this next" was one measurement before
+slice 2: the MCP client's tool-call idle cap, the last guessed number in FR83's
+design. Measuring it first turned out to matter for a reason nobody had guessed.
+
+**The measurement was a shipped defect.** Claude Code aborts a stdio tool call
+that has said nothing for **1800s**, and nothing in the mcp child ever said
+anything - so every blocking card was already dying at half an hour while it was
+still on Boris's screen. He answers at minute 40, the answer goes to a caller
+that is gone, and the agent gets "sent no response or progress for 1800s;
+aborting" instead of an answer. `timeout_s: 0`, documented as "waits forever",
+was the worst case rather than the safest. Never seen in the field because nobody
+had left a card up for half an hour and then answered it - which is exactly the
+case AgentBox exists for. FR88, fixed with a keep-alive ticker in receiving
+middleware: one progress notification a minute while a call is parked, nothing at
+all until a call has already lasted a minute.
+
+How it was measured is the part worth keeping. The cap lives in the *client*, so
+no probe written as an MCP client can find it: `tools/idlecap-probe.sh` drives
+two headless `claude -p` sessions against a throwaway MCP server
+(`tools/idlecap-server.py`) whose only job is to park - one silent, one ticking
+progress. The silent one died at 1800s with the client's own message; the ticking
+one ran 2100s and returned normally. Two mechanics fell out that the design had
+wrong: the client sends `_meta.progressToken` on **every** `tools/call` (so a
+server may always keep a call alive), and it **does not tell the server it gave
+up** - no cancellation, no closed pipe - which is why a parked daemon call needs a
+ceiling of its own.
+
+**Slice 2 shipped: locks.** Acquire (blocking, FIFO), try, release, orphaning
+with a pid probe, break, deadlock refusal, stall warnings, the holds and waits on
+the Agents board, and the CLI for Makefiles and hooks. Five things the build
+changed in the design, all recorded in [09-sync.md](09-sync.md):
+
+*The Makefile wrap the design asked for cannot exist.* `make deploy` stops the
+daemon halfway through, and locks are memory only on purpose, so a sync hold
+vanishes mid-install and hands the second agent a green light in the worst
+possible second. The one resource this daemon cannot arbitrate is the daemon;
+deploy takes an flock instead.
+
+*A wrapped hold named the wrong process.* The lock must be taken before the
+command starts, so the only pid it can record then is the wrapper's - and a
+killed wrapper then looks like finished work while the command it started runs
+on. Found by trying to satisfy the design's own acceptance case rather than by
+reading the code. The wrap re-points the hold at the command once it exists.
+
+*The two subsystems' lock order is a rule.* The lock table asks the roster who a
+holder is while holding its own mutex, so the roster reads every observer before
+taking its own. The other order deadlocks the daemon on the first board repaint.
+
+*A lost hold needs no signals.* "The human broke your lock" was designed to ride
+a `lock:NAME` signal, which is slice 3; it rides slice 1's discovery rider
+instead, so it shipped with the locks. Verified live: the line arrives on the
+ex-holder's next `set_activity`.
+
+*The mock's break had to go.* With real holds on screen, a faked break was the
+only untrue thing left on the surface.
+
+**Verified by looking, again.** `tools/sync-probe.py locks` drives the whole
+acceptance list with two live mcp children; `tools/sync-probe.py board` holds a
+holder, a waiter and an orphan on screen long enough to read. Both were run
+against the deployed daemon, the board was photographed, and Break lock was
+clicked for real (desktop taken with `agentbox control request` first): the
+two-step confirm reads "Reassigns the lock. It does not stop the process.", and
+after confirming, the orphan block cleared and the board repainted from the
+daemon's own push rather than from a local edit.
+
+One test bug worth remembering: a `t.Fatalf` while a tool handler was still
+parked deadlocked the SDK session's `Close`, so a broken keep-alive hung the
+suite instead of failing it. The parked handler is now released in cleanup.
+
 ## Forty-first session (2026-08-04): looking at the board found four defects, and the rider shipped
 
 Resumed from session 40's handoff, whose one blocked item was that nobody had

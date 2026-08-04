@@ -1,9 +1,9 @@
 # STATUS
 
-Updated: 2026-08-04, forty-first session (FR83 slice 1 is COMPLETE: the live
-Agents board was looked at, four defects fixed, and the discovery rider built).
-Session 40 the same day built slice 1; session 39 designed FR83; sessions 37 and
-38 were FR81's visual pass and M12's last piece.
+Updated: 2026-08-04, forty-second session (FR83 slice 2 is COMPLETE: locks,
+verified live and on screen; and every blocking card turned out to have been
+dying at 30 minutes, which is now fixed). Session 41 the same day finished slice
+1; session 40 built it; session 39 designed FR83.
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config
@@ -59,9 +59,34 @@ an mcp child from a shell, because a session's hooks call the CLI with that
 session's key several times a minute and would otherwise eat every arrival before
 the model saw it.
 
-**What remains of FR83:** locks, signals and shared values - slices 2 to 4 in
-[09-sync.md](09-sync.md). The MCP client's tool-call idle cap is still the one
-guessed number in the design (`wait_max_s = 1500`) and it gates slices 2 and 3.
+**Slice 2 is live: agents take turns.** Named advisory leases keyed to the
+session key - `acquire_lock` parks in a FIFO queue, `try_lock` refuses at once,
+`release_lock` hands it on - plus the CLI (`agentbox sync lock|unlock|locks|break`)
+for Makefiles and hooks, the holds and waits on the Agents board, and Break lock
+behind a two-step confirm. Verified against the deployed daemon by two live mcp
+children and looked at on screen. Four things worth knowing:
+
+- **A dead session does not free a live resource.** Its hold goes orphaned with
+  the pid it recorded, and the next agent waits until that process is gone too.
+  The board shows it as `LOCKS WITH NO LIVE HOLDER`, with "its pid N is still
+  alive, so nobody gets this until it exits" - which is the only case where Break
+  lock is the right button.
+- **A deadlock is refused by name** at acquire time ("you asked for
+  probe:repo, held by codex; codex waits on probe:deploy, held by you") and toasts
+  the human. The two edges that cannot be refused - a holder parked on a question,
+  a holder driving the desktop - warn instead.
+- **`make deploy` could not use a sync lock.** It stops the daemon halfway, so a
+  hold in the daemon's memory vanishes mid-install. It takes an flock instead; the
+  one resource this daemon cannot arbitrate is the daemon.
+- **Every blocking card was on a 30-minute fuse** (FR88), found while measuring
+  the client's idle cap for the parked waits. Claude Code aborts a tool call
+  silent for 1800s and nothing in the child ever spoke, so a card answered at
+  minute 40 replied to a caller that was already gone. Fixed with a keep-alive
+  ticker over every tool call. The last guessed number in the design is now
+  measured: `tools/idlecap-probe.sh`.
+
+**What remains of FR83:** signals and shared values - slices 3 and 4 in
+[09-sync.md](09-sync.md).
 
 What else remains is the showcase re-record (decided, not yet scheduled) and the
 verification and refinement queue.

@@ -38,7 +38,13 @@ touching anything.
   every Go edit - keep the tree clean of modernization nags.
 - Deploy: commit first (deploy warns on dirty builds, NFR14), then
   `make deploy`; it ends by running `deployed` itself. `make rollback` restores
-  the previous build.
+  the previous build. Two agents deploying at once is now serialized by an flock
+  (`make deploy` waits and says who holds it), not by anybody remembering. It is
+  deliberately NOT an `agentbox sync lock`: the deploy stops the daemon the lock
+  would live in.
+- Shared resources other than the deploy: take a lock. `agentbox sync lock
+  NAME --timeout 600 -- CMD` from a shell, `acquire_lock` from an agent, and
+  `agentbox sync locks` to see who holds what.
 - Git: no PRs, ever - Boris pushes `main` directly. Small reviewable commits,
   `type(scope): description`.
 - UI changes are done only after exercising the real webui (cards, board,

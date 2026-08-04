@@ -638,14 +638,53 @@ ceilings are unrelated and the manual must not let them read as one number.
    shows dim; a pre-sync session shows as "seen, not attached" and
    `partial` rides the reads; `make stop` with three live sessions leaves
    the daemon down; the strip and the roster agree while one agent drives.
-2. **Locks.** Acquire/try/release, orphaning, break, deadlock refusal, the
-   human-edge stall warning, the Makefile wrap. Accept: two live sessions
-   race `make deploy` and serialize, the second's row showing `blocked:
-   deploy:agentbox` with the holder named; kill the holder's child while its
-   wrapped subprocess still runs - the waiter is NOT granted until the pid
-   dies, and the roster shows the orphan; a constructed A-B/B-A cycle is
-   refused with both names and toasts the human; a holder parked on
-   `ask_user` while a waiter queues behind it warns with the chain named.
+2. **Locks. COMPLETE, DEPLOYED AND VERIFIED LIVE 2026-08-04 (session 42).**
+   Acquire/try/release, orphaning with a pid probe, break from the board and from
+   the CLI, deadlock refusal, the stall and human-edge warnings, the roster's
+   holds and waits, and the deploy serialized. Every acceptance line below was
+   driven against the deployed daemon by two live mcp children
+   (`tools/sync-probe.py locks`) and looked at on screen
+   (`tools/sync-probe.py board`, photographed).
+
+   Five things the build changed in this design:
+
+   - **The Makefile wrap could not be a sync lock, and that is not a detail.**
+     `make deploy` STOPS the daemon halfway through, and locks are memory only on
+     purpose - so a hold taken for the deploy vanishes mid-install and hands the
+     second agent a green light in the worst possible second. The one resource
+     this daemon cannot arbitrate is the daemon. `make deploy` therefore takes an
+     flock (and says who holds it while waiting); sync locks serve every other
+     shared resource. Any future lock over agentbox's own lifecycle - `make run`,
+     `make stop` - has the same problem and the same answer.
+   - **A wrapped hold must be re-pointed at the command.** The lock has to be
+     taken before the command starts, so the only pid it can name then is the
+     wrapper's - and a killed wrapper looks like finished work while the command
+     it started runs on, which is precisely what orphaning exists to prevent. The
+     wrap now re-acquires (idempotent) with the command's pid once it exists.
+   - **The two subsystems' lock order is a rule, not a preference.** The lock
+     table asks the roster who a holder is while holding its own mutex, so the
+     roster must read every observer BEFORE taking its own - including the lock
+     table. Getting this the other way round deadlocks the daemon on the first
+     board repaint, and it is now a comment on `roster.snapshot`.
+   - **A lost hold needs no signals.** The design routed "your lock was broken"
+     through a `lock:NAME` signal, which is slice 3. It rides the slice-1
+     discovery rider instead - the envelope already reaches whatever the agent
+     calls next - so the notice shipped with the locks rather than after them.
+     Verified live: `set_activity` carries "the human broke your lock ... Your own
+     work was NOT stopped".
+   - **The mock's break had to go.** With real holds and waits on screen, a faked
+     break was the only untrue thing left on the surface, so `webui-demo agents`
+     now says plainly that it has no daemon behind it.
+
+   Accept: two live sessions race one lock and serialize, the second's row showing
+   `blocked: deploy:agentbox` with the holder named; kill the holder's child while
+   its subprocess still runs - the waiter is NOT granted until the pid dies, and
+   the board shows the orphan with its pid and "nobody gets this until it exits";
+   a constructed A-B/B-A cycle is refused with both names and toasts the human; a
+   refusal carries the holder's purpose and activity; the human breaks a lock from
+   the board and the ex-holder is told on its next call. The one line covered by
+   test rather than by a live run is the *holder parked on `ask_user`* warning: the
+   toast path is the same `warnOf` the deadlock refusal proved on screen.
 3. **Signals.** Post/await, the global cursor, gap reporting, migration,
    retention, the built-in `agents:<area>` and `to:<key>` topics. Accept: a
    tests-green handoff between two sessions with no polling in either
