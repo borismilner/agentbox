@@ -522,8 +522,9 @@ Coalescing rates and emit throttles are constants, not knobs.
   5). The VM is coordinated from this machine's side (`vm:boris-vm` is a
   name, not a network).
 - Not enforcement. Locks are advisory; an agent that never calls sync can
-  still run `make deploy` bare. The manual, the hooks and the Makefile wrap
-  are how convention becomes coverage.
+  still run `make deploy` bare. The global instructions, the manual, the hooks
+  and the Makefile wrap are how convention becomes coverage - see "Making it
+  the default for every agent".
 - Not a data channel. Signals and shared values are capped small; files and
   the store carry payloads.
 - Not a scheduler. Assignments decide *when work starts*; sync decides *how
@@ -589,20 +590,77 @@ Coalescing rates and emit throttles are constants, not knobs.
    Accept: three sessions drain a ten-chunk claim table (one key per chunk)
    with zero double-claims; restart the daemon mid-drain - claims survive,
    the dead session's claim reads as ownerless, and the table still drains.
-5. **Teaching.** The agent-manual section, `agentbox docs sync`, recipes (the
-   hooks, the deploy wrap, the handoff and claim-table patterns), the
-   CLAUDE.md snippet that makes announce-first a habit.
+5. **Teaching, which is what makes the mandate real.** See the section below;
+   this slice is not documentation garnish, it is the difference between a
+   feature that exists and a feature every agent uses. Accept: a Claude
+   session in an unrelated project, given no instruction beyond its own
+   configuration, announces itself and appears in the roster; and a second
+   session in the same repo learns about the first without being told to look.
+
+## Making it the default for every agent
+
+Boris's mandate is that **every** agent using the platform declares itself and
+coordinates, not that the option exists. An MCP tool nobody is told to call is
+a tool nobody calls, so the teaching is part of the feature and it has four
+doors, each reaching a different kind of agent:
+
+1. **`~/.claude/CLAUDE.md`, the global instructions** - the only door that
+   reaches every Claude session in every project on this machine, which is the
+   scope Boris asked for. Its existing AgentBox section gets the standing
+   contract: announce your purpose at session start, keep the activity line
+   current as the work changes, check for peers in your area before editing a
+   shared tree, and take the lock before a shared resource (the deploy, the
+   repo, the VM, the desktop). Written as a habit with a reason, the way the
+   interruption-cost paragraph already is, because a rule an agent understands
+   survives paraphrase.
+2. **The embedded manual, `internal/manual/agent.md`** (served by
+   `agentbox docs agent`, and mirrored in the fuller
+   [agent-manual.md](agent-manual.md)) - the reference an agent reads when it
+   wants to know what the tools do. Sync gets its own section: the roster
+   contract, the `kind:scope` naming idiom, the composed patterns (wait then
+   lock, claim by CAS, direct request and reply), and the anti-patterns
+   (polling instead of parking, holding a lock across a human question,
+   announcing once and never updating).
+3. **Hooks, in [recipes.md](recipes.md)** - the layer that keeps the roster
+   honest when a model forgets: SessionStart announces, PostToolUse updates
+   the activity line. Zero tokens, and it means even an agent that ignores
+   every instruction still shows up truthfully.
+4. **This machine's own workflow** - `make deploy` wrapped in
+   `agentbox sync lock deploy:agentbox`, so the repo that invented the trap
+   stops relying on agents remembering it.
+
+The manual doors must land in the same slice as the tools, not after. An agent
+whose MCP child is older than the deploy cannot see the new tools at all (the
+handshake fixes the tool list), so the instructions and the tools have to
+arrive together or the first sessions to read the new CLAUDE.md will be told to
+call things they cannot reach.
 
 ## Mock it before building it
 
-The working rule applies to the surface exactly as FR58 practiced it:
-`agentbox webui-demo agents` renders the Agents surface over canned roster
-data - two working agents in one area, one asking, one blocked on a lock
-held by another, one dim and unannounced, one orphaned lock - and Boris
-walks it before any daemon code exists. The primitives get the slice-0
-spike instead: protocols are validated by being driven, not by being looked
-at, and the spike is throwaway by construction (a build tag, a dev
-instance, no migration).
+The working rule applies to the surface exactly as FR58 practiced it: a
+throwaway `agentbox webui-demo agents` case is **written for this purpose**
+(the harness has one case per surface today and none for Agents) and renders
+the Agents surface over canned roster data - two working agents in one area,
+one asking, one blocked on a lock held by another, one dim and unannounced, one
+orphaned lock. Boris walks that before any daemon code exists. Note the one-UI
+trap in CLAUDE.md while doing it: showing a working-copy surface means holding
+the desktop's only daemon, so it needs a window when no other agent is live.
+
+The primitives get the slice-0 spike instead: protocols are validated by being
+driven, not by being looked at, and the spike is throwaway by construction (a
+build tag, a dev instance, no migration). Two things the CLI spike cannot
+answer, so they need their own small probes rather than being assumed:
+
+- **The client's tool-call idle cap and the progress-notification fix.** No
+  MCP client is involved in a CLI spike. Probe it by speaking stdio JSON-RPC
+  to a fresh `agentbox mcp` (the recipe is in "Mechanics discovered" in
+  07-field-requests.md) and parking a call past the cap, once without progress
+  notifications and once with. Until that runs, every wait-ceiling number in
+  this document is a review-derived guess.
+- **The Bash-tool timeout on a CLI hold.** An agent that wraps a command in
+  `agentbox sync lock NAME -- CMD` is subject to its own shell timeout, which
+  is far shorter than `wait_max_s`. Measure it and let it set the default, or
+  the flock wrapper will look broken the first time a real deploy runs long.
 
 ## Open questions (owner calls)
 

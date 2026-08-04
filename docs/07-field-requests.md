@@ -1948,16 +1948,27 @@ AGENTBOX_SESSION_ID is empty, can write over each other's hands-off strip. Two
 agents cannot see each other, cannot take turns, and cannot tell the human what
 they are each doing.
 
+**And the name AgentBox shows for an agent is not the agent.** Observed live
+while this entry was being written: `agentbox control state` answered
+`driving · timeout · finish the custom panel check`. The holder was a Claude
+session, and it displayed as **timeout** because `Agent` is the parent process
+name (`parentComm()`) and that session had been launched under the `timeout`
+command. So the one field the strip, the mute list, the inbox rows and every
+ownership check lean on is whatever happened to exec the agent. The mandated
+purpose line is the fix for the human's half of this; the session key is the
+fix for the machine's half.
+
 **What was done instead, the same day, in this repo.** Session 37 ran two
 agents in one checkout and they coordinated **by hand, through a file**:
-`/tmp/agentbox-agents.md`, still on disk as the evidence. It contains a file
+a ledger written at `/tmp/agentbox-agents.md`, quoted at length here because
+the file itself is volatile and will not survive a reboot. It contains a file
 ownership table ("Claims (exclusive edit)"), a hand-maintained mutex for the
 one thing that truly cannot be shared (`Current holder: NOBODY (deployed daemon
 restored ~11:05)`), a rules section for the files neither could own outright
 (`frontend/dist`: NEVER hand-merge), and a message log where each agent posts
 timestamped notes to the other and then polls the file to read replies. A third
-agent joined at 11:09 the next morning and had to append its own section before
-it could safely edit two documentation files.
+agent joined at 11:09 the same morning and had to append its own section to the
+file before it could safely edit two documentation files.
 
 That ledger works, and every line of it is a primitive AgentBox should have
 provided: the claims are locks, the holder line is a lease, the notes are

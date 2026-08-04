@@ -20,9 +20,19 @@ agentbox show docs/09-sync.md   # the design Boris asked for, in the reader
 plus a live Agents surface** - [docs/09-sync.md](docs/09-sync.md), field case in
 [docs/07-field-requests.md](docs/07-field-requests.md). Boris asked for it on
 2026-08-04 across five messages, so it outranks everything below by the
-field-requests rule. It is 625 lines and it has already taken one adversarial
-review; read it before proposing changes, because the obvious designs are in
-there as rejected options with reasons.
+field-requests rule. It has already taken one adversarial review and a
+cold-start resumability test; read it before proposing changes, because the
+obvious designs are in there as rejected options with reasons.
+
+**Boris also set two requirements for the implementation** (2026-08-04, after
+the design was written), and both are in 09-sync.md under "Making it the
+default for every agent": the **global `~/.claude/CLAUDE.md`** must tell every
+one of his agents, in every project, that they announce themselves and
+coordinate through AgentBox, and the **embedded manual**
+(`internal/manual/agent.md`, served by `agentbox docs agent`) must teach the
+sync tools. Those ship in the same slice as the tools, not after - an agent
+whose MCP child predates the deploy cannot see new tools at all, so
+instructions that arrive first would point at tools nobody can call.
 
 **Three gates before slice 1, in this order.** Do not skip the first two; the
 doc argues why, and FR58 is the precedent that earned the rule.
@@ -30,14 +40,22 @@ doc argues why, and FR58 is the precedent that earned the rule.
 1. **Boris triages** the three open questions at the foot of 09-sync.md (how
    hard the announce gate is, whether Agents is its own rail surface, and how
    area granularity is decided).
-2. **Mock the surface** - `agentbox webui-demo agents` over canned roster data:
-   two working agents in one area, one asking, one blocked on a lock another
-   holds, one dim and unannounced, one orphaned lock. Walk it with him before
-   any daemon code exists.
+2. **Mock the surface.** Write a throwaway `agentbox webui-demo agents` case -
+   it does **not** exist yet, the harness has no Agents case - rendering canned
+   roster data: two working agents in one area, one asking, one blocked on a
+   lock another holds, one dim and unannounced, one orphaned lock. Walk it with
+   him before any daemon code exists. Showing a working-copy surface means
+   holding the desktop's only daemon, so read the one-UI trap in `CLAUDE.md`
+   and pick a window when no other agent is live.
 3. **Slice-0 spike** - CLI-only lock and signal against a scratch daemon
    (`AGENTBOX_INSTANCE=dev`), driven by two real sessions doing real work. This
    is what tells you what the results must carry before the tool schemas
-   freeze.
+   freeze. Two things it cannot answer, each needing its own small probe (both
+   named in the doc): the MCP client's tool-call idle cap and whether progress
+   notifications defeat it (probe a fresh `agentbox mcp` over stdio), and the
+   Bash-tool timeout that will cut a CLI `sync lock -- CMD` hold long before
+   `wait_max_s`. Every wait-ceiling number in the design is a review-derived
+   guess until those two run.
 
 **One piece can ship alone if a small win is wanted:** the session key on
 `proto.Identity`. Every sync primitive needs it, and it fixes a shipped FR74
@@ -97,15 +115,18 @@ agentbox-data block in it becomes the run's `data` column.
   live and one **held the desktop**; the session-38 agent has since released it
   and `agentbox control state` answers "no run". Re-check before driving anyway.
 - **PRs:** none, ever - this repo pushes `main` directly.
-- **Git:** clean, `main` in sync with `origin` (GitLab). This stream's commits:
-  `ef1dc6c` (FR83 field entry + docs index rows), `1c19d5a` (STATUS queue
-  pointer + history session 39), `3fcee1b` (the ADR note), plus this handoff.
-  `docs/09-sync.md` itself is committed inside `e77029f`, another agent's
-  commit, because a catch-all `git add` swept it in while it was still
-  untracked; the file is intact at 625 lines and was deliberately not rebased
-  out. **GitLab push-mirrors to GitHub on its own**: a direct `git push github`
-  can lose the race and be rejected with "cannot lock ref"; fetch and compare
-  heads before treating that as a real failure. Pushing `origin` is enough.
+- **Git:** clean, `main` pushed to `origin` (GitLab). This stream's commits, in
+  order: `ef1dc6c` (FR83 field entry + docs index rows), `1c19d5a` (STATUS queue
+  pointer + history session 39), `3fcee1b` (the ADR note), and the one carrying
+  this handoff plus the design's teaching section. The other two agents' commits
+  interleave with them (`f2bb394`, `728b537`), so read `git log` rather than
+  assuming a contiguous block. `docs/09-sync.md` itself is committed inside
+  `e77029f`, another agent's commit, because a catch-all `git add` swept it in
+  while it was still untracked; the file is intact and was deliberately not
+  rebased out. **GitLab push-mirrors to GitHub on its own**: a direct
+  `git push github` can lose the race and be rejected with "cannot lock ref",
+  and the mirror can lag the head by a commit or two - fetch and compare heads
+  before treating either as a real failure. Pushing `origin` is enough.
 - **Deployed:** `728b537a939e`, verified by `make deployed`. It holds every code
   commit and the current embedded manual (`agentbox docs agent` answers with the
   panel-key rule, which is how that was checked). The stamp reads `(dirty)`
@@ -163,11 +184,16 @@ give "Claude usage check" a schedule (`daily 09:00`) or delete it.
 
 ## Facts - verified vs assumed
 
-- [verified] The design, the field entry, the index rows, the STATUS pointer and
-  the history entry are committed and pushed; `git status` clean and in sync
-  with `origin/main`.
-- [verified] `docs/09-sync.md` is 625 lines and byte-identical to what was
-  written, despite riding into another agent's commit (`git diff HEAD` empty).
+- [verified] The design, the field entry, the index rows, the STATUS pointer,
+  the history entry and this handoff are committed and pushed; `git status`
+  clean and in sync with `origin/main`. A cold-start test caught an earlier
+  draft of this file asserting exactly that while sitting uncommitted, so if you
+  are reading a claim like this one, confirm it with `git status` rather than
+  trusting it.
+- [verified] `docs/09-sync.md` is byte-identical to what was written, despite
+  riding into another agent's commit (`git diff HEAD` empty for that path). Line
+  counts are deliberately not quoted here - the file grew twice after they were
+  written down, which is its own small lesson about facts with a shelf life.
 - [verified] FR83 is reachable from every documentation door: `docs/README.md`,
   `docs/STATUS.md`, `docs/07-field-requests.md`, `docs/history.md` and this
   file.
@@ -198,7 +224,15 @@ give "Claude usage check" a schedule (`daily 09:00`) or delete it.
 - [assumed] Everything in 09-sync.md about how the primitives will behave. It is
   a design; nothing in it has been built or measured. The claims about the
   client's tool-call idle cap and the need for progress notifications came from
-  review, not from an experiment - the slice-0 spike is where they get tested.
+  review, not from an experiment - probe them before relying on them, and the
+  doc's "Mock it before building it" section says how.
+- [verified] A cold-start resumability test was run on this handoff by a session
+  with no memory of the work, reading only this file and its links. It found
+  five real defects (this file uncommitted while claiming clean, a wrong commit
+  order, a stale line count, a demo command named as if it existed, and a queue
+  that disagreed with STATUS). All five are fixed above. What it could not
+  resolve read-only, and neither can you: whether a `driving` lock belongs to a
+  live process. That is FR83's orphan case, met in the wild before it was built.
 
 ## Declutter ledger
 

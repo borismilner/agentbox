@@ -784,10 +784,11 @@ wanted: the session key on `proto.Identity`, which every sync primitive needs
 and which fixes FR74's agent-name ownership check, where a second same-named
 session can write the first's hands-off activity line.
 
-**Priority reset by Boris on 2026-08-01 (session 34):** the main panel and
-recurring AI assignments (FR81/FR82) come first. M12 finished in session 35
-(slices 3, 4 and 5, all exercised live). The FR74 fullscreen marker is built but
-still unexercised; the rest of the old queue is behind these.
+**The 2026-08-01 priority reset is spent:** it put the main panel and recurring
+assignments (FR81/FR82) first, and both shipped by 2026-08-04. HANDOFF.md
+carries the current short order (FR83's gates, then FR73, FR65, the FR74
+marker, the usage-check retry); the numbered list below is the long tail behind
+it, kept for the items nothing else records.
 
 1. **FR74's last open piece: the fullscreen marker.** A fullscreen window may
    cover the strip, but a small always-visible marker must stay on top of it;
