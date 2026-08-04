@@ -2013,17 +2013,23 @@ returning same-area peers with `partial`, `set_activity` generalized to write th
 roster always, `list_agents`, derived areas, the `agentbox sync` CLI, the Agents
 rail surface, and the teaching in the same commit as the tools.
 
-**Slices 2 and 3 shipped the same day** (sessions 42 and 43), each verified live
+**Slices 2, 3 and 4 shipped the same day** (sessions 42 to 44), each verified live
 against the deployed daemon and looked at on screen: the discovery rider, then
 named locks with orphaning, deadlock refusal and break, then signals - post/await
 over one global cursor, per-topic retention that reports a gap rather than serving
 a batch with a hole in it, and the built-in `agents:<area>`, `to:<key>` and
-`lock:<name>` topics. The ledger's four primitives are now three of four: claims
-are locks, the notes are signals, the polling is over. Only the shared-value
-blackboard (slice 4) is left.
+`lock:<name>` topics - and then shared values, the compare-and-swap blackboard,
+where `if_version: 0` claims a key only if nobody has it yet and an owner whose
+session has died reads as abandoned instead of blocking the table.
 
-Still to build: shared values with compare-and-swap for claim tables. See the
-slice list in 09-sync.md.
+**The ledger's four primitives all exist now**: claims are shared values, turns
+are locks, the notes are signals, and the polling is over. The social locks
+CLAUDE.md wrote down have machinery behind them.
+
+Still to build from the design: the teaching half of slice 5, and one addition
+slice 4 names - the blackboard is not on the Agents surface. `shared` reads and
+`agentbox sync get 'claims/*'` report an orphaned claim; nothing on screen does.
+See the slice list in 09-sync.md.
 
 Two things this work turned up that were nothing to do with sync, both recorded
 in [history.md](history.md) session 40: `Conn.Serve` never told a blocking

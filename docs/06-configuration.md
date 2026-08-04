@@ -199,6 +199,17 @@ signal_keep_days = 7       # how old any of them may get. Whichever bites first.
                            # it - which means finite retention costs honesty and
                            # not correctness, while unbounded growth would be a
                            # leak with no ceiling
+shared_max_bytes = 16384   # the cap on ONE shared value - a claim, a counter, a
+                           # pointer. Small by contract: the idiom for anything
+                           # bigger is a file path. A knob where the signal
+                           # payload cap is a constant, because a value is state
+                           # a workflow shapes while a signal is an event agentbox
+                           # shapes. There is no retention knob beside it on
+                           # purpose: signals are history and may be forgotten, a
+                           # claim is not, and trimming a claim table would hand
+                           # one chunk of work to two agents. Values leave when an
+                           # agent deletes them, and the ceiling on how many may
+                           # exist refuses a new key rather than evicting somebody's
 
 [markdown]
 code_theme = "auto"        # auto | nord | gruvbox | github | onedark | dracula; auto follows the ground

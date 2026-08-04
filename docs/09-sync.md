@@ -7,15 +7,17 @@ already share. And the human sees all of it live: every agent's purpose, what
 it is doing right now, what it holds and what it waits on, in one surface.
 
 Requested by Boris 2026-08-04 (session 39). FR83. This document is the design;
-**slices 1, 2 and 3 are complete, deployed and verified live** (2026-08-04,
-sessions 40 to 43: the roster and the surface, then the discovery rider and the
-four defects a real screen turned up, then locks, then signals). Slice 4 (shared
-values) and the teaching half of slice 5 are not started. It has
+**slices 1 to 4 are complete, deployed and verified live** (2026-08-04,
+sessions 40 to 44: the roster and the surface, then the discovery rider and the
+four defects a real screen turned up, then locks, then signals, then shared
+values). All four primitives exist. Only the teaching half of slice 5 is not
+started, plus one addition slice 4 names: the blackboard is not on the surface. It has
 survived one adversarial review, whose findings are folded in, plus the mock, the
 live run, and a look at the real surface. Status: **triaged** (all three owner
-calls answered 2026-08-04, recorded at the foot); slice 1 shipped. An ADR comes at implementation kickoff, the way ADR-0012
-did for the review board, and it records what the mock and the spike changed
-rather than restating this document.
+calls answered 2026-08-04, recorded at the foot). Each slice's record below says
+what building it changed in this design, which is where the ADR's material lives:
+four of the five slices found something the design had wrong, and every one of
+those was found by running the thing rather than by reading the diff.
 
 ## Why
 
@@ -456,7 +458,10 @@ operations only, never across a wait - the control subsystem's rule, kept.
 
 MCP tools, the `addSyncTools` family: `announce`, `acquire_lock`,
 `try_lock`, `release_lock`, `post_signal`, `await_signal`, `shared`,
-`list_agents` - eight new, plus `set_activity` generalized in place. The
+`list_agents` - eight new, all shipped, plus `set_activity` generalized in place.
+`shared` is the family's one fold, and it is the blocking rule read the other way
+round: that rule exists so a caller can tell from the door whether calling parks
+its turn, and get, set and delete all answer no. The
 child registers the family only when `[sync] enabled` is on, read at child
 startup - a daemon-side flag alone would leave eight always-refusing schemas
 in every session's context, a kill switch that kills the feature and keeps
@@ -482,7 +487,9 @@ The insertion points follow the control/walkthrough precedent:
   the session key joins `proto.Identity`.
 - `internal/daemon/sync.go`: the subsystem - roster keyed by attach
   connection, lock table with waiter queues and orphan states, signal
-  cursors over the store, its own mutex, never held across a wait. Waiter
+  cursors over the store, its own mutex, never held across a wait. Shared values
+  are `shared.go`, the only one of the four that never parks: its mutex guards its
+  observers, and the CAS atomicity is in the SQL rather than in that mutex. Waiter
   shape (matcher, buffered chan of 1, register-before-check, put-back on
   racing delivery) copied from the three existing hubs; the fan-out delivery
   is the one new behavior.
@@ -497,9 +504,11 @@ The insertion points follow the control/walkthrough precedent:
   data, at; seq is the global cursor, and AUTOINCREMENT is load-bearing so a
   trimmed table cannot restart the sequence under a live cursor) - and 0009,
   `sync_signal_trim` (topic, high_water), which is what makes the gap answerable
-  at all. `sync_shared` (key, value, version, owner, updated) comes with slice 4;
-  it is a later migration rather than 0008's second table, because a table with
-  no code above it rots. Roster and locks are memory only, on principle:
+  at all. `sync_shared` came with slice 4 as 0010 (key, value, version, owner,
+  owner_agent, updated_ms) and 0011 (owner_pid) - a later migration rather than
+  0008's second table, because a table with no code above it rots, and two
+  migrations an hour apart rather than an edit to 0010, because forward-only holds
+  even when the mistake is that fresh. Roster and locks are memory only, on principle:
   a hold must not outlive the ability to observe its holder. After a daemon
   restart the locks are gone and the first touch says so honestly.
 - `internal/webui`: an `Agents` surface registered like the others, fed over
@@ -529,7 +538,9 @@ signal_keep = 1000        # per topic, and:
 signal_keep_days = 7      # whichever trims first. What retention took is recorded
                           # per topic, so a cursor below it reports gap rather than
                           # being served a batch with a hole in it
-shared_max_bytes = 16384
+shared_max_bytes = 16384   # one shared value. A knob where the signal payload
+                           # cap is a constant, because a value is state a
+                           # workflow shapes and a signal is one agentbox shapes
 ```
 
 Seven knobs, defaults chosen so nobody opens the file (vision principle 8).
@@ -769,9 +780,78 @@ ceilings are unrelated and the manual must not let them read as one number.
    the area there too. Any future verb that needs an area must take the cwd with
    it: the attach is not the only door a session's first call comes through.
 4. **Shared values.** The `shared` tool, CAS, owners, change signals.
+   **Built, deployed and verified live** (`tools/sync-probe.py shared`). One MCP
+   tool with `op: get | set | delete`, `agentbox sync get|set|del` beside it,
+   migrations 0010 and 0011, and `shared_max_bytes` in the `[sync]` block.
+
+   Five things the build settled, three of them decisions the design left open:
+
+   - **Zero is a value here, so `if_version` is a pointer.** Slice 3's `after_seq`
+     folded "omitted" into 0 because nothing needed to say "must be zero". A claim
+     is exactly that thing: versions start at 1, so `if_version: 0` means "only if
+     this key does not exist" and is the whole first-writer-wins idiom. Absent
+     means write unconditionally, `N` means "only if unmoved". Read the two
+     decisions together - the same fact about where a counter starts, used the
+     opposite way, because here something has to be able to demand the zero.
+   - **Every CAS is ONE SQL statement**, and that is load-bearing rather than
+     tidy. Read-then-write would have been atomic only because the daemon happens
+     to be one process holding one connection pool - true today, and the kind of
+     true a dev instance or a future migration tool breaks silently. An upsert, an
+     `INSERT ... ON CONFLICT DO NOTHING` and an `UPDATE ... WHERE version = N`
+     express all three conditions as predicates on the write itself, so a lost
+     update is impossible for a reason that does not depend on deployment.
+     `RETURNING` is what turns SQL's silence about a losing write into an answer.
+   - **A `*` on a get reads the family**, reusing the topic prefix rule rather
+     than inventing a second one. Not in the design, and it is what makes
+     one-key-per-item usable: a ten-chunk table is one read, so a splitter asks
+     once instead of ten times, and the LIKE escaping from the signal predicate
+     comes with it so a key holding a literal `_` cannot become a wildcard.
+   - **The refusal is the interesting half of the API.** A losing claim comes back
+     with the current value, version, owner and whether that owner is still
+     running - because "somebody was faster" and "somebody died holding this" call
+     for opposite next moves, and an agent that has to make a second call to tell
+     them apart pays a model turn per collision. `stale: true` is a normal
+     outcome, not an error: for nine workers out of ten it is what winning looks
+     like from the other side.
+   - **The cap refuses instead of evicting**, which is the opposite of what
+     signals do and for the same reason signals do it. Retention exists because
+     events are history and history may be forgotten; a claim is not history, and
+     dropping one hands a chunk to two agents. So nothing here is ever trimmed,
+     values leave when an agent deletes them, and a full table (1000 keys) refuses
+     a NEW key while never blocking an update - refusing an update would strand a
+     claim its owner is trying to finish.
+
+   **And one defect the probe found that reading the diff did not** (recorded here
+   because it is migration 0009's lesson a third time): ownership was checked
+   against the roster alone, and the roster is memory only. A daemon restart
+   empties it, so for the second it takes every mcp child to redial and replay its
+   announce, EVERY owned claim read as abandoned - an invitation to take over a
+   chunk somebody is actively writing, which is the precise failure this primitive
+   exists to prevent. "Gone" cannot be told from "not here yet" by looking at what
+   is left. Migration 0011 records the owning process, and a read now answers in
+   two steps: on the roster means alive, otherwise the pid decides. A pid is the
+   one fact about an owner that outlives the daemon, which is why an orphaned lock
+   is pid-checked too. Zero means none was recorded, which is honest for a CLI
+   write - a shell knows only its own pid and that pid dies seconds later, so
+   recording it would manufacture the false orphan the column exists to remove.
+
    Accept: three sessions drain a ten-chunk claim table (one key per chunk)
    with zero double-claims; restart the daemon mid-drain - claims survive,
    the dead session's claim reads as ownerless, and the table still drains.
+   **All verified live**, plus: the refusal naming a live winner versus a dead
+   one, a peer parked on `shared:probe:claims/*` woken by a take-over with the
+   key and version and no value, the live owners still reading as live across the
+   restart, and the CLI exiting 0 on a won claim and 1 on a lost one.
+
+   **One thing NOT built, so the next session does not read it as an oversight:**
+   the Agents surface does not show the blackboard. The design's prose says "the
+   surface and `shared` reads report a value whose owner is no longer present",
+   and only the second half of that is done - `shared` reads report it, `agentbox
+   sync get 'claims/*'` reports it, and nothing on screen does. It is an addition
+   rather than a correction (no agent is misled; the orphan is visible to every
+   reader that asks), but it is the one promise in this section still outstanding.
+   Shared values are global state like the lock table, not per-agent state, so the
+   place for them is a panel beside the locks rather than a chip on a row.
 5. **Teaching, which is what makes the mandate real.** See the section below;
    this slice is not documentation garnish, it is the difference between a
    feature that exists and a feature every agent uses. Accept: a Claude

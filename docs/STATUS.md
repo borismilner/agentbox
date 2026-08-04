@@ -1,10 +1,11 @@
 # STATUS
 
-Updated: 2026-08-04, forty-third session (FR83 slice 3 is COMPLETE: signals,
-verified live and on screen, and its gap check was wrong until a live run caught
-it). Session 42 the same day shipped locks and fixed the 30-minute fuse under
-every blocking card; session 41 finished slice 1; session 40 built it; session 39
-designed FR83.
+Updated: 2026-08-04, forty-fourth session (FR83 slice 4 is COMPLETE: shared
+values, verified live against the deployed daemon, and its ownership check was
+wrong until the probe restarted the daemon). **All four sync primitives now
+exist.** Session 43 shipped signals and FR89; session 42 shipped locks and fixed
+the 30-minute fuse under every blocking card; session 41 finished slice 1; session
+40 built it; session 39 designed FR83.
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config
@@ -133,7 +134,42 @@ none out, so a warning waited until it was clicked and came back after every dae
 restart. `tools/sync-probe.py` now clears the toasts its own run caused, which is
 what made this a recurring tax rather than a one-off.
 
-**What remains of FR83:** shared values - slice 4 in [09-sync.md](09-sync.md).
+**Slice 4 is live: agents split work nobody doubles.** One `shared` tool with
+`op: get | set | delete` (plus `agentbox sync get|set|del`), migrations 0010 and
+0011, and `shared_max_bytes` in `[sync]`. A lock says whose turn it is and a
+signal says something happened; only this can say chunk 7 is mine. `if_version` is
+compare-and-swap and 0 is a real value: versions start at 1, so 0 means "only if
+this key does not exist" - ten workers over ten `claims/<chunk>` keys means
+first-writer-wins per item, no lock and no retry loop. A refusal carries the
+current value, version and owner, so a loser decides without a second call. Every
+write posts `shared:<key>`, so waiting on a value is
+`await_signal(["shared:claims/*"])` and there is still exactly one wake mechanism.
+Four things worth knowing:
+
+- **Ownership was checked against the roster alone, and the probe caught it.** The
+  roster is memory only, so a daemon restart empties it - and for the second every
+  mcp child takes to redial, EVERY owned claim read as abandoned, which invites a
+  peer to take over a chunk somebody is writing. Migration 0009's lesson a third
+  time: "gone" cannot be told from "not here yet" by looking at what is left.
+  Migration 0011 records the owning process, and a read answers in two steps - on
+  the roster means alive, otherwise the pid decides. Verified across a real
+  `systemctl --user restart`: live owners still live, the dead one still dead.
+- **Nothing here is ever trimmed**, which is the deliberate opposite of signals.
+  Retention exists because events are history; a claim is not, and dropping one
+  hands a chunk to two agents. Values leave when an agent deletes them, and a full
+  table refuses a NEW key rather than evicting somebody's claim.
+- **Every CAS is one SQL statement.** Read-then-write would have been atomic only
+  because the daemon is one process today - the kind of true a dev instance breaks
+  silently. `RETURNING` is what turns SQL's silence about a losing write into an
+  answer.
+- **A `get` on a key ending in `*` reads the family**, which is not in the design
+  and is what makes one-key-per-item usable: a ten-chunk table is one read.
+
+**What remains of FR83:** the teaching half of slice 5, and one addition slice 4
+names in [09-sync.md](09-sync.md) - the blackboard is not on the Agents surface.
+`shared` reads and the CLI report an orphaned claim; nothing on screen does. Shared
+values are global state like the lock table, so the place for them is a panel
+beside the locks rather than a chip on a row.
 
 What else remains is the showcase re-record (decided, not yet scheduled) and the
 verification and refinement queue.
@@ -887,15 +923,21 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
-**FR83, multi-agent sync (designed in [09-sync.md](09-sync.md)): slices 1, 2 and 3
-are finished, deployed and verified live as of session 43.** Presence, discovery,
-the rider, the Agents surface, locks, and signals. Every number the design guessed
-is now measured: the client's tool-call idle cap at 1800s
-(`tools/idlecap-probe.sh`, which is why `wait_max_s` is 1500), and a CLI hold's
-ceiling at 120s for a foreground call and 600s with an explicit timeout, which is
-why `agentbox sync lock NAME -- CMD` cannot be the naive wrap the design first
-described. Next in the design's order: **slice 4, shared values** - the
-compare-and-swap blackboard, whose change signals ride the hub that now exists.
+**FR83, multi-agent sync (designed in [09-sync.md](09-sync.md)): slices 1 to 4
+are finished, deployed and verified live as of session 44.** Presence, discovery,
+the rider, the Agents surface, locks, signals and shared values - all four
+primitives, and the composition the feature was for: park on a signal, take a
+lock, claim a chunk. Every number the design guessed is now measured: the client's
+tool-call idle cap at 1800s (`tools/idlecap-probe.sh`, which is why `wait_max_s`
+is 1500), and a CLI hold's ceiling at 120s for a foreground call and 600s with an
+explicit timeout, which is why `agentbox sync lock NAME -- CMD` cannot be the naive
+wrap the design first described. What is left of FR83 is the teaching half of slice
+5, plus the blackboard's missing panel on the Agents surface.
+
+Four of the five slices found something the design had wrong, and **every one was
+found by running it rather than by reading the diff**: slice 1's four surface
+defects, slice 2's CLI-wrap ceiling, slice 3's gap check, slice 4's roster-only
+ownership check. That is the pattern worth carrying to the next feature.
 
 **One defect found in the field on 2026-08-04 and still open:** FR86 (a project is
 named after whatever directory the agent stood in, so an agent in `frontend/src`
@@ -905,7 +947,7 @@ fixed in session 42. Both are in [07-field-requests.md](07-field-requests.md).
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (FR83 slice 4, then FR85 with FR86, FR84,
+carries the current short order (FR85 with FR86, the blackboard's panel, FR84,
 and the older FR73/FR65/FR74-marker queue); the numbered list below is the long
 tail behind it, kept for the items nothing else records.
 

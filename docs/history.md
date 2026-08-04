@@ -9,6 +9,94 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Forty-fourth session (2026-08-04): shared values, and an ownership check that a daemon restart caught
+
+Resumed from session 43's handoff, which said slice 4 was next and nothing gated
+it. It was right, and it was the last slice: **all four sync primitives now
+exist.** The handoff's four facts to build on all held - the signal hub was the
+door to post through, the store was at 0009, the trim/gap pattern was the one to
+copy for owners, and any verb needing an area must carry the cwd.
+
+**Slice 4 shipped: shared values, the compare-and-swap blackboard.** One `shared`
+tool with `op: get | set | delete`, `agentbox sync get|set|del` beside it,
+migration 0010, and `shared_max_bytes` in `[sync]`. A lock says whose turn it is
+and a signal says something happened; neither can say *chunk 7 is mine*, which is
+the fact a fanned-out job needs before it starts work a peer already started. Ten
+workers over ten `claims/<chunk>` keys is first-writer-wins per item, with no lock,
+no read-modify-write and no retry loop.
+
+**Zero is a value here, which is slice 3's decision used the other way round.**
+`after_seq` could fold "omitted" into 0 because nothing needed to demand a zero. A
+claim is exactly that thing: versions start at 1, so `if_version: 0` means "only if
+this key does not exist yet". So `if_version` is a pointer on the wire and a string
+flag on the CLI - an int flag cannot tell "0" from "not given", and the difference
+is a claim versus an overwrite. Worth reading the two slices together: the same
+fact about where a counter starts, and the opposite conclusion.
+
+**Every CAS is one SQL statement, and that was a deliberate refusal.** Read-then-
+write inside a mutex would have been atomic - because this daemon happens to be one
+process holding one connection pool. That is the kind of true a dev instance, a
+second daemon or a future migration tool breaks silently, so all three conditions
+are predicates on the write itself: an upsert, an `INSERT ... ON CONFLICT DO
+NOTHING`, and an `UPDATE ... WHERE version = N`. `RETURNING` is what turns SQL's
+silence about a losing write into an answer. Verified with eight goroutines over
+ten keys under `-race`: exactly one winner per key.
+
+**The ownership check was wrong, and only restarting the daemon showed it.**
+Ownership was recorded (session key, agent name) and checked against the live
+roster - which reads correctly all day and is false for one second per daemon
+restart. The roster is memory only on principle, so a restart empties it, and until
+every mcp child redials and replays its announce, **every owned claim read as
+abandoned**. That is an invitation to take over a chunk somebody is actively
+writing: the exact failure this primitive exists to prevent, and migration 0009's
+lesson a third time - "gone" cannot be told from "not here yet" by looking at what
+is left.
+
+Migration 0011 records the owning process, and a read answers in two steps: on the
+roster means alive, otherwise the pid decides. A pid is the one fact about an owner
+that outlives the daemon, which is why an orphaned lock is pid-checked too. Zero
+means none was recorded, which is honest for a CLI write - a shell knows only its
+own pid and that pid dies seconds later, so recording it would manufacture the
+false orphan the column removes. Found by writing the acceptance probe, not by
+reading the diff, which is now four slices out of five.
+
+**A probe that runs the drainers one after another proves nothing.** The first
+draft of `tools/sync-probe.py shared` walked three sessions through the ten keys
+sequentially, and session A won all ten - every key was free when the first walker
+reached it. Three threads, two going forward and one backward, put the collisions
+in the middle. The run then settles the whole acceptance sentence live: 10 of 10
+chunks claimed with no doubles, a session killed holding four claims whose keys
+read as ownerless and name the agent that abandoned them while the live sessions'
+keys do not, a peer parked on `shared:probe:claims/*` woken by the take-over with
+the key and version but no value, a real `systemctl --user restart` after which all
+ten claims survive with their versions and the live owners still read as live, the
+table drained, and the CLI exiting 0 on a won claim and 1 on a lost one.
+
+Unlike the signals scenario, this one cleans up after itself: shared values are
+never trimmed by design, so every probe claim is deleted on the way out.
+
+**Retention is the one place shared values deliberately differ from signals.**
+Nothing here is ever trimmed. Retention exists because an event is history and
+history may be forgotten; a claim is not history, and dropping one hands a chunk to
+two agents. So values leave when an agent deletes them, and the cap on how many may
+exist (1000) refuses a NEW key rather than evicting an old one - while never
+blocking an update, because refusing those would strand a claim its owner is trying
+to finish.
+
+**One thing not built, recorded so it is not read as an oversight:** the Agents
+surface does not show the blackboard. The design's prose promises "the surface and
+`shared` reads report a value whose owner is no longer present" and only the second
+half is done - `shared` reads and `agentbox sync get 'claims/*'` report an orphan,
+nothing on screen does. Shared values are global state like the lock table, so the
+place for them is a panel beside the locks rather than a chip on a row.
+
+Also this session, at Boris's request: a **global usage-budget rule** in
+`~/.claude/CLAUDE.md`. Every session periodically reads `claude -p /usage` and
+hands off when the weekly limit is above 98%, or when the session limit is above
+98% and its reset is more than 20 minutes away - inside 20 minutes, waiting it out
+is cheaper than a handoff. Running out of quota mid-task ends a session wherever it
+happens to be, which is the one way work gets lost.
+
 ## Forty-third session (2026-08-04): signals, and a gap check that only running it caught
 
 Resumed from session 42's handoff, which said slice 3 was next and nothing gated
