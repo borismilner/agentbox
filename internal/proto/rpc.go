@@ -79,6 +79,12 @@ const (
 	MethodSyncUnlock    = "agentbox.v1.sync_unlock"
 	MethodSyncBreakLock = "agentbox.v1.sync_break_lock"
 	MethodSyncLocks     = "agentbox.v1.sync_locks"
+	// Signals (FR83 slice 3). post never blocks and await always may, so they are
+	// two methods for the same reason acquire and try are. The split matters more
+	// here than anywhere: await is the design's one sanctioned way to spend a turn
+	// doing nothing, and a caller has to be able to tell from the door.
+	MethodSyncPost  = "agentbox.v1.sync_post"
+	MethodSyncAwait = "agentbox.v1.sync_await"
 )
 
 // ArtifactEvent is one thing the human did inside an artifact: the name and data
@@ -286,6 +292,10 @@ type SyncAgent struct {
 	// diagram the human assembles in his head.
 	Holds   []SyncHold `json:"holds,omitempty"`
 	Waiting *SyncWait  `json:"waiting,omitempty"`
+	// Listening is what this session is parked on in await_signal (slice 3). It is
+	// a state, not a problem: an agent waiting to be told is the shape this feature
+	// exists to make possible, which is why nothing ever warns about it.
+	Listening *SyncListen `json:"listening,omitempty"`
 
 	// State is what the daemon observed, never what the agent claimed.
 	State  string `json:"state"`
@@ -412,6 +422,92 @@ type SyncLockState struct {
 type SyncLocksResult struct {
 	OK    bool            `json:"ok"`
 	Locks []SyncLockState `json:"locks,omitempty"`
+}
+
+// Signals (FR83 slice 3): fire-and-forget events with durable pickup. The
+// matching rule for Topic patterns is in topic.go.
+//
+// SyncPostParams posts one. Data is whatever the agent wants to say, carried as
+// raw JSON because it is the agent's own vocabulary and agentbox has no business
+// having an opinion about its shape - only about its size.
+type SyncPostParams struct {
+	Identity Identity        `json:"identity"`
+	Topic    string          `json:"topic"`
+	Data     json.RawMessage `json:"data,omitempty"`
+}
+
+// SyncPostResult is the sequence number the signal got, which is also the cursor
+// a waiter would use to read from just before it.
+//
+// Delivered counts the parked waiters woken. It is honest rather than
+// reassuring: fire-and-forget means zero is a perfectly good answer (the signal
+// is stored, and a later await picks it up by cursor), so a poster that cares
+// whether anybody heard it can see the difference instead of assuming.
+type SyncPostResult struct {
+	OK        bool   `json:"ok"`
+	Topic     string `json:"topic"`
+	Seq       int64  `json:"seq"`
+	Delivered int    `json:"delivered"`
+	Note      string `json:"note,omitempty"`
+}
+
+// SyncAwaitParams parks until a matching signal arrives.
+//
+// AfterSeq is the cursor, and zero is not a cursor: seq starts at 1, so zero
+// means "from now on" - the reading a caller with nothing to resume from wants.
+// A real cursor means "everything I have not seen", which may come back as a
+// batch before the call ever parks.
+type SyncAwaitParams struct {
+	Identity Identity `json:"identity"`
+	Topics   []string `json:"topics"`
+	AfterSeq int64    `json:"after_seq,omitempty"`
+	TimeoutS int      `json:"timeout_s,omitempty"`
+}
+
+// Signal is one delivered event. Key is the poster's session key, which is what
+// makes a reply addressable: answering is a post to "to:<key>".
+type Signal struct {
+	Seq     int64           `json:"seq"`
+	Topic   string          `json:"topic"`
+	Agent   string          `json:"agent,omitempty"`
+	Project string          `json:"project,omitempty"`
+	Key     string          `json:"key,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`
+	AtMS    int64           `json:"at_ms,omitempty"`
+}
+
+// SyncAwaitResult is a batch and the cursor to resume from.
+//
+// Gap is the honesty bit, and it is the reason retention can be finite at all. A
+// cursor older than what the store still holds cannot be served completely, and a
+// batch that silently skipped what retention ate is how two agents both come to
+// own the same chunk of work. So the gap is reported with the oldest sequence
+// that did survive, and the caller decides what to do about it (FR61's rule, on
+// the wire).
+//
+// More says the batch was capped and another call gets the rest at once, without
+// parking. A cap exists because a cursor from last week could otherwise return
+// hundreds of signals into an agent's context in one result.
+type SyncAwaitResult struct {
+	OK      bool     `json:"ok"`
+	Signals []Signal `json:"signals,omitempty"`
+	// Cursor is where to resume: the seq of the last signal in this batch, or the
+	// unchanged cursor when nothing arrived. Always safe to pass straight back as
+	// AfterSeq.
+	Cursor    int64  `json:"cursor"`
+	TimedOut  bool   `json:"timed_out,omitempty"`
+	Gap       bool   `json:"gap,omitempty"`
+	OldestSeq int64  `json:"oldest_seq,omitempty"`
+	More      bool   `json:"more,omitempty"`
+	Note      string `json:"note,omitempty"`
+}
+
+// SyncListen is what a session is parked on, for its roster row. It is what makes
+// "listening: tests:green" a fact the daemon observed rather than a claim, and it
+// is deliberately never warned about: listening is the intended steady state.
+type SyncListen struct {
+	Topics  []string `json:"topics"`
+	SinceMS int64    `json:"since_ms"`
 }
 
 type ControlRequestParams struct {
