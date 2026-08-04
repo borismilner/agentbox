@@ -1922,6 +1922,82 @@ that always works by design. Concurrency is still one run per assignment.
 
 ---
 
+## FR83 [field] Agents that can see, find and wait for each other
+
+**The design is [09-sync.md](09-sync.md).** This entry is the field case; that
+document is the feature, and it has already taken one adversarial review.
+
+**Session.** 2026-08-04. Boris, across five messages: agents on this platform
+should *"synchronize among themselves with maximal efficiency"*; he should
+*"be able to monitor using the GUI what exactly each such agent is doing at the
+moment"*; **every** agent *"must provide a short description of the purpose of
+the agent and the current thing the agent is doing and update these as they
+change"*; agents *"should easily find existing or new joining agents that are
+working on the same area"* so they know they may interfere; and they should
+*"communicate among themselves and discover each other using this platform to
+achieve maximal cooperation and optimal synchronization."*
+
+**What AgentBox could not do.** All of it. The daemon has no idea which agents
+exist: identity rides inside each request, the mcp child dials a fresh
+connection per tool call, and the only liveness signal in the system is a
+currently-blocking call's context (FR45). There is no roster, no heartbeat, no
+lease anywhere, and the one lock that exists is FR74's desktop handover, whose
+ownership check is agent-name string equality - so two Claude sessions in one
+project, which are the identical `{Agent, Project, Session}` triple when
+AGENTBOX_SESSION_ID is empty, can write over each other's hands-off strip. Two
+agents cannot see each other, cannot take turns, and cannot tell the human what
+they are each doing.
+
+**What was done instead, the same day, in this repo.** Session 37 ran two
+agents in one checkout and they coordinated **by hand, through a file**:
+`/tmp/agentbox-agents.md`, still on disk as the evidence. It contains a file
+ownership table ("Claims (exclusive edit)"), a hand-maintained mutex for the
+one thing that truly cannot be shared (`Current holder: NOBODY (deployed daemon
+restored ~11:05)`), a rules section for the files neither could own outright
+(`frontend/dist`: NEVER hand-merge), and a message log where each agent posts
+timestamped notes to the other and then polls the file to read replies. A third
+agent joined at 11:09 the next morning and had to append its own section before
+it could safely edit two documentation files.
+
+That ledger works, and every line of it is a primitive AgentBox should have
+provided: the claims are locks, the holder line is a lease, the notes are
+messages, and the polling is what a signal exists to end. What it cannot do at
+any price is answer the human's question - nothing in it says what either agent
+is doing *right now*, so Boris's only view into two live agents was two
+terminals and a `git status`. The cost is already recorded elsewhere too:
+CLAUDE.md's traps are social locks (never `pkill agentbox`, `make run`
+displaces the daemon Boris's live sessions reach him through), and the
+session-37 handoff opens by telling the next agent to read the ledger and guess
+whether the other one is still alive.
+
+**Proposed shape**, in one line each, all detailed in 09-sync.md:
+
+- A **roster** of live agent sessions, keyed to a persistent attach connection,
+  each row carrying a mandated purpose and a live activity line, with the state
+  chip derived from what the daemon can observe rather than from what the agent
+  claims.
+- An **Agents surface** in the app window, grouped by area, showing every
+  agent's purpose, current activity and age, what it holds and what it waits
+  on, with break-lock behind a confirm.
+- **Discovery** by area (derived from the git top-level, refined by declared
+  tags): joining returns your peers, and every later tool result carries a
+  rider when company arrives, so a mid-work agent learns it is no longer alone
+  without polling.
+- **Locks** with FIFO waiters, deadlock refused by name at acquire time, and a
+  dead holder's lock **orphaned rather than released** until its recorded pid is
+  gone, because a dead mcp child does not mean a dead `make deploy`.
+- **Signals** with durable pickup and cursors (agent-to-agent wake-ups, and
+  direct messages over each session's private topic), and **shared values**
+  with compare-and-swap for claim tables.
+- A **session key** on `proto.Identity`, which is the prerequisite for all of
+  it and fixes FR74's ownership check on the way past.
+
+**Not started.** Awaiting Boris's triage, the surface mock
+(`agentbox webui-demo agents` over canned roster data, per the working rule at
+the top of this file) and a throwaway CLI spike driven by two real sessions.
+
+---
+
 ## Authoring rules for walkthroughs - MOVED
 
 This section shipped. It lives in `internal/manual/walkthrough.md`, embedded in
