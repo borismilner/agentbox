@@ -136,25 +136,99 @@ func likePrefix(s string) string {
 	return strings.ReplaceAll(s, "_", `\_`)
 }
 
-// SignalBounds is the oldest sequence still stored and the highest ever issued.
+// SignalHighWater is the highest sequence ever issued, which is where "from now
+// on" starts.
 //
-// Both are needed to answer one question honestly: has this caller's cursor
-// fallen off the trimmed edge? Oldest comes from the table and is zero when it is
-// empty; newest comes from sqlite_sequence, which AUTOINCREMENT maintains as a
-// high-water mark, so it survives every row being trimmed. Without that second
-// number an empty table would read as "nothing has ever happened" to an agent
-// holding a cursor from before the trim.
-func (s *Store) SignalBounds() (oldest, newest int64, err error) {
-	var o sql.NullInt64
-	if err := s.db.QueryRow(`SELECT MIN(seq) FROM sync_signals`).Scan(&o); err != nil {
-		return 0, 0, fmt.Errorf("signal bounds: %w", err)
-	}
+// It comes from sqlite_sequence rather than from MAX(seq), because AUTOINCREMENT
+// maintains it as a high-water mark that survives every row being trimmed - and
+// without that, an emptied table would read as "nothing has ever happened" to an
+// agent holding a cursor from before the trim.
+func (s *Store) SignalHighWater() (int64, error) {
 	var n sql.NullInt64
 	// Missing until the first insert, which is why this tolerates no row.
 	if err := s.db.QueryRow(`SELECT seq FROM sqlite_sequence WHERE name = 'sync_signals'`).Scan(&n); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return 0, 0, fmt.Errorf("signal high-water: %w", err)
+		return 0, fmt.Errorf("signal high-water: %w", err)
 	}
-	return o.Int64, n.Int64, nil
+	return n.Int64, nil
+}
+
+// SignalOldest is the oldest sequence still stored, or zero when nothing is. Not
+// used for the gap check - see SignalGap for why the global minimum cannot answer
+// that - but it is how far back history goes, which a read may want to say.
+func (s *Store) SignalOldest() (int64, error) {
+	var o sql.NullInt64
+	if err := s.db.QueryRow(`SELECT MIN(seq) FROM sync_signals`).Scan(&o); err != nil {
+		return 0, fmt.Errorf("signal oldest: %w", err)
+	}
+	return o.Int64, nil
+}
+
+// SignalGap answers the only question a cursor really has: was anything on THESE
+// topics trimmed after it? It returns the highest sequence retention took from any
+// matching topic, or zero when a read from this cursor is complete.
+//
+// It has to be a recorded fact rather than a deduction. Nothing about what remains
+// can tell "trimmed" apart from "never existed", and the deduction that looks
+// right - "the cursor is below the oldest surviving signal" - is wrong for a
+// per-topic retention policy: one quiet topic's ancient row holds the global
+// minimum down while a busy topic's history disappears from under a reader. That
+// version shipped, and a live run found it inside the hour.
+func (s *Store) SignalGap(after int64, patterns []string) (int64, error) {
+	if after <= 0 {
+		// "From now on" cannot have missed anything by definition.
+		return 0, nil
+	}
+	where, args := topicPredicate(patterns)
+	if where == "" {
+		return 0, nil
+	}
+	args = append(args, after)
+	var hw sql.NullInt64
+	if err := s.db.QueryRow(`SELECT MAX(high_water) FROM sync_signal_trim
+		WHERE (`+where+`) AND high_water > ?`, args...).Scan(&hw); err != nil {
+		return 0, fmt.Errorf("signal gap: %w", err)
+	}
+	return hw.Int64, nil
+}
+
+// trimMarks is the highest sequence per topic that a pending delete is about to
+// take, read before it runs.
+func (s *Store) trimMarks(cond string, args ...any) (map[string]int64, error) {
+	rows, err := s.db.Query(`SELECT topic, MAX(seq) FROM sync_signals
+		WHERE `+cond+` GROUP BY topic`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read trim marks: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var topic string
+		var hw int64
+		if err := rows.Scan(&topic, &hw); err != nil {
+			return nil, fmt.Errorf("read trim marks: %w", err)
+		}
+		out[topic] = hw
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read trim marks: %w", err)
+	}
+	return out, nil
+}
+
+// recordTrim remembers how far retention got in one topic. Callers pass the
+// highest sequence they deleted; the watermark only ever moves forward, because a
+// second trim of an already-trimmed topic must not forget the first.
+func (s *Store) recordTrim(topic string, highWater int64) error {
+	if topic == "" || highWater <= 0 {
+		return nil
+	}
+	_, err := s.db.Exec(`INSERT INTO sync_signal_trim (topic, high_water) VALUES (?, ?)
+		ON CONFLICT(topic) DO UPDATE SET high_water = MAX(high_water, excluded.high_water)`,
+		topic, highWater)
+	if err != nil {
+		return fmt.Errorf("record trim for %s: %w", topic, err)
+	}
+	return nil
 }
 
 // TrimTopic applies the per-topic count to ONE topic: the one just written, which
@@ -167,13 +241,29 @@ func (s *Store) TrimTopic(topic string, keepPerTopic int) (int, error) {
 	if keepPerTopic <= 0 || topic == "" {
 		return 0, nil
 	}
-	res, err := s.db.Exec(`DELETE FROM sync_signals WHERE topic = ? AND seq <= (
-		SELECT seq FROM sync_signals WHERE topic = ? ORDER BY seq DESC LIMIT 1 OFFSET ?)`,
-		topic, topic, keepPerTopic)
+	// The boundary is read before the delete rather than derived after it: what a
+	// reader needs recorded is the highest sequence that went, and once the rows are
+	// gone there is nothing left to ask.
+	var boundary sql.NullInt64
+	err := s.db.QueryRow(`SELECT seq FROM sync_signals WHERE topic = ?
+		ORDER BY seq DESC LIMIT 1 OFFSET ?`, topic, keepPerTopic).Scan(&boundary)
+	if errors.Is(err, sql.ErrNoRows) || !boundary.Valid {
+		return 0, nil // under the cap; nothing to trim
+	}
+	if err != nil {
+		return 0, fmt.Errorf("trim topic %s: %w", topic, err)
+	}
+	res, err := s.db.Exec(`DELETE FROM sync_signals WHERE topic = ? AND seq <= ?`,
+		topic, boundary.Int64)
 	if err != nil {
 		return 0, fmt.Errorf("trim topic %s: %w", topic, err)
 	}
 	n, _ := res.RowsAffected()
+	if n > 0 {
+		if err := s.recordTrim(topic, boundary.Int64); err != nil {
+			return int(n), err
+		}
+	}
 	return int(n), nil
 }
 
@@ -187,12 +277,25 @@ func (s *Store) TrimSignals(keepPerTopic int, maxAge time.Duration) (int, error)
 	trimmed := 0
 	if maxAge > 0 {
 		cutoff := time.Now().Add(-maxAge).UnixMilli()
+		// Per topic again, and again before the delete: the age sweep crosses every
+		// topic, so each one needs its own watermark or a topic aged away entirely
+		// leaves no record that it ever existed - which is the case the wrong version
+		// of this check got most wrong.
+		marks, err := s.trimMarks(`at_ms < ?`, cutoff)
+		if err != nil {
+			return trimmed, err
+		}
 		res, err := s.db.Exec(`DELETE FROM sync_signals WHERE at_ms < ?`, cutoff)
 		if err != nil {
 			return trimmed, fmt.Errorf("trim signals by age: %w", err)
 		}
 		n, _ := res.RowsAffected()
 		trimmed += int(n)
+		for topic, hw := range marks {
+			if err := s.recordTrim(topic, hw); err != nil {
+				return trimmed, err
+			}
+		}
 	}
 	if keepPerTopic <= 0 {
 		return trimmed, nil
@@ -218,17 +321,13 @@ func (s *Store) TrimSignals(keepPerTopic int, maxAge time.Duration) (int, error)
 		return trimmed, fmt.Errorf("trim signals by count: %w", err)
 	}
 	for _, t := range topics {
-		// Everything at or below the keepPerTopic-th newest goes. Expressed as an
-		// offset into the topic's own descending order so the boundary is one row
-		// rather than a count the delete has to maintain.
-		res, err := s.db.Exec(`DELETE FROM sync_signals WHERE topic = ? AND seq <= (
-			SELECT seq FROM sync_signals WHERE topic = ? ORDER BY seq DESC LIMIT 1 OFFSET ?)`,
-			t, t, keepPerTopic)
+		// Through TrimTopic rather than a second copy of the same delete, so the
+		// watermark is recorded by exactly one piece of code.
+		n, err := s.TrimTopic(t, keepPerTopic)
 		if err != nil {
-			return trimmed, fmt.Errorf("trim signals by count: %w", err)
+			return trimmed, err
 		}
-		n, _ := res.RowsAffected()
-		trimmed += int(n)
+		trimmed += n
 	}
 	return trimmed, nil
 }

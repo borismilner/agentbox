@@ -512,6 +512,8 @@ def scenario_signals():
     time.sleep(2.0)
     c.close()
     t.join(timeout=40)
+    print("--- A await (a peer left the area)")
+    print("   ", json.dumps(area_seen.get("got") or {})[:300])
     sigs = (area_seen.get("got") or {}).get("signals") or []
     if not sigs:
         bad.append(f"a session leaving posted no agents:<area> signal: {area_seen.get('got')}")
@@ -534,6 +536,8 @@ def scenario_signals():
     time.sleep(2.0)
     a.tool("release_lock", {"name": "probe:signal-lock"})
     t.join(timeout=40)
+    print("--- B await (the lock changed hands)")
+    print("   ", json.dumps(lock_seen.get("got") or {})[:300])
     sigs = (lock_seen.get("got") or {}).get("signals") or []
     if not sigs:
         bad.append(f"a release posted no lock:NAME signal: {lock_seen.get('got')}")

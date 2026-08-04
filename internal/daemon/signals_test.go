@@ -244,7 +244,7 @@ func TestAwaitReportsAGapWhenTheCursorFellOffTheEdge(t *testing.T) {
 		t.Fatalf("a cursor of 1 against a table starting at 4 is a gap, got %+v", res)
 	}
 	if res.OldestSeq != 4 {
-		t.Fatalf("the gap should name the oldest survivor, got %d", res.OldestSeq)
+		t.Fatalf("the gap should name the sequence a complete read starts from, got %d", res.OldestSeq)
 	}
 	if !strings.Contains(res.Note, "cannot be complete") {
 		t.Fatalf("the note must say the batch is incomplete, got %q", res.Note)
@@ -260,6 +260,20 @@ func TestAwaitReportsAGapWhenTheCursorFellOffTheEdge(t *testing.T) {
 	}
 	if res.Gap {
 		t.Fatalf("a cursor at the oldest surviving signal is not a gap: %+v", res)
+	}
+	// And a topic retention never touched reports nothing, however stale the
+	// cursor. This is the false alarm a global watermark would raise on every
+	// unrelated read, and the reason the record is per topic.
+	mustPost(t, s, "poster", "untouched", "")
+	res, rpcErr = s.Await(context.Background(), proto.SyncAwaitParams{
+		Identity: proto.Identity{Agent: "claude", Key: "elsewhere"},
+		Topics:   []string{"untouched"}, AfterSeq: 1, TimeoutS: 1,
+	}, 5*time.Second)
+	if rpcErr != nil {
+		t.Fatalf("await: %s", rpcErr.Message)
+	}
+	if res.Gap {
+		t.Fatalf("an untrimmed topic must not report a gap: %+v", res)
 	}
 }
 

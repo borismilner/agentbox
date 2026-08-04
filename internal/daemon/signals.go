@@ -35,7 +35,9 @@ import (
 //   - **A trimmed cursor is reported, never silently served.** Retention is finite,
 //     so a cursor can fall off the edge. A batch with a hole in it is how two
 //     agents both come to own one chunk of work, so the gap is said out loud with
-//     the oldest sequence that survived (FR61's rule, on the wire).
+//     the sequence a complete read starts from (FR61's rule, on the wire). It is
+//     answered from what retention RECORDED taking, per topic - see gapAt for the
+//     plausible version of this that shipped and was wrong.
 //   - **Fan-out is by meaning.** Every waiter whose pattern matches wakes with the
 //     same signal. This is the first multi-consumer hub in the daemon on purpose:
 //     artifacts and walkthrough submissions are single-consumer hand-offs and stay
@@ -63,7 +65,8 @@ const signalTrimEvery = time.Minute
 type signalStore interface {
 	PostSignal(topic string, id proto.Identity, data string) (proto.Signal, error)
 	SignalsSince(after int64, patterns []string, limit int) ([]proto.Signal, bool, error)
-	SignalBounds() (oldest, newest int64, err error)
+	SignalHighWater() (int64, error)
+	SignalGap(after int64, patterns []string) (int64, error)
 	TrimTopic(topic string, keepPerTopic int) (int, error)
 	TrimSignals(keepPerTopic int, maxAge time.Duration) (int, error)
 }
@@ -261,7 +264,7 @@ func (s *signals) Await(ctx context.Context, p proto.SyncAwaitParams, waitMax ti
 	if cursor <= 0 {
 		// No cursor means "from now on", so the caller must not be handed the
 		// backlog it never asked about. The high-water mark is where now is.
-		_, newest, err := st.SignalBounds()
+		newest, err := st.SignalHighWater()
 		if err != nil {
 			return proto.SyncAwaitResult{}, &proto.RPCError{Code: proto.CodeInternal,
 				Message: "could not read the signal cursor: " + err.Error()}
@@ -322,7 +325,7 @@ func (s *signals) Await(ctx context.Context, p proto.SyncAwaitParams, waitMax ti
 			out := proto.SyncAwaitResult{OK: true, Cursor: cursor, TimedOut: true}
 			out.Note = fmt.Sprintf("nothing on %s within %s. The cursor is unchanged, so calling await_signal again with after_seq %d misses nothing that happens in between.",
 				strings.Join(topics, ", "), wait, cursor)
-			out.Gap, out.OldestSeq = s.gapAt(st, cursor)
+			out.Gap, out.OldestSeq = s.gapAt(st, topics, cursor)
 			return out, nil
 
 		case <-ctx.Done():
@@ -348,38 +351,37 @@ func (s *signals) batch(st signalStore, topics []string, cursor int64) (proto.Sy
 	}
 	out := proto.SyncAwaitResult{OK: true, Signals: sigs, More: more,
 		Cursor: sigs[len(sigs)-1].Seq}
-	out.Gap, out.OldestSeq = s.gapAt(st, cursor)
+	out.Gap, out.OldestSeq = s.gapAt(st, topics, cursor)
 	switch {
 	case out.Gap:
-		out.Note = fmt.Sprintf("your cursor %d is older than what retention still holds (the oldest surviving signal is %d), so signals between the two are gone and this batch cannot be complete. Treat anything you were tracking by these signals as unknown rather than as not having happened.", cursor, out.OldestSeq)
+		out.Note = fmt.Sprintf("retention has taken signals on these topics above your cursor %d, so this batch cannot be complete - a read is whole again only from %d. Treat anything you were tracking by these signals as unknown rather than as not having happened.", cursor, out.OldestSeq)
 	case more:
 		out.Note = fmt.Sprintf("capped at %d signals; more are already waiting. Call await_signal again with after_seq %d and the next batch comes back without parking.", len(sigs), out.Cursor)
 	}
 	return out, nil, true
 }
 
-// gapAt answers whether a cursor has fallen off the trimmed edge, and where the
-// surviving history now starts.
+// gapAt answers whether retention took anything on THESE topics after this
+// cursor, and from which sequence a read of them is complete again.
 //
-// The empty-table case is the one worth spelling out: with every row trimmed,
-// "oldest" is nothing at all, and only the high-water mark can tell an agent
-// holding a cursor from last week apart from one that has seen everything.
-func (s *signals) gapAt(st signalStore, cursor int64) (bool, int64) {
+// The question is per topic and it is answered from a recorded watermark, not
+// deduced from what survived. The deduction that reads as obvious - "the cursor is
+// below the oldest surviving signal" - is what shipped first and it was wrong:
+// retention is per topic, so one quiet topic's ancient row holds the global
+// minimum down while the topic the caller actually asked about is trimmed out from
+// under it. A live run found that inside the hour, which is the whole argument for
+// running the thing rather than reading the diff.
+func (s *signals) gapAt(st signalStore, topics []string, cursor int64) (bool, int64) {
 	if cursor <= 0 {
 		return false, 0
 	}
-	oldest, newest, err := st.SignalBounds()
-	if err != nil {
+	trimmedTo, err := st.SignalGap(cursor, topics)
+	if err != nil || trimmedTo <= cursor {
 		return false, 0
 	}
-	first := oldest
-	if oldest == 0 {
-		first = newest + 1
-	}
-	if first > cursor+1 {
-		return true, oldest
-	}
-	return false, 0
+	// One past the highest sequence that went: from here, a read of these topics is
+	// complete.
+	return true, trimmedTo + 1
 }
 
 // deliver rings the bell of every waiter whose pattern matches, and answers how

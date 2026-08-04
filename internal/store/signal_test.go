@@ -169,9 +169,13 @@ func TestSignalBoundsAndTrimByCount(t *testing.T) {
 	if len(quiet) != 1 {
 		t.Fatalf("a quiet topic must not be evicted by a chatty one, got %d", len(quiet))
 	}
-	oldest, newest, err := st.SignalBounds()
+	oldest, err := st.SignalOldest()
 	if err != nil {
-		t.Fatalf("bounds: %v", err)
+		t.Fatalf("oldest: %v", err)
+	}
+	newest, err := st.SignalHighWater()
+	if err != nil {
+		t.Fatalf("high water: %v", err)
 	}
 	if oldest != 4 || newest != 6 {
 		t.Fatalf("bounds after the trim = %d..%d, want 4..6", oldest, newest)
@@ -216,9 +220,13 @@ func TestSignalSequenceNeverGoesBackwards(t *testing.T) {
 	if _, err := st.db.Exec(`DELETE FROM sync_signals`); err != nil {
 		t.Fatalf("clear: %v", err)
 	}
-	oldest, newest, err := st.SignalBounds()
+	oldest, err := st.SignalOldest()
 	if err != nil {
-		t.Fatalf("bounds: %v", err)
+		t.Fatalf("oldest: %v", err)
+	}
+	newest, err := st.SignalHighWater()
+	if err != nil {
+		t.Fatalf("high water: %v", err)
 	}
 	if oldest != 0 || newest != 3 {
 		t.Fatalf("an empty table should read 0..3, got %d..%d", oldest, newest)
@@ -254,5 +262,70 @@ func TestTrimTopicTouchesOneTopicOnly(t *testing.T) {
 	}
 	if n, err := st.TrimTopic("quiet", 2); err != nil || n != 0 {
 		t.Fatalf("a topic under the cap should lose nothing, got %d %v", n, err)
+	}
+}
+
+// The bug a live run found within an hour of shipping 0008, kept as a test so it
+// cannot come back. Retention is PER TOPIC, so the global oldest surviving
+// sequence says nothing about whether the topic a caller asked about was trimmed:
+// here seq 1 survives on a quiet topic while seq 2 and 3 are taken from the busy
+// one, and a cursor of 1 must still be told.
+func TestSignalGapIsPerTopicNotGlobal(t *testing.T) {
+	st := newSignalStore(t)
+	post(t, st, "quiet", "") // seq 1, never trimmed
+	post(t, st, "busy", "")  // seq 2
+	post(t, st, "busy", "")  // seq 3
+	post(t, st, "busy", "")  // seq 4
+	if _, err := st.TrimTopic("busy", 1); err != nil {
+		t.Fatalf("trim: %v", err)
+	}
+	// The global minimum is still 1, so the plausible check would find no gap.
+	if oldest, err := st.SignalOldest(); err != nil || oldest != 1 {
+		t.Fatalf("expected the quiet topic to hold the global minimum at 1, got %d %v", oldest, err)
+	}
+	trimmedTo, err := st.SignalGap(1, []string{"busy"})
+	if err != nil {
+		t.Fatalf("gap: %v", err)
+	}
+	if trimmedTo != 3 {
+		t.Fatalf("a cursor of 1 on busy lost seq 2 and 3, so the watermark is 3, got %d", trimmedTo)
+	}
+	// A cursor at or above the watermark reads completely.
+	if trimmedTo, err := st.SignalGap(3, []string{"busy"}); err != nil || trimmedTo != 0 {
+		t.Fatalf("a cursor of 3 lost nothing, got %d %v", trimmedTo, err)
+	}
+	// And an untouched topic reports nothing, which is why the watermark is per
+	// topic: a global one would cry gap at every unrelated cursor.
+	if trimmedTo, err := st.SignalGap(1, []string{"quiet"}); err != nil || trimmedTo != 0 {
+		t.Fatalf("the quiet topic was never trimmed, got %d %v", trimmedTo, err)
+	}
+}
+
+// A topic aged away entirely leaves no signals to reason from, which is the case
+// the wrong version of this check could not answer at all.
+func TestSignalGapSurvivesATopicTrimmedToNothing(t *testing.T) {
+	st := newSignalStore(t)
+	// A first signal so the ephemeral one is not seq 1: a cursor of zero means
+	// "from now on" and by definition cannot have missed anything.
+	post(t, st, "anchor", "")
+	gone := post(t, st, "ephemeral", "")
+	if _, err := st.db.Exec(`UPDATE sync_signals SET at_ms = ? WHERE seq = ?`,
+		time.Now().Add(-8*24*time.Hour).UnixMilli(), gone.Seq); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	if n, err := st.TrimSignals(0, 7*24*time.Hour); err != nil || n != 1 {
+		t.Fatalf("trim by age dropped %d %v", n, err)
+	}
+	trimmedTo, err := st.SignalGap(gone.Seq-1, []string{"ephemeral"})
+	if err != nil {
+		t.Fatalf("gap: %v", err)
+	}
+	if trimmedTo != gone.Seq {
+		t.Fatalf("the watermark should outlive the topic's signals, got %d", trimmedTo)
+	}
+	// A prefix pattern has to reach it too, or `done:*` misses a chunk topic that
+	// was aged out whole.
+	if trimmedTo, err := st.SignalGap(gone.Seq-1, []string{"ephem*"}); err != nil || trimmedTo != gone.Seq {
+		t.Fatalf("a prefix pattern should match the trim record, got %d %v", trimmedTo, err)
 	}
 }
