@@ -47,6 +47,18 @@ type attachState struct {
 	live  bool
 	last  proto.SyncAnnounceParams // replayed after a daemon restart
 	haveL bool
+	// activity is the latest line this session reported, which is NOT the one the
+	// announce carried (FR87). Replaying the announce alone brought every row back
+	// saying something that was true an hour ago with a fresh timestamp, and a
+	// confident statement about the past is worse than an empty one.
+	activity string
+}
+
+// rememberActivity keeps the newest line for the replay after a daemon restart.
+func (s *server) rememberActivity(line string) {
+	s.attach.mu.Lock()
+	s.attach.activity = line
+	s.attach.mu.Unlock()
 }
 
 // ensureAttached starts the presence connection on the first tool call. Safe to
@@ -86,6 +98,12 @@ func (s *server) attachLoop(ctx context.Context) {
 		s.attach.mu.Lock()
 		s.attach.live = true
 		replay, have := s.attach.last, s.attach.haveL
+		// The announce is replayed with the LATEST activity, not the one it was
+		// first called with: an hour-old line stamped as fresh is a lie the human
+		// cannot see through, where a stale purpose is still true (FR87).
+		if s.attach.activity != "" {
+			replay.Activity = s.attach.activity
+		}
 		s.attach.mu.Unlock()
 
 		// Replay the purpose the model already stated, so a daemon restart heals

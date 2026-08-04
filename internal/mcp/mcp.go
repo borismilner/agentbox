@@ -733,6 +733,11 @@ func (s *server) controlActivity(ctx context.Context, _ *sdk.CallToolRequest, in
 	if strings.TrimSpace(in.Activity) == "" {
 		return errResult[controlOut](fmt.Errorf("set_activity needs a line saying what is happening now"))
 	}
+	// Remembered for the replay after a daemon restart (FR87). Without it the
+	// redial replays the ANNOUNCE's activity, so every row came back saying
+	// something that was true an hour ago, stamped as fresh - which is worse than
+	// coming back blank, because the human cannot tell it is old.
+	s.rememberActivity(in.Activity)
 	res, err := s.control(ctx, proto.ControlRequestParams{Action: proto.ControlActivity, Activity: in.Activity})
 	if err != nil {
 		return errResult[controlOut](err)
