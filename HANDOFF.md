@@ -10,7 +10,7 @@ card had been dying at 30 minutes, and then built and verified the locks.*
 ```bash
 cd ~/me/projects/agentbox
 git status -sb              # expect clean, in sync with origin/main
-git log --oneline -6        # newest: 4053f57 1310614 e8bef04 b5a72b8 2e7ef4a aa81aa2
+git log --oneline -7        # newest: 34a699d 4053f57 1310614 e8bef04 b5a72b8 2e7ef4a de9ba4d
 make deployed               # 1310614d158a or newer, NOT "(dirty)"
 agentbox sync agents        # the roster, live
 agentbox sync locks         # the lock table; expect "no locks held"
@@ -151,9 +151,9 @@ limit, not a defect).
 ## Live state (volatile - verify on resume)
 
 - **Deployed:** `1310614d158a`, clean stamp, verified with `make deployed`. HEAD
-  is `4053f57` but the two commits after `1310614` are docs only, so a
-  `make deployed` sha older than HEAD is expected - compare against the newest
-  commit that touched Go.
+  is `34a699d`, and the two commits after `1310614` are docs only, so a
+  `make deployed` sha older than HEAD is expected here - compare against the newest
+  commit that touched Go, not against HEAD.
 - **Git:** clean, `main` pushed to `origin` (GitLab, which push-mirrors to
   GitHub). This session: `aa81aa2` (keepalive + the measurement), `de9ba4d` (the
   lock table), `2e7ef4a` (tools, CLI, surface), `b5a72b8` (the pid fix, break CLI,
