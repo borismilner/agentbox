@@ -9,6 +9,38 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Thirty-seventh session (2026-08-04): one visual language (FR81)
+
+FR81's second half shipped: History, Inbox, Library, Settings, Session and
+the app shell now speak the voice Home and Assignments established, so the
+rail no longer switches between dialects. The rules the pass enforced: UI
+caps for section labels and mono only for data (numbers, paths, times, key
+hints); Home's tile grammar wherever a count is shown (number first, mono
+tabular, lowercase label under it); one segmented-control recipe, one
+ghost-button recipe, one search-box recipe; serif, centered empty states
+that invite the first action. Library changed the most - rebuilt on the
+shared header/search/joined-rows shape, its onboarding sentence moved into
+the empty state, ages on the shared 1Hz ticker, delete revealed on hover
+behind an inline confirm - and its inverted hover rule (border LIGHTENED on
+hover, a `var(--k-edge-soft, --k-accent)` fallback that could never fire)
+went with the rewrite. Viewer already conformed and was not touched.
+
+Verified live, not from the diff: every restyled surface screenshotted from
+a demo build (dark, plus History and Library in light), and the populated
+Library exercised against a copy of the real store - row, hover reveal,
+confirm strip, Keep - with the pointer driven by uidrive. `make check`
+green; dist rebuilt from exactly the committed sources.
+
+Two mechanics worth keeping: a second agent worked the same checkout in
+parallel (the M12 panel), so this session's build, tests and dist came from
+a git worktree holding HEAD plus only its own edits - the only way "commit
+what you tested" stays true in a shared tree; the agents coordinated
+through a claims ledger at `/tmp/agentbox-agents.md` (file ownership, dist
+rules, who may displace the desktop's one daemon). And a new costume for
+the CLAUDE.md pkill trap: `pkill -f` with any pattern that appears in your
+own compound command kills the invoking shell - match by exact PID, never
+by pattern.
+
 ## Thirty-sixth session (2026-08-03): AgentBox
 
 The project took a new name, AgentBox, and the rename went all the way down

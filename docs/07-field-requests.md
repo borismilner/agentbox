@@ -1842,7 +1842,7 @@ State rides a badge dot rather than a tint: a desaturated robot in a row of
 colourful panel icons reads as *disabled*, not as *quiet*. Idle is the robot,
 attention adds blue, urgent adds amber.
 
-## FR81 [Home shipped 2026-08-01, rest open] The main panel must be worth opening
+## FR81 [shipped: Home 2026-08-01, visual pass 2026-08-04] The main panel must be worth opening
 
 Boris, 2026-08-01: *"The AgentBox main panel should be beautiful and have all existing
 functionality available from it in a way that is pleasant for the user"*, and
@@ -1864,8 +1864,12 @@ Panels can be turned off, because a dashboard nobody can quiet is one people
 stop reading. That preference is per-machine view state, so it lives in
 localStorage rather than earning a knob in the settings surface.
 
-**Still open:** the visual pass over the other surfaces so they read as one
-product. Assignments joined the rail on 2026-08-01 (FR82).
+**The visual pass shipped 2026-08-04** (session 37): History, Inbox, Library,
+Settings, Session and the app shell adopted the voice Home and Assignments
+established - UI caps for labels with mono reserved for data, Home's tile
+grammar, one recipe each for segmented controls, ghost buttons, search boxes
+and empty states. Library was rebuilt on the shared list shape. Assignments
+joined the rail on 2026-08-01 (FR82).
 
 ## FR82 [shipped 2026-08-01] Recurring AI assignments
 
