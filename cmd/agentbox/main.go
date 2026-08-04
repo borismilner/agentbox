@@ -1920,17 +1920,20 @@ func printSetup() {
 	// The roster is only as truthful as the agents on it, and these cost no tokens
 	// because they never go through the model (FR83). No session key to set: the
 	// call finds the session it belongs to by itself - see docs/recipes.md.
+	//
+	// `|| true` because a roster ping must never be why a session shows an error:
+	// sync exits 4 with no daemon, and a deploy stops the daemon on purpose.
 	fmt.Println("# Put every session on the Agents board, with no tokens spent (~/.claude/settings.json):")
 	fmt.Println(`{
   "hooks": {
     "SessionStart": [
-      {"hooks": [{"type": "command", "command": "` + exe + ` sync announce \"$(basename \"$PWD\") session (purpose not yet stated)\""}]}
+      {"hooks": [{"type": "command", "command": "` + exe + ` sync announce \"$(basename \"$PWD\") session (purpose not yet stated)\" || true"}]}
     ],
     "PostToolUse": [
       {"matcher": "Edit|Write|NotebookEdit",
-       "hooks": [{"type": "command", "command": "` + exe + ` sync activity \"editing $(jq -r '.tool_input.file_path // \"a file\"')\""}]},
+       "hooks": [{"type": "command", "command": "` + exe + ` sync activity \"editing $(jq -r '.tool_input.file_path // \"a file\"')\" || true"}]},
       {"matcher": "Bash",
-       "hooks": [{"type": "command", "command": "` + exe + ` sync activity \"$(jq -r '.tool_input.command // \"running a command\"' | cut -c1-70)\""}]}
+       "hooks": [{"type": "command", "command": "` + exe + ` sync activity \"$(jq -r '.tool_input.command // \"running a command\"' | cut -c1-70)\" || true"}]}
     ]
   }
 }`)

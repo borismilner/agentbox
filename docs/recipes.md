@@ -52,19 +52,26 @@ Nothing to export: paste this into `~/.claude/settings.json` and you are done.
   "hooks": {
     "SessionStart": [
       {"hooks": [{"type": "command",
-        "command": "agentbox sync announce \"$(basename \"$PWD\") session (purpose not yet stated)\""}]}
+        "command": "agentbox sync announce \"$(basename \"$PWD\") session (purpose not yet stated)\" || true"}]}
     ],
     "PostToolUse": [
       {"matcher": "Edit|Write|NotebookEdit",
        "hooks": [{"type": "command",
-        "command": "agentbox sync activity \"editing $(jq -r '.tool_input.file_path // \"a file\"')\""}]},
+        "command": "agentbox sync activity \"editing $(jq -r '.tool_input.file_path // \"a file\"')\" || true"}]},
       {"matcher": "Bash",
        "hooks": [{"type": "command",
-        "command": "agentbox sync activity \"$(jq -r '.tool_input.command // \"running a command\"' | cut -c1-70)\""}]}
+        "command": "agentbox sync activity \"$(jq -r '.tool_input.command // \"running a command\"' | cut -c1-70)\" || true"}]}
     ]
   }
 }
 ```
+
+The `|| true` is not defensive habit, it is the difference between a roster and a
+nuisance. `agentbox sync` exits 4 when no daemon is running, and the daemon is
+deliberately stopped in the middle of every `make deploy` - so without it, one
+deploy prints a hook failure into every live session on the machine, for a ping
+whose only job is to keep a board tidy. A roster line is best-effort by nature: it
+must never be the reason a session shows an error.
 
 ### Why there is no key in that snippet
 
