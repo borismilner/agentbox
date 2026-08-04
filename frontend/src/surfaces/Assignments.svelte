@@ -385,7 +385,7 @@
         <div class="knobs">
           {#each knobs as k (k.key || k.label)}
             {#if k.type === "markdown"}
-              <div class="prose" use:markdown={k.bodyHtml}></div>
+              <div class="prose k-md" use:markdown={k.bodyHtml}>{@html k.bodyHtml}</div>
             {:else}
               <div class="knob">
                 <label class="klabel" for="k-{k.key}">{k.label}</label>
@@ -442,7 +442,10 @@
              sandbox. Its emits go to setAssignmentParams (artifact.svelte.js
              routes on the block's data-panel mark), never to a waiting agent,
              and the knobs above stay the way in that always works. -->
-        <div class="panelhost" bind:this={panelHost} use:markdown={open.panelBlock}>{@html open.panelBlock}</div>
+        <!-- k-md is not decoration: every .k-artifact rule in app.css is scoped
+             under it, including the one that hides whichever of code/preview is
+             not the current view. Without it the block renders both, unstyled. -->
+        <div class="panelhost k-md" bind:this={panelHost} use:markdown={open.panelBlock}>{@html open.panelBlock}</div>
       {/if}
 
       <h2>Prompt</h2>

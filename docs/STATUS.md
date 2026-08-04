@@ -1,6 +1,7 @@
 # STATUS
 
-Updated: 2026-08-04, thirty-seventh session (the custom panel runs).
+Updated: 2026-08-04, thirty-eighth session (the custom panel runs). Session 37
+was FR81's visual pass, in a second agent's checkout the same day.
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config

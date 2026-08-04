@@ -231,8 +231,10 @@ func TestEveryHTMLInjectionComesFromGo(t *testing.T) {
 		"seg.toolHtml":  true,
 		"view.bodyHtml": true,
 		// Assignments.svelte: an assignment's custom parameter panel, rendered by
-		// RenderPanel (internal/webui/artifact.go) and covered by the sweep.
+		// RenderPanel (internal/webui/artifact.go), and a markdown knob's prose,
+		// rendered by RenderMarkdown (paramsFor). Both are in the sweep.
 		"open.panelBlock": true,
+		"k.bodyHtml":      true,
 		"ask.bodyHtml":    true,
 		"doc.html":        true,
 		"l.html":          true,
