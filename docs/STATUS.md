@@ -1,8 +1,9 @@
 # STATUS
 
-Updated: 2026-08-04, fortieth session (FR83 slice 1: the agent roster is live).
-Sessions 37 and 38 the same day were FR81's visual pass and M12's last piece;
-session 39 designed FR83.
+Updated: 2026-08-04, forty-first session (FR83 slice 1 is COMPLETE: the live
+Agents board was looked at, four defects fixed, and the discovery rider built).
+Session 40 the same day built slice 1; session 39 designed FR83; sessions 37 and
+38 were FR81's visual pass and M12's last piece.
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config
@@ -30,11 +31,37 @@ told a blocking handler its caller had hung up (so FR45's caller-gone indicator
 had never fired), and the identity hue has two disagreeing implementations
 (FR85, deferred).
 
-**What remains of FR83:** the discovery rider (slice 1's one unbuilt piece, and
-the first thing to pick up), then locks, signals and shared values - slices 2 to
-4 in [09-sync.md](09-sync.md). Nothing about the Agents surface rendering *real*
-roster data has been seen on screen yet; the canned mock was walked, the live
-board has not been.
+**Slice 1 is finished, and the surface has now been seen.** Session 41 put four
+real rows on the roster and looked at the board, which found four defects, all
+fixed and re-checked on screen:
+
+- A row never stopped saying `working`. State is derived at push time and every
+  push is caused by a verb, so an idle board froze: it read "3 working" beside
+  ages of 4m53s while the CLI called the same rows `quiet`. The roster ticks
+  itself once a second now, and pushes only when the board would otherwise be
+  wrong.
+- `roster.Flush` had no caller anywhere, though its own comment said the daemon
+  ticked it, so a push dropped inside the 250ms throttle waited for unrelated
+  traffic - over a minute, in the field. The same tick delivers it.
+- A group header was captioned with whichever member came first, which put
+  `LAPTOP-SETUP` over the agentbox path. The caption is the area's own path now,
+  and nothing at all when there is no honest answer.
+- Every hook-created row was named `systemd`, because the prescribed attach is
+  `setsid agentbox sync attach` and setsid reparents to init. Names now walk past
+  shells and wrappers, fall back to `agent`, and are replaced when the session's
+  own child announces. `AGENTBOX_AGENT` skips the guessing.
+
+**The discovery rider is built and verified live.** When an agent's area gains or
+loses a peer, one line rides back on the next tool result it gets - naming who
+arrived, their purpose and their state - so an agent deep in a file finds out
+without asking. Each arrival is reported once. `proto.Identity.Via` distinguishes
+an mcp child from a shell, because a session's hooks call the CLI with that
+session's key several times a minute and would otherwise eat every arrival before
+the model saw it.
+
+**What remains of FR83:** locks, signals and shared values - slices 2 to 4 in
+[09-sync.md](09-sync.md). The MCP client's tool-call idle cap is still the one
+guessed number in the design (`wait_max_s = 1500`) and it gates slices 2 and 3.
 
 What else remains is the showcase re-record (decided, not yet scheduled) and the
 verification and refinement queue.
@@ -788,16 +815,23 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
-**Newest ask, 2026-08-04 (session 39): FR83, multi-agent sync and the Agents
-surface** - designed in [09-sync.md](09-sync.md), nothing built. Three gates
-before slice 1, in order: Boris triages the three open questions at the foot of
-that doc, the surface is mocked (`agentbox webui-demo agents` over canned roster
-data, the working rule at the top of
-[07-field-requests.md](07-field-requests.md)), and a throwaway CLI spike is
-driven by two real sessions. One piece can ship on its own if a small win is
-wanted: the session key on `proto.Identity`, which every sync primitive needs
-and which fixes FR74's agent-name ownership check, where a second same-named
-session can write the first's hands-off activity line.
+**FR83, multi-agent sync (designed in [09-sync.md](09-sync.md)): slice 1 is
+finished, deployed and verified live as of session 41.** All three gates are
+closed, the surface has been looked at with real rows, and the discovery rider
+ships. Next in the design's order: **slice 2, locks** - and before it or slice 3,
+measure the MCP client's tool-call idle cap, which is the last guessed number in
+that document (`wait_max_s = 1500`). A CLI hold's ceiling is already measured at
+120s for a foreground call and 600s with an explicit timeout, which is why
+`agentbox sync lock NAME -- CMD` cannot be the naive wrap the design first
+described.
+
+**Two defects found in the field on 2026-08-04, both recorded, neither fixed:**
+FR86 (a project is named after whatever directory the agent stood in, so an agent
+in `frontend/src` reports project `src` and gets a second identity colour - fix it
+with FR85, they are the same story) and FR87 (a daemon restart replays the
+announce, so a row comes back with an activity line that was true an hour ago,
+timestamped as fresh). Both are in
+[07-field-requests.md](07-field-requests.md).
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. HANDOFF.md

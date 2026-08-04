@@ -2091,6 +2091,57 @@ majority rather than widening the split.
 
 ---
 
+## FR86 [field] A project is named after whatever directory the agent stood in
+
+**Session.** 2026-08-04, session 41, putting real rows on the Agents board and
+looking at them.
+
+**What is wrong.** `Project` is `filepath.Base(cwd)` in every identity the CLI
+and the mcp child build. An agent working in `~/me/projects/agentbox/frontend/src`
+therefore reports its project as **`src`**, and the board showed
+`aider · src` beside `codex · agentbox` for two agents in the same repo. The area
+grouped them correctly (that is derived from the git root), so the row disagrees
+with the heading it sits under.
+
+It is worse than a label. `IdentityHue` hashes `agent + project`, so the same
+agent in two subdirectories of one repo also gets two colours - the same failure
+as FR85 arriving by a second route, and one FR85's separator fix would not
+address.
+
+**Fix.** Name the project after the repo root when the cwd is inside a repo,
+which is what `deriveArea` already computes and throws away
+(`internal/daemon/sync.go`). Then pin it: an agent in a subdirectory and one at
+the root must produce the same project string and the same hue. Worth doing with
+FR85, since the two of them are the whole identity-colour story.
+
+---
+
+## FR87 [field] A daemon restart rewinds an agent's activity line
+
+**Session.** 2026-08-04, session 41, watching my own row after `make deploy`.
+
+**What is wrong.** The child's redial replays its `announce`, which is right -
+the row comes back with its purpose intact, and that was verified live. But the
+replay carries the activity the *announce* originally carried, not the line the
+session has since moved on to. My own row came back reading "reconciling the
+handoff against the repo and the deployed daemon" an hour after that was true,
+with a fresh timestamp and a `working` chip, because `activityAt` is reset by the
+replayed announce.
+
+So a restart turns every live row into a confident statement about the past. It
+is the same class of failure as the stale `working` chip fixed in `0566667`,
+arriving from the other direction: there the age was right and the state was
+wrong, here the state is right and the line is old.
+
+**Fix.** The child should replay its latest activity, not the announce's: keep
+the last line it sent in the child (it already keeps the attach state), and send
+it after the replayed announce. Alternatively the daemon could keep the row's
+activity across a restart, but it cannot - the roster is in memory by design, and
+persisting presence would resurrect rows for sessions that died while it was
+down.
+
+---
+
 ## Authoring rules for walkthroughs - MOVED
 
 This section shipped. It lives in `internal/manual/walkthrough.md`, embedded in

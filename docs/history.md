@@ -9,6 +9,91 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Forty-first session (2026-08-04): looking at the board found four defects, and the rider shipped
+
+Resumed from session 40's handoff, whose one blocked item was that nobody had
+seen the Agents surface with real data - his screen had been locked when it was
+deployed. It was unlocked this time, so the first act was to put four real rows
+on the roster and look.
+
+**Looking found four defects the tests could not.** Every one of them was a
+visible lie on the human's board:
+
+*A row never stopped saying `working`.* State is derived when a push happens, and
+every push is caused by a verb, so a session that stops reporting causes nothing
+and keeps its chip. Photographed: the header read "3 working" beside activity
+ages of 4m53s while `agentbox sync agents`, reading the same roster in the same
+second, called all four rows `quiet`. A hung agent looked exactly like a busy one,
+which is the single failure this surface exists to prevent, and the human and the
+agents saw different answers, which the design forbids in as many words.
+
+*`roster.Flush` had no caller anywhere in the tree* - and its own doc comment
+said "the daemon ticks this so a final activity line is never the one that got
+dropped". So a push dropped by the 250ms throttle waited for the next unrelated
+verb, measured in the field at over a minute: one peer's row read "quiet, nothing
+reported" while the CLI showed its line. Both failures are now one tick, which
+pushes only when the board would otherwise be wrong, so an idle board still costs
+nothing. Two rules worth keeping: throttling is only safe with something that
+flushes it, and state derived from elapsed time must be recomputed by a clock, not
+by traffic.
+
+*A group header was captioned with whichever member came first.* `LAPTOP-SETUP`
+sat over the agentbox path, because the heading comes from the area and the path
+came from a row's cwd. It fails a second way too, without anybody declaring
+anything: an agent in `frontend/src` would caption its whole repo with the
+subdirectory. The caption is the area's own path now, and empty when there is no
+honest answer.
+
+*Every hook-created row was named `systemd`.* The attach recipe this project
+publishes is `setsid agentbox sync attach`, and setsid reparents to init, so the
+name read from the parent process was init's. The same mechanism had already
+displayed a control holder as `timeout`, which was recorded in a comment and not
+generalized. Names now walk up past shells and wrappers, fall back to `agent`
+rather than naming one of them, and a row wearing that placeholder is renamed when
+the session's own child announces - which the old code could not do either,
+because attach stamped its identity over the row wholesale. `AGENTBOX_AGENT`
+skips the guessing.
+
+**Then the discovery rider, slice 1's last piece.** When a session's area gains
+or loses an agent, one line rides back on the next response envelope and the child
+appends it to that tool's result: who arrived, the purpose they announced, the
+state they are in, and a sentence telling the reader to coordinate. Each arrival
+is reported once; `announce` and `list_agents` move the cursor silently because
+their own results already show the roster.
+
+Three things it taught:
+
+- **A rider needs an audience.** A session's hooks call the CLI with that
+  session's own key several times a minute, so the first shape would have had
+  every arrival consumed by whichever hook fired next, with the model never
+  hearing about company at all. `proto.Identity.Via` marks a caller `mcp` or
+  `cli`, and only a child with a tool result to write on spends the news. Caught
+  by reading the hook recipe against the new code, before it shipped.
+- **The child dials the daemon through six separate helpers.** Wiring two of
+  them looked complete and worked in a unit test, then failed live on
+  `set_activity` - the most frequently called tool there is, and the one the
+  probe happened to use. Fixed by routing every helper through the same path.
+- **A departure can only name what was remembered.** The row is gone by the time
+  the line is written, so the cursor keeps the name each peer was reported under;
+  otherwise the warning names a hex session key its reader has never seen.
+
+**Verified, not asserted.** The board was photographed before and after: the same
+four rows that read "3 working" at 4m53s now read `quiet` with the working count
+gone from the header, agreeing with the CLI at the same instant. The rider was
+proved end to end by two real mcp children over stdio JSON-RPC against the
+deployed daemon - announce carries no rider, an unrelated call with nothing new is
+silent, a peer joining puts the line on the next `set_activity`, it is said once,
+and a hook's CLI call fired in between does not eat it. One of session 40's
+`[assumed]` facts also came out true along the way: after `make deploy` restarted
+the daemon, the child re-attached on its own and replayed its announce.
+
+**Two new field defects, recorded not fixed.** FR86: `Project` is
+`filepath.Base(cwd)`, so an agent in a subdirectory reports project `src` and, via
+the identity hash, wears a different colour from its peers in the same repo - the
+same story as FR85 arriving by a second route. FR87: the redial replays the
+*announce's* activity, so a restart brings every row back with a line that was
+true an hour ago, timestamped as fresh.
+
 ## Fortieth session (2026-08-04): FR83 slice 1, and two shipped bugs it uncovered
 
 Boris triaged the three open questions (all three answered in the design's

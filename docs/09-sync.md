@@ -7,11 +7,13 @@ already share. And the human sees all of it live: every agent's purpose, what
 it is doing right now, what it holds and what it waits on, in one surface.
 
 Requested by Boris 2026-08-04 (session 39). FR83. This document is the design;
-**Slice 1 is built and deployed** (2026-08-04, session 40); slices 2 to 4 and the
-lock half of slice 5 are not. It has survived one adversarial review, whose
-findings are folded in, plus the mock and the first live run. Status:
-**triaged** (all three owner calls answered 2026-08-04, recorded at the foot);
-slice 1 shipped. An ADR comes at implementation kickoff, the way ADR-0012
+**Slice 1 is complete, deployed and verified live** (2026-08-04, sessions 40 and
+41: session 40 built the roster and the surface, session 41 looked at the surface
+with real rows, fixed the four defects that turned up, and built the discovery
+rider). Slices 2 to 4 and the lock half of slice 5 are not started. It has
+survived one adversarial review, whose findings are folded in, plus the mock, the
+live run, and a look at the real surface. Status: **triaged** (all three owner
+calls answered 2026-08-04, recorded at the foot); slice 1 shipped. An ADR comes at implementation kickoff, the way ADR-0012
 did for the review board, and it records what the mock and the spike changed
 rather than restating this document.
 
@@ -565,16 +567,35 @@ ceilings are unrelated and the manual must not let them read as one number.
    surface - but the step that tells us what the results must carry before
    the tool schemas freeze, which is the part an armchair spec gets wrong
    (the FR58 lesson).
-1. **Roster and discovery. BUILT AND DEPLOYED 2026-08-04.** The session key, the
-   attach, announce (returning same-area peers and `partial`), generalized
-   `set_activity`, `list_agents`, the Agents surface, hook recipes, the CLI, and
-   the teaching doors. **The discovery rider is the one piece not built** - it
-   needs the JSON-RPC response envelope to carry a `sync` member and the child to
-   append it to a tool result, and it is the first thing slice 2 should pick up,
-   because without it a mid-work agent only learns about company when it next
-   asks.
+1. **Roster and discovery. COMPLETE, DEPLOYED AND VERIFIED LIVE 2026-08-04.** The
+   session key, the attach, announce (returning same-area peers and `partial`),
+   generalized `set_activity`, `list_agents`, the Agents surface, hook recipes,
+   the CLI, the teaching doors, and **the discovery rider**. Every part of it has
+   now been exercised against the deployed daemon, the surface included.
 
-   Two things the build changed in this design:
+   Four things the build changed in this design:
+
+   - **A rider needs an audience, so identity gained `via`.** The rider is spent
+     once per arrival, and a session's hooks call the CLI with that session's own
+     key several times a minute (`docs/recipes.md`) - so the first shape had every
+     arrival consumed by whichever hook fired next, and the model never heard
+     about company at all. `proto.Identity.Via` says `mcp` or `cli`, and only an
+     mcp child, which has a tool result to put the line on, spends the news. This
+     was found by reasoning about the hook recipe before it shipped, not by
+     watching it fail.
+   - **The rider rides the envelope, and the child collects it per call.** A
+     `sync` member on the JSON-RPC response, so every method carries it without
+     any result type knowing about it; `Conn.CallRidden` hands it to the child; a
+     box in the tool call's context collects it and receiving middleware appends
+     it to that call's result. The box is in the context rather than on the child
+     because tool calls overlap, and a line about a peer must arrive on the call
+     it came back on. Watch out for the trap this hit: the child dials the daemon
+     through six separate helpers, so wiring two of them delivered riders on some
+     tools and dropped them on `set_activity`, which is the most frequent tool
+     there is.
+   - **A departure has to name who left**, and by then the row is gone, so the
+     cursor remembers the name each peer was reported under. Without it the line
+     could only print a session key, which the agent being warned has never seen.
 
    - **A row must know whether anything holds it open.** A hook or CLI
      `announce` creates a row for a session whose child has not attached, and
@@ -589,6 +610,17 @@ ceilings are unrelated and the manual must not let them read as one number.
      would have kept a dead agent's row forever. Fixed in the same session; FR45's
      caller-gone indicator was broken by the same defect and had never fired in
      the field.
+   - **The surface needs a clock of its own.** Every push at the Agents surface is
+     caused by a verb, and `workingFor` decays on time alone - so with nothing
+     happening on the machine, a row kept its `working` chip forever while the CLI
+     read the same roster as `quiet`. Photographed at "3 working" beside ages of
+     4m53s. The roster now ticks itself once a second and pushes only when the
+     board would otherwise be wrong, which also delivers the pushes the 250ms
+     throttle drops (nothing called `Flush`, though its own comment said the daemon
+     ticked it, so a dropped push waited for unrelated traffic - measured at over a
+     minute). Two rules fall out of this: throttling is only safe with something
+     that flushes it, and any state derived from elapsed time has to be recomputed
+     by a clock rather than by traffic.
    Accept: three real sessions in three projects show three rows with
    purpose and live activity, grouped by area; a second session joining
    this repo gets the first session's row back from its own announce, and
