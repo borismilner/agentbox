@@ -111,6 +111,11 @@ Claude Code) can call these tools. Run `agentbox docs setup` for a paste-ready
 - `await_signal` -> BLOCK until a matching signal arrives, and get everything
   since your cursor in one batch. This is what replaces a polling loop
 - `notify_user` -> notify (non-blocking)
+- `retract` -> take back an item you posted, before he deals with it. Pass the id
+  `notify_user` gave you, or omit it to withdraw everything this session still has
+  pending. Use it the moment something you announced stops being true: a warning
+  waits on his screen until he CLICKS it, so a "build failed" whose build you have
+  since fixed is worse than no notification at all
 - `ask_user` -> ask; pass `options` for a single choice, omit them for free text
 - `confirm_action` -> confirm; returns `confirmed` true/false
 - `act_unless_stopped` -> veto; returns `vetoed` true/false

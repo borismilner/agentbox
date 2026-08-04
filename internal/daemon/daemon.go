@@ -603,6 +603,15 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			return nil, &proto.RPCError{Code: proto.CodeItemNotFound, Message: "no pending item " + p.ID}
 		}
 		return map[string]bool{"ok": true}, nil
+	case proto.MethodDismiss:
+		var p proto.DismissParams
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return nil, &proto.RPCError{Code: proto.CodeInvalidParams,
+					Message: `dismiss wants {"id": "<item id>"} or {"all": true}`}
+			}
+		}
+		return d.DismissItems(p)
 	case proto.MethodList:
 		items, err := d.st.Pending()
 		if err != nil {
@@ -1484,6 +1493,98 @@ func (d *Daemon) Review(id string, approved bool, comment string) {
 }
 
 func (d *Daemon) Dismiss(id string) { d.resolve(id, store.StateDismissed, store.Outcome{}) }
+
+// DismissItems retires pending items from a door that is not the mouse (FR89).
+//
+// It exists because agentbox had four ways to CREATE an item and none to retire one:
+// a warning stays pending until it is clicked, pending items survive a daemon
+// restart by design, and so a toast an agent posted and immediately knew to be
+// noise - an acceptance probe's refused deadlock, say - sat on the human's screen
+// forever, coming back after every restart. Boris asked about the same four toasts
+// twice before this was built.
+//
+// Who may retire what is the whole of the safety model, and it is not symmetrical:
+//
+//   - Naming an ID retires that one, and an AGENT may only name its own. Retiring
+//     another agent's question would be answering for it.
+//   - `all` is the human's alone. An agent that could empty his queue could hide a
+//     question it did not want answered.
+//   - An agent sweeping without an ID gets its own items and nothing else, which is
+//     what "take back what I posted" means.
+//
+// A dismissal is an ordinary resolution, so the caller of a blocking item learns
+// its item ended the same way it learns about a cancel, and history records it.
+func (d *Daemon) DismissItems(p proto.DismissParams) (proto.DismissResult, *proto.RPCError) {
+	if p.ID == "" && !p.All && !p.Mine {
+		return proto.DismissResult{}, &proto.RPCError{Code: proto.CodeInvalidParams,
+			Message: `dismiss wants an item id, or --all to clear every pending item. "agentbox list" shows what is pending.`}
+	}
+	if p.All && !p.Human {
+		return proto.DismissResult{}, &proto.RPCError{Code: proto.CodeInvalidParams,
+			Message: "clearing every pending item is the human's own call, not an agent's: an agent that could empty his queue could hide a question it did not want answered. Retract what you posted instead."}
+	}
+
+	key := strings.TrimSpace(p.Identity.Key)
+	// Snapshot under the lock, resolve outside it: resolve takes d.mu itself, and it
+	// also delivers to a parked caller.
+	type candidate struct {
+		id    string
+		byMe  bool
+		agent string
+	}
+	var found []candidate
+	d.mu.Lock()
+	consider := func(it *proto.Item) {
+		if it == nil {
+			return
+		}
+		mine := key != "" && it.Identity.Key == key
+		found = append(found, candidate{id: it.ID, byMe: mine, agent: it.Identity.Agent})
+	}
+	consider(d.current)
+	for _, it := range d.queue {
+		consider(it)
+	}
+	d.mu.Unlock()
+
+	out := proto.DismissResult{OK: true}
+	for _, c := range found {
+		switch {
+		case p.ID != "":
+			if c.id != p.ID {
+				continue
+			}
+			if !p.Human && !c.byMe {
+				return proto.DismissResult{}, &proto.RPCError{Code: proto.CodeInvalidParams,
+					Message: "that item was posted by " + nameOr(c.agent, "another agent") +
+						", so it is not yours to retract. Retract only what you posted; the human can dismiss anything."}
+			}
+		case p.All:
+			// Everything, and only the human gets here.
+		default:
+			// A sweep by an agent: its own and nothing else.
+			if !c.byMe {
+				continue
+			}
+		}
+		if d.resolve(c.id, store.StateDismissed, store.Outcome{}) {
+			out.Dismissed++
+			out.IDs = append(out.IDs, c.id)
+		}
+	}
+	if p.ID != "" && out.Dismissed == 0 {
+		return proto.DismissResult{}, &proto.RPCError{Code: proto.CodeItemNotFound,
+			Message: "no pending item " + p.ID}
+	}
+	if out.Dismissed > 0 {
+		d.log.Info("item.dismissed", "component", "daemon", "count", out.Dismissed,
+			"by", nameOr(p.Identity.Agent, "human"), "all", p.All)
+	}
+	if out.Dismissed == 0 {
+		out.Note = "nothing pending to dismiss."
+	}
+	return out, nil
+}
 
 // Veto stops an act-unless-stopped item (FR22); the caller learns it was
 // vetoed. No undo grace: the countdown already gave the deliberation

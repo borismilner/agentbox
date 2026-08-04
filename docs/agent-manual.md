@@ -61,6 +61,8 @@ auto-spawns the daemon; nothing else to start.
 | Tell the other agents something happened | `post_signal` | `agentbox sync post` | no |
 | Wait to be told, instead of polling for it | `await_signal` | `agentbox sync await` | yes |
 | Tell the human something (result, FYI) | `notify_user` | `agentbox notify` | no |
+| Take back something you posted | `retract` | `agentbox dismiss ID` | no |
+| See what is still waiting for him | - | `agentbox pending` | no |
 | Ask a single choice (2-9 options) | `ask_user` (with `options`) | `agentbox ask` | yes |
 | Ask for free text | `ask_user` (no `options`) | `agentbox input` | yes |
 | Get a yes/no | `confirm_action` | `agentbox confirm` | yes |
@@ -333,6 +335,33 @@ Post a desktop notification. Returns immediately.
 - Args: `title` (req), `body`, `level` (`info`|`success`|`warning`|`error`|`urgent`, default `info`), `actions` (array of `{label, exec}`, max 3 - buttons that run a shell command in your cwd on click; the verbatim command shows on hover).
 - Returns: `{id}`.
 - Use for progress and results, never for questions.
+
+### retract  (non-blocking)
+
+The other half of posting: taking something back. agentbox had four ways to create an
+item and none to retire one, so a toast that stopped being true waited on the
+human's screen until he clicked it - and a warning survives a daemon restart by
+design, so it came back afterwards (FR89).
+
+- Args: `id` (the one `notify_user` returned), or none to withdraw everything this
+  session still has pending.
+- Returns: `{ok, retracted, ids, note}`.
+
+```
+id = notify_user(title="Build failed", level="error")   -> {id: "k77..."}
+... you fix the build ...
+retract(id=id)                                          -> {retracted: 1}
+```
+
+**It can only ever touch what YOU posted.** Retiring another agent's item would be
+answering its question for it, and clearing the human's whole queue is his own call
+(`agentbox dismiss --all` from his terminal, or `agentbox pending` to see what is
+there). An agent that could empty his queue could hide a question it did not want
+answered.
+
+**Use it the moment an announcement stops being true.** A stale warning is worse
+than no warning: it costs him a click and teaches him that your notifications do not
+mean anything.
 
 ### ask_user  (blocking)
 Ask a question. Give 2-9 `options` for a single choice, or omit them for free

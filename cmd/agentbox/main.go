@@ -73,6 +73,9 @@ Commands:
                                        agentbox sync agents
   summon    raise + focus the current card (bind to a desktop shortcut)
   stats     interruption insights       agentbox stats [--since 7d]
+  pending   what is still waiting for you, with ids
+  dismiss   clear pending items without the mouse
+                                       agentbox dismiss --all   (or dismiss ID...)
   dnd       do-not-disturb              agentbox dnd on|off|status
   mute      silence an agent now        agentbox mute claude-code   (agentbox mute --list)
   unmute    let an agent through again  agentbox unmute claude-code
@@ -142,6 +145,10 @@ func main() {
 		os.Exit(runSummon(args))
 	case "stats":
 		os.Exit(runStats(args))
+	case "dismiss":
+		os.Exit(runDismiss(args))
+	case "pending":
+		os.Exit(runPending(args))
 	case "dnd":
 		os.Exit(runDnd(args))
 	case "mute":

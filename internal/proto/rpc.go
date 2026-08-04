@@ -15,9 +15,15 @@ import (
 
 // Method names. Versioned so a future v2 can coexist on the same socket.
 const (
-	MethodNotify   = "agentbox.v1.notify"
-	MethodAsk      = "agentbox.v1.ask"
-	MethodCancel   = "agentbox.v1.cancel"
+	MethodNotify = "agentbox.v1.notify"
+	MethodAsk    = "agentbox.v1.ask"
+	MethodCancel = "agentbox.v1.cancel"
+	// Dismiss retires pending items without the mouse (FR89). Two callers, one
+	// method: the human clearing his own queue from a terminal, and an agent taking
+	// back something it posted and now knows to be noise. The identity decides which
+	// - an agent may only ever touch its own, and only the human's own door may pass
+	// `all`.
+	MethodDismiss  = "agentbox.v1.dismiss"
 	MethodList     = "agentbox.v1.list"
 	MethodStatus   = "agentbox.v1.status"
 	MethodInbox    = "agentbox.v1.inbox"
@@ -424,6 +430,34 @@ type SyncLockState struct {
 	ExpiresInMS int64  `json:"expires_in_ms,omitempty"`
 	Orphaned    bool   `json:"orphaned,omitempty"`
 	Waiters     int    `json:"waiters,omitempty"`
+}
+
+// DismissParams retires pending items (FR89). Exactly one of ID and All says
+// which; Identity says who is asking.
+//
+// The asymmetry is deliberate and it is the whole safety model. An agent's call
+// may only ever retire items IT posted, because withdrawing another agent's
+// question would answer for it. `all` belongs to the human alone: it is his queue,
+// and an agent that could empty it could hide a question it did not like.
+type DismissParams struct {
+	Identity Identity `json:"identity"`
+	ID       string   `json:"id,omitempty"`
+	All      bool     `json:"all,omitempty"`
+	// Mine restricts a sweep to the caller's own items, which is what an agent's
+	// retraction means when it does not name one. Ignored when ID is set.
+	Mine bool `json:"mine,omitempty"`
+	// Human marks the caller as the person rather than an agent, which is what
+	// unlocks `all`. The CLI sets it; the MCP tool cannot.
+	Human bool `json:"human,omitempty"`
+}
+
+// DismissResult says how many went, and names them so a caller can see it
+// touched what it meant to.
+type DismissResult struct {
+	OK        bool     `json:"ok"`
+	Dismissed int      `json:"dismissed"`
+	IDs       []string `json:"ids,omitempty"`
+	Note      string   `json:"note,omitempty"`
 }
 
 // SyncLocksResult is the whole lock table, for a read that is nobody's turn.

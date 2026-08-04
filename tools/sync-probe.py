@@ -145,6 +145,47 @@ def cli(*args, key=None):
                           capture_output=True, text=True)
 
 
+def pending_ids():
+    """The ids of everything currently waiting for the human."""
+    out = cli("pending", "--json")
+    if out.returncode != 0:
+        return set()
+    try:
+        got = json.loads(out.stdout or "{}")
+    except json.JSONDecodeError:
+        return set()
+    return {it["id"] for it in (got.get("pending") or []) if it.get("id")}
+
+
+class OwnToasts:
+    """Dismiss the toasts THIS probe caused, and nothing else.
+
+    A refused deadlock warns the human by design - that is one of the two
+    coordination events the design says earns an interruption - so an acceptance run
+    that constructs a lock cycle on purpose leaves a warning on his screen. A warning
+    is pending until it is CLICKED and pending items survive a daemon restart, so
+    before FR89 every run left one there forever and they came back after every
+    deploy. Boris asked about the same four twice.
+
+    The diff is the whole point: `dismiss --all` would also clear a real item of his
+    that happened to be waiting, and the warning is posted by agentbox rather than by
+    the probe's sessions, so an ownership-scoped retract cannot reach it either.
+    """
+
+    def __enter__(self):
+        self.before = pending_ids()
+        return self
+
+    def __exit__(self, *_):
+        mine = pending_ids() - self.before
+        if not mine:
+            return False
+        for item in sorted(mine):
+            cli("dismiss", item)
+        print(f"--- dismissed {len(mine)} toast(s) this run caused: {', '.join(sorted(mine))}")
+        return False
+
+
 def show(label, res):
     print(f"--- {label}")
     for t in texts(res):
@@ -597,7 +638,10 @@ def main():
         print(__doc__, file=sys.stderr)
         print("scenarios: " + ", ".join(sorted(SCENARIOS)), file=sys.stderr)
         return 2
-    bad = SCENARIOS[name]()
+    # Every scenario runs inside the cleanup, so no scenario has to remember: an
+    # acceptance run that toasts the human is the run's mess to clear (FR89).
+    with OwnToasts():
+        bad = SCENARIOS[name]()
     print()
     for b in bad:
         print("!!", b)

@@ -58,6 +58,13 @@ func Serve(ctx context.Context, runtimeDir, version string, id proto.Identity) e
 		Description: "Post a desktop notification to the human. Fire-and-forget: returns at once, never blocks. Use for progress and results, not for questions.",
 	}, s.notify)
 	sdk.AddTool(srv, &sdk.Tool{
+		Name: "retract",
+		Description: "Take back an item you posted, before the human deals with it. Non-blocking. " +
+			"Pass the id notify_user returned, or omit it to withdraw everything this session still has pending. " +
+			"Use it the moment something you announced stops being true - a 'build failed' whose build you have since fixed is worse than no notification at all, because a warning waits on his screen until he clicks it. " +
+			"It can only ever touch what YOU posted; clearing his whole queue is his own call.",
+	}, s.retract)
+	sdk.AddTool(srv, &sdk.Tool{
 		Name:        "ask_user",
 		Description: "Ask the human a question and BLOCK until they answer. Give 2-9 options for a single choice, or omit options for free text. Only interrupt for a decision you cannot make safely yourself.",
 	}, s.ask)
@@ -257,6 +264,41 @@ func (s *server) notify(ctx context.Context, _ *sdk.CallToolRequest, in notifyIn
 		return errResult[notifyOut](err)
 	}
 	return &sdk.CallToolResult{}, notifyOut{ID: res.ID}, nil
+}
+
+// retract is the other half of FR89: an agent taking back something it posted and
+// now knows to be noise. Symmetry, in a system that had four ways to create an item
+// and none to retire one - a "build failed" toast whose build you have since fixed
+// should not still be waiting for the human when he next looks.
+//
+// It may only ever touch items THIS session posted. Retiring another agent's item
+// would be answering its question for it, and clearing the human's whole queue is
+// his own call (`agentbox dismiss --all`), because an agent that could do it could
+// hide a question it did not want answered.
+type retractIn struct {
+	ID string `json:"id,omitempty" jsonschema:"the id notify_user gave you. Omit it to take back every item this session still has pending"`
+}
+
+type retractOut struct {
+	OK        bool     `json:"ok"`
+	Retracted int      `json:"retracted"`
+	IDs       []string `json:"ids,omitempty"`
+	Note      string   `json:"note,omitempty"`
+}
+
+func (s *server) retract(ctx context.Context, _ *sdk.CallToolRequest, in retractIn) (*sdk.CallToolResult, retractOut, error) {
+	// Mine, never All: the flag that clears everything is the human's door only, and
+	// this one cannot set it.
+	req := proto.DismissParams{Identity: s.id, ID: in.ID, Mine: in.ID == ""}
+	var res proto.DismissResult
+	if err := s.syncCall(ctx, proto.MethodDismiss, &req, &res); err != nil {
+		return errResult[retractOut](err)
+	}
+	out := retractOut{OK: res.OK, Retracted: res.Dismissed, IDs: res.IDs, Note: res.Note}
+	if res.Dismissed == 0 && out.Note == "" {
+		out.Note = "nothing of yours was still pending."
+	}
+	return &sdk.CallToolResult{}, out, nil
 }
 
 type askIn struct {
