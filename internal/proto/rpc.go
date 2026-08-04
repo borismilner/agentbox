@@ -445,9 +445,19 @@ func (c *Conn) readLoop() {
 // returns when the peer disconnects or ctx is done.
 func (c *Conn) Serve(ctx context.Context, h Handler) error {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// Order matters, and it is the whole of FR45 working or not working.
+	//
+	// Deferred calls run last-registered-first, so cancel() has to be registered
+	// AFTER wg.Wait() to run BEFORE it. With the two the other way round, a
+	// handler blocked on ctx.Done() - every blocking ask, and FR83's attach
+	// stream - waits for a cancel that waits for the handler, and the peer
+	// hanging up is never noticed at all: the goroutine leaks until daemon
+	// shutdown, the card never auto-dismisses, and presence keyed to a call's
+	// context can never expire. Cancel first, then wait for the woken handlers
+	// to send whatever they still owe.
 	var wg sync.WaitGroup
 	defer wg.Wait()
+	defer cancel()
 
 	sc := bufio.NewScanner(c.rwc)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
