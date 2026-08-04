@@ -122,6 +122,26 @@ func TestLaunchRendersThePromptBeforeItLeaves(t *testing.T) {
 	}
 }
 
+// An assignment whose knobs were never declared still runs with its saved
+// values (a custom panel can set values no spec describes). The save path
+// keeps them for exactly this; the launch must not erase them at the door.
+func TestLaunchKeepsParamsWhenNoSpecDeclaresThem(t *testing.T) {
+	s, st, r := newSched(t)
+	a := fixture(t, st, func(a *assign.Assignment) {
+		a.Spec = nil
+		a.Params = map[string]any{"window": "24h"}
+	})
+
+	if _, err := s.launch(a, "manual", nil); err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+	waitFinished(t, st, a.ID, 1)
+
+	if got := r.requests()[0].Prompt; got != "Check usage for 24h." {
+		t.Errorf("prompt = %q; a no-spec assignment lost its saved values", got)
+	}
+}
+
 // "Try it with the threshold at 95" without editing the assignment.
 func TestOverridesApplyToTheRunAndNotTheDefinition(t *testing.T) {
 	s, st, r := newSched(t)

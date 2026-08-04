@@ -343,7 +343,12 @@ func (s *scheduler) launch(a *assign.Assignment, trigger string, overrides map[s
 	s.running[a.ID] = true
 	s.mu.Unlock()
 
-	params := assign.Merge(a.Spec, a.Params)
+	// mergeParams, not assign.Merge: an assignment with no declared spec still
+	// substitutes {{key}} from its saved values - the save path keeps them for
+	// exactly this moment, and assign.Merge would erase every one at the door.
+	// Overrides ride over the merge untouched, so a run_assignment override is
+	// never second-guessed by the spec.
+	params := mergeParams(a.Spec, a.Params, nil)
 	maps.Copy(params, overrides)
 	prompt, missing := assign.Render(a.Prompt, params)
 
