@@ -10,7 +10,7 @@ and deployed slice 1, and found two shipped bugs on the way.*
 ```bash
 cd ~/me/projects/agentbox
 git status -sb              # expect clean, in sync with origin/main
-git log --oneline -8        # head: this handoff; then c73427f, 030e4b8, aa4b77e, 16e1d18, 23fc4d5
+git log --oneline -12       # newest are session 40's docs; the code is c73427f, 030e4b8, aa4b77e, 16e1d18, 23fc4d5
 make deployed               # c73427f9b2a2 or newer, and NOT "(dirty)"
 agentbox sync agents        # the roster, live - this is the feature
 agentbox control state      # "no run: the desktop is the human's"
@@ -31,16 +31,18 @@ Your own `mcp__agentbox__announce` will not work if your mcp child predates the
 deploy - the handshake fixes the tool list. The CLI above always works. To
 exercise a tool as an agent would, speak stdio JSON-RPC to a fresh `agentbox mcp`
 (recipe under "Mechanics discovered" in
-[docs/07-field-requests.md](docs/07-field-requests.md)); a working probe is at
-`/tmp/claude-1000/.../scratchpad/mcp_probe.py` if it survived, and it is 80 lines
-to rewrite if not.
+[docs/07-field-requests.md](docs/07-field-requests.md)). Session 40's probe script
+lived in a session-scoped scratchpad and is **gone** - do not go looking. It is
+about 80 lines: spawn `agentbox mcp`, `initialize`, send
+`notifications/initialized`, then `tools/call`, reading one JSON object per line
+and matching ids on the way back. Rewriting it is faster than hunting for it.
 
 ### The one thing Boris has not seen
 
 **The Agents surface rendering real roster data.** The canned mock was walked and
-clicked with him; the live board has not been looked at by anybody. His screen was
-black when the daemon was deployed (the whole X root captured as solid black), and
-waking it was not mine to do. So:
+clicked with him; the live board has not been looked at by anybody. His GNOME
+session was locked by the time the daemon was deployed, and getting past that was
+not mine to do (see Live state for how that was established). So:
 
 ```bash
 agentbox app --tab agents     # then LOOK at it, do not assume
@@ -49,6 +51,19 @@ agentbox app --tab agents     # then LOOK at it, do not assume
 Grouping by area, the state chips, the session key on each row, and the "not
 everybody" notice all have real data behind them now and have never been on
 screen together. Expect defects; the mock's five were all found by looking.
+
+## Where we are
+
+The goal is FR83: agents on this machine that can see, find and wait for each
+other, plus one surface where Boris watches all of them. Its three gates are
+done - he triaged the open questions, the surface was mocked and walked with him,
+and the probes that could run, ran. **Slice 1 is built, deployed and verified
+live**: presence, purpose, activity, peer discovery by repo, and the teaching that
+makes every session on this machine do it. Two bugs that had nothing to do with
+sync were found and fixed on the way, one of them meaning FR45 had never worked in
+the field. We stopped at a clean point: nothing half-applied, the roster empty of
+test fixtures, and the next piece (the discovery rider) untouched rather than
+started.
 
 ## What is built, and what is not
 
@@ -162,7 +177,9 @@ limit, not a defect).
 - **`partial: true` is expected and correct** while any session's mcp child
   predates the deploy. This session's own child did, so its items arrived without
   a key, which is exactly the case the design predicted.
-- **Background jobs:** none besides that attach. **PRs:** none, ever.
+- **Background jobs:** none. Every `agentbox sync attach` this session started
+  was killed before pausing; `pgrep -x agentbox` should show only the daemon and
+  each live session's `agentbox mcp` child. **PRs:** none, ever.
 - **Usage:** Boris asked to be kept under 95% of his weekly limit. Read it with
   `claude -p /usage 2>/dev/null | grep -E '^Current (session|week \(all models\))'`
   (he aliased it to `cu`). It was 84% when this was written; the week resets
@@ -170,6 +187,30 @@ limit, not a defect).
 - **Rename fallout still on disk, on purpose** (session 36): `~/.config/qq`,
   `~/.local/state/qq`, `~/.cache/qq`, `~/.local/share/qq` are fallback copies;
   `~/.local/bin/qq` is a compat symlink.
+
+## Blocked on you (Boris)
+
+- **Look at the Agents surface with real data** (`agentbox app --tab agents`, with
+  rows put back using the snippet in Live state). It is the only part of slice 1
+  nobody has seen. Everything else can proceed without you.
+- **Whether to keep going on FR83 or stop.** He was asked at the end of session 40
+  and had not answered. The default, absent an answer, is to continue in the
+  design's order: discovery rider, then locks.
+
+Everything below this line proceeds without him.
+
+## I can do solo (no input needed)
+
+1. **The discovery rider** - slice 1's one unbuilt piece. Smallest remaining unit,
+   and the thing that makes discovery work for an agent that is mid-task rather
+   than just-arrived.
+2. **The MCP idle-cap probe**, before slice 2 or 3 needs it. It is the last guessed
+   number in the design.
+3. **Slice 2, locks** - with the measured 120s ceiling changing the Makefile wrap
+   the design describes. Its acceptance list is in 09-sync.md.
+4. **Slices 3 and 4**, signals and shared values, in that order.
+5. **FR84 and FR85** once FR83 is finished, in that order - he deferred both
+   explicitly, not indefinitely.
 
 ## Facts - verified vs assumed
 
@@ -196,6 +237,16 @@ limit, not a defect).
   child's redial loop has not been watched through an actual restart.
 - [verified] `set_activity` writes the roster whether or not the caller holds the
   desktop, and re-sending an unchanged line does not reset its age.
+
+## Declutter ledger
+
+| Removed / condensed | Where its knowledge now lives |
+|---|---|
+| The previous handoff's whole body (FR83 designed-not-built, its three gates, the session-key-can-ship-alone note) | All three gates are closed and the session key shipped, so it is history now: [docs/history.md](docs/history.md) session 40 for what happened, [docs/09-sync.md](docs/09-sync.md) for the triage answers at its foot and the slice list for what remains |
+| The previous handoff's "two git hazards this tree proved" paragraph | Kept as a live rule, not a war story: it is now in the global `~/.claude/CLAUDE.md` coordination section (never `--amend`, never `git add -A`, commit by explicit pathspec) and in `docs/agent-manual.md`'s anti-patterns, so every agent in every project reads it rather than only this one |
+| The previous handoff's `/tmp/agentbox-agents.md` ledger description | It was the workaround FR83 replaces, and slice 1 replaces the presence half of it. Quoted at length in FR83's field entry in [docs/07-field-requests.md](docs/07-field-requests.md), which survives the file's deletion |
+| The `webui-demo agents` mock's status as "the thing to build next" | The mock shipped and stays useful: it is the only way to look at the lock and orphan cases slice 2 has not built yet. Recorded under "What is built, and what is not" above |
+| Nothing else was removed | Session 40 added docs; the only deletions were my own test fixtures from the live roster, which were never knowledge |
 
 ## Map
 

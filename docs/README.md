@@ -16,7 +16,7 @@ Reading order:
 | [06-configuration.md](06-configuration.md) | Every knob, its default, and why |
 | [07-field-requests.md](07-field-requests.md) | Use cases found while using AgentBox on real work; picked up before "Later / parked" |
 | [08-assignments.md](08-assignments.md) | Recurring AI work AgentBox runs on its own (M12/FR82); read before touching assignments |
-| [09-sync.md](09-sync.md) | Multi-agent coordination and the Agents surface (FR83): roster, discovery, locks, signals, shared values. Design, not built |
+| [09-sync.md](09-sync.md) | Multi-agent coordination and the Agents surface (FR83): roster, discovery, locks, signals, shared values. **Slice 1 (roster, announce, activity, list_agents, the surface) is built and deployed; the discovery rider, locks, signals and shared values are not** |
 | [agent-manual.md](agent-manual.md) | Complete reference for an AI agent driving AgentBox (MCP + CLI) |
 | [recipes.md](recipes.md) | Copy-paste integration snippets |
 | [sample.md](sample.md) | The renderer's fixture: every block the viewer draws (`agentbox show docs/sample.md`) |
