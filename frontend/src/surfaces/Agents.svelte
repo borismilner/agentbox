@@ -241,8 +241,8 @@
           <div class="head">
             <span class="label">Shared values</span>
             <span class="grow"></span>
-            {#if abandoned}<span class="n warnn">{abandoned} abandoned</span>{/if}
             <span class="n">{shared.length}</span>
+            {#if abandoned}<span class="n warnn">· {abandoned} abandoned</span>{/if}
           </div>
           <!-- A claim outlives the session that made it, which is the point and the
                risk. An owner that is gone means work was started and never finished,
@@ -580,6 +580,7 @@
   /* A shared value's contents, beside its key. Bounded rather than wrapped: the cap
      is 16 KB and one long claim must not push the whole board's layout around. */
   .val {
+    margin-left: 8px;
     color: var(--k-ink-2);
     font-size: 0.82rem;
     max-width: 40ch;
