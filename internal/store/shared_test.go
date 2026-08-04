@@ -24,11 +24,11 @@ func TestSharedSetVersionsFromOne(t *testing.T) {
 	st := newSharedStore(t)
 	// One is where versions start, which is what leaves zero free to mean "does not
 	// exist" - the whole claim idiom rests on it.
-	v, applied, err := st.SharedSet("progress:migration", `{"done":0}`, nil, "", "")
+	v, applied, err := st.SharedSet("progress:migration", `{"done":0}`, nil, "", "", 0)
 	if err != nil || !applied || v.Version != 1 {
 		t.Fatalf("first write: version %d, applied %v, err %v; want version 1", v.Version, applied, err)
 	}
-	v, applied, err = st.SharedSet("progress:migration", `{"done":1}`, nil, "", "")
+	v, applied, err = st.SharedSet("progress:migration", `{"done":1}`, nil, "", "", 0)
 	if err != nil || !applied || v.Version != 2 {
 		t.Fatalf("second write: version %d, applied %v, err %v; want version 2", v.Version, applied, err)
 	}
@@ -39,13 +39,13 @@ func TestSharedSetVersionsFromOne(t *testing.T) {
 
 func TestSharedClaimFromEmptyHasExactlyOneWinner(t *testing.T) {
 	st := newSharedStore(t)
-	first, applied, err := st.SharedSet("claims/3", `"a"`, ver(0), "ka", "claude")
+	first, applied, err := st.SharedSet("claims/3", `"a"`, ver(0), "ka", "claude", 0)
 	if err != nil || !applied || first.Version != 1 {
 		t.Fatalf("claim: %+v applied %v err %v", first, applied, err)
 	}
 	// The second claimer must lose AND be told what beat it, or its retry costs a
 	// second call to find out.
-	cur, applied, err := st.SharedSet("claims/3", `"b"`, ver(0), "kb", "codex")
+	cur, applied, err := st.SharedSet("claims/3", `"b"`, ver(0), "kb", "codex", 0)
 	if err != nil {
 		t.Fatalf("second claim: %v", err)
 	}
@@ -59,14 +59,14 @@ func TestSharedClaimFromEmptyHasExactlyOneWinner(t *testing.T) {
 
 func TestSharedCASNeedsTheVersionItAsksFor(t *testing.T) {
 	st := newSharedStore(t)
-	if _, _, err := st.SharedSet("k", `1`, nil, "", ""); err != nil {
+	if _, _, err := st.SharedSet("k", `1`, nil, "", "", 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, applied, err := st.SharedSet("k", `2`, ver(1), "", ""); err != nil || !applied {
+	if _, applied, err := st.SharedSet("k", `2`, ver(1), "", "", 0); err != nil || !applied {
 		t.Fatalf("write at the current version: applied %v, err %v", applied, err)
 	}
 	// Version 1 is now stale, and a stale write must not land.
-	cur, applied, err := st.SharedSet("k", `3`, ver(1), "", "")
+	cur, applied, err := st.SharedSet("k", `3`, ver(1), "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestSharedCASNeedsTheVersionItAsksFor(t *testing.T) {
 // is a lost update dressed as a success.
 func TestSharedCASOnAMissingKeyIsRefusedNotCreated(t *testing.T) {
 	st := newSharedStore(t)
-	cur, applied, err := st.SharedSet("nothing/here", `1`, ver(3), "", "")
+	cur, applied, err := st.SharedSet("nothing/here", `1`, ver(3), "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,10 +101,10 @@ func TestSharedCASOnAMissingKeyIsRefusedNotCreated(t *testing.T) {
 
 func TestSharedDeleteRespectsTheVersion(t *testing.T) {
 	st := newSharedStore(t)
-	if _, _, err := st.SharedSet("claims/1", `"mine"`, ver(0), "ka", "claude"); err != nil {
+	if _, _, err := st.SharedSet("claims/1", `"mine"`, ver(0), "ka", "claude", 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := st.SharedSet("claims/1", `"theirs"`, ver(1), "kb", "codex"); err != nil {
+	if _, _, err := st.SharedSet("claims/1", `"theirs"`, ver(1), "kb", "codex", 0); err != nil {
 		t.Fatal(err)
 	}
 	// Deleting at a version somebody has written past must fail: the work being
@@ -128,11 +128,11 @@ func TestSharedDeleteRespectsTheVersion(t *testing.T) {
 func TestSharedListReadsAFamilyAndSaysWhenCapped(t *testing.T) {
 	st := newSharedStore(t)
 	for i := range 5 {
-		if _, _, err := st.SharedSet(fmt.Sprintf("claims/%d", i), `"x"`, ver(0), "ka", "claude"); err != nil {
+		if _, _, err := st.SharedSet(fmt.Sprintf("claims/%d", i), `"x"`, ver(0), "ka", "claude", 0); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, _, err := st.SharedSet("progress:other", `1`, nil, "", ""); err != nil {
+	if _, _, err := st.SharedSet("progress:other", `1`, nil, "", "", 0); err != nil {
 		t.Fatal(err)
 	}
 	got, more, err := st.SharedList("claims/", 0)
@@ -156,7 +156,7 @@ func TestSharedListReadsAFamilyAndSaysWhenCapped(t *testing.T) {
 func TestSharedListEscapesLikeMetacharacters(t *testing.T) {
 	st := newSharedStore(t)
 	for _, k := range []string{"a_b/1", "axb/1", "a%c/1", "azc/1"} {
-		if _, _, err := st.SharedSet(k, `"x"`, nil, "", ""); err != nil {
+		if _, _, err := st.SharedSet(k, `"x"`, nil, "", "", 0); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -182,17 +182,17 @@ func TestSharedListEscapesLikeMetacharacters(t *testing.T) {
 func TestSharedCapRefusesNewKeysAndAllowsUpdates(t *testing.T) {
 	st := newSharedStore(t)
 	for i := range SharedKeyMax {
-		if _, _, err := st.SharedSet(fmt.Sprintf("k/%d", i), `1`, nil, "", ""); err != nil {
+		if _, _, err := st.SharedSet(fmt.Sprintf("k/%d", i), `1`, nil, "", "", 0); err != nil {
 			t.Fatalf("filling at %d: %v", i, err)
 		}
 	}
-	if _, _, err := st.SharedSet("k/new", `1`, nil, "", ""); !errors.Is(err, ErrSharedFull) {
+	if _, _, err := st.SharedSet("k/new", `1`, nil, "", "", 0); !errors.Is(err, ErrSharedFull) {
 		t.Fatalf("a new key at the cap: err %v; want ErrSharedFull", err)
 	}
-	if _, _, err := st.SharedSet("k/new", `1`, ver(0), "", ""); !errors.Is(err, ErrSharedFull) {
+	if _, _, err := st.SharedSet("k/new", `1`, ver(0), "", "", 0); !errors.Is(err, ErrSharedFull) {
 		t.Fatalf("a new claim at the cap: err %v; want ErrSharedFull", err)
 	}
-	if _, applied, err := st.SharedSet("k/7", `2`, nil, "", ""); err != nil || !applied {
+	if _, applied, err := st.SharedSet("k/7", `2`, nil, "", "", 0); err != nil || !applied {
 		t.Fatalf("updating an existing key at the cap: applied %v, err %v", applied, err)
 	}
 	// And deleting one makes room again, which is what the refusal tells the caller
@@ -200,7 +200,7 @@ func TestSharedCapRefusesNewKeysAndAllowsUpdates(t *testing.T) {
 	if _, applied, err := st.SharedDelete("k/7", nil); err != nil || !applied {
 		t.Fatal(err)
 	}
-	if _, applied, err := st.SharedSet("k/new", `1`, nil, "", ""); err != nil || !applied {
+	if _, applied, err := st.SharedSet("k/new", `1`, nil, "", "", 0); err != nil || !applied {
 		t.Fatalf("after making room: applied %v, err %v", applied, err)
 	}
 }
@@ -223,7 +223,7 @@ func TestSharedClaimsAreAtomicUnderConcurrency(t *testing.T) {
 			for k := range keys {
 				key := fmt.Sprintf("claims/%d", k)
 				_, applied, err := st.SharedSet(key, fmt.Sprintf(`"w%d"`, w), ver(0),
-					fmt.Sprintf("k%d", w), "claude")
+					fmt.Sprintf("k%d", w), "claude", 0)
 				if err != nil {
 					t.Errorf("worker %d on %s: %v", w, key, err)
 					return
@@ -245,5 +245,30 @@ func TestSharedClaimsAreAtomicUnderConcurrency(t *testing.T) {
 		if n != 1 {
 			t.Errorf("%s was claimed %d times; a claim must have exactly one winner", key, n)
 		}
+	}
+}
+
+// The owning process has to survive the round trip: the daemon's ownership check
+// falls back to it when the roster cannot answer, and a zero read back would make
+// every claim look dead for the second after a daemon restart.
+func TestSharedStoresTheOwningProcess(t *testing.T) {
+	st := newSharedStore(t)
+	if _, _, err := st.SharedSet("claims/1", `"x"`, ver(0), "ka", "claude", 4242); err != nil {
+		t.Fatal(err)
+	}
+	v, found, err := st.SharedGet("claims/1")
+	if err != nil || !found {
+		t.Fatalf("read back: found %v, err %v", found, err)
+	}
+	if v.OwnerPID != 4242 {
+		t.Fatalf("owner pid came back as %d, want 4242", v.OwnerPID)
+	}
+	// A later write moves it, because the owner may now be a different process: taking
+	// over an abandoned claim is a write, and the new owner is who must be checked.
+	if _, applied, err := st.SharedSet("claims/1", `"y"`, ver(1), "kb", "codex", 5150); err != nil || !applied {
+		t.Fatalf("take over: applied %v, err %v", applied, err)
+	}
+	if v, _, _ := st.SharedGet("claims/1"); v.OwnerPID != 5150 || v.OwnerAgent != "codex" {
+		t.Fatalf("the new owner was not recorded: %+v", v)
 	}
 }

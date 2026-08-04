@@ -554,6 +554,13 @@ func (s *server) sharedValues(ctx context.Context, _ *sdk.CallToolRequest, in sh
 		Key:       strings.ReplaceAll(in.Key, "@me", s.id.Key),
 		IfVersion: in.IfVersion, Own: in.Own,
 	}
+	if in.Own {
+		// The AGENT's pid, matching the attach and the lock. It is what decides whether
+		// an owned claim is still live work once the daemon has restarted and the roster
+		// is momentarily empty: the process doing the work either exists or it does not,
+		// which is not something the daemon has to have remembered.
+		req.PID = os.Getppid()
+	}
 	if in.Value != nil {
 		b, err := json.Marshal(in.Value)
 		if err != nil {

@@ -582,6 +582,13 @@ type SyncSharedParams struct {
 	// Own records this session as the value's owner, so a peer can tell a live claim
 	// from one a dead session left behind. A counter wants no owner; a claim does.
 	Own bool `json:"own,omitempty"`
+	// PID is the owning AGENT's process, recorded with an owned write. It is the one
+	// fact about an owner that survives the daemon dying, which is why it is here: the
+	// roster is memory only, so for the second it takes every child to reattach after
+	// a restart, nothing on the roster can tell a live claim from an abandoned one.
+	// Zero means none was recorded - honest for a CLI caller, whose shell dies within
+	// seconds and whose session the roster answers for anyway.
+	PID int `json:"pid,omitempty"`
 }
 
 // SharedValue is one entry as every reader sees it.
@@ -598,8 +605,11 @@ type SharedValue struct {
 	Version    int64           `json:"version"`
 	Owner      string          `json:"owner,omitempty"`
 	OwnerAgent string          `json:"owner_agent,omitempty"`
-	OwnerGone  bool            `json:"owner_gone,omitempty"`
-	UpdatedMS  int64           `json:"updated_ms,omitempty"`
+	// OwnerPID is the process the owner was running as, checked when the roster
+	// cannot answer. Zero means none was recorded.
+	OwnerPID  int   `json:"owner_pid,omitempty"`
+	OwnerGone bool  `json:"owner_gone,omitempty"`
+	UpdatedMS int64 `json:"updated_ms,omitempty"`
 }
 
 // SyncSharedResult answers all three operations. Applied and Stale are the CAS

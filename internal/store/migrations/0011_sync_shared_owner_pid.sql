@@ -1,0 +1,28 @@
+-- FR83 slice 4: the owning process, so a daemon restart does not make every live
+-- claim look abandoned.
+--
+-- 0010 recorded the owner's session key and agent name, and checked them against the
+-- live roster. That is right until the daemon restarts. The roster is memory only
+-- (on principle: a hold must not outlive the ability to observe its holder), so for
+-- the second or so it takes every mcp child to redial and replay its announce, NO
+-- owner is on the roster - and a read in that window reported live work as
+-- abandoned, which invites a peer to take over a chunk somebody is writing. The
+-- exact failure the whole feature exists to prevent, in the exact shape migration
+-- 0009 was written for: "gone" cannot be told from "not here yet" by looking at what
+-- is left.
+--
+-- So the process joins the record. A pid is the one fact about an owner that
+-- survives the daemon dying, because it is not the daemon's to remember - the same
+-- reasoning that makes an orphaned lock pid-checked rather than timed out. Ownership
+-- is then answered in two steps: on the roster means alive; otherwise the pid
+-- decides.
+--
+-- Zero means "no pid was recorded", which is the honest state for a claim written
+-- through the CLI on behalf of a session: a shell knows its own pid and that pid
+-- dies seconds later, so recording it would manufacture the false orphan this column
+-- exists to remove. Those fall back to the roster, whose answer for a CLI caller's
+-- session is the mcp child that is still attached.
+--
+-- A separate migration rather than an edit to 0010 because 0010 is already applied
+-- to the live database. Forward-only (ADR-0005), always, even by one hour.
+ALTER TABLE sync_shared ADD COLUMN owner_pid INTEGER NOT NULL DEFAULT 0;

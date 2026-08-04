@@ -25,11 +25,14 @@ import (
 //     statement (store/shared.go), so a write is safe against a concurrent writer
 //     for a reason that survives a second daemon, a dev instance and a future
 //     migration tool. The mutex here guards the observer fields and nothing else.
-//   - **Ownership is RECORDED, then checked live.** The trim/gap lesson, applied to
-//     claims: a value cannot say whether the session that wrote it still exists, and
-//     once that session's row is gone there is nothing left to ask. So the owner goes
-//     into the row at write time and the roster answers at read time. An orphaned
-//     claim is therefore visible instead of leaving a table un-drainable.
+//   - **Ownership is RECORDED, then checked in two steps.** The trim/gap lesson,
+//     applied to claims: a value cannot say whether the session that wrote it still
+//     exists, and once that session's row is gone there is nothing left to ask. So the
+//     owner goes into the row at write time - session key, agent name and pid - and a
+//     read asks the roster first, then the process. The roster alone was wrong for
+//     exactly one second per daemon restart, when it is empty and every live claim
+//     read as abandoned; the pid is the only fact about an owner that outlives the
+//     daemon, which is why the orphaned lock is pid-checked too.
 //   - **A write posts through the signal hub and nowhere else.** "Waiting on a
 //     value" is await_signal(["shared:claims/*"]). There is exactly one wake
 //     mechanism in this design, and a second one here would be the drift the whole
@@ -59,7 +62,7 @@ const sharedValueMax = 16 << 10
 type sharedStore interface {
 	SharedGet(key string) (proto.SharedValue, bool, error)
 	SharedList(prefix string, limit int) ([]proto.SharedValue, bool, error)
-	SharedSet(key, value string, ifVersion *int64, owner, ownerAgent string) (proto.SharedValue, bool, error)
+	SharedSet(key, value string, ifVersion *int64, owner, ownerAgent string, ownerPID int) (proto.SharedValue, bool, error)
 	SharedDelete(key string, ifVersion *int64) (proto.SharedValue, bool, error)
 	SharedCount() (int, error)
 }
@@ -76,12 +79,15 @@ type shared struct {
 	announcedFn func(key string) bool
 	presentFn   func(key string) bool
 	post        func(topic string, id proto.Identity, data any)
+	// alive is the pid probe, swappable so a test can decide a process is gone
+	// without killing anything. Same door the lock table's orphan check uses.
+	alive func(pid int) bool
 
 	maxBytes int
 }
 
 func newShared(log *slog.Logger) *shared {
-	return &shared{log: log, maxBytes: sharedValueMax}
+	return &shared{log: log, maxBytes: sharedValueMax, alive: pidAlive}
 }
 
 // SetStore wires persistence, separately from the constructor for the reason every
@@ -211,10 +217,11 @@ func (sh *shared) set(st sharedStore, p proto.SyncSharedParams, key string) (pro
 	// claim reportable is that the row remembers who made it after that session is
 	// gone from every live structure.
 	var owner, ownerAgent string
+	var ownerPID int
 	if p.Own {
-		owner, ownerAgent = p.Identity.Key, p.Identity.Agent
+		owner, ownerAgent, ownerPID = p.Identity.Key, p.Identity.Agent, p.PID
 	}
-	v, applied, err := st.SharedSet(key, string(p.Value), p.IfVersion, owner, ownerAgent)
+	v, applied, err := st.SharedSet(key, string(p.Value), p.IfVersion, owner, ownerAgent, ownerPID)
 	if err != nil {
 		code, msg := proto.CodeInternal, "could not write the shared value: "+err.Error()
 		if errors.Is(err, store.ErrSharedFull) {
@@ -314,16 +321,36 @@ func (sh *shared) staleNote(key string, p proto.SyncSharedParams, cur proto.Shar
 // daemon's three sync subsystems all obey.
 func (sh *shared) markOwners(in []proto.SharedValue) []proto.SharedValue {
 	sh.mu.Lock()
-	present := sh.presentFn
+	present, alive := sh.presentFn, sh.alive
 	sh.mu.Unlock()
 	out := make([]proto.SharedValue, 0, len(in))
 	for _, v := range in {
-		if v.Owner != "" && present != nil && !present(v.Owner) {
-			v.OwnerGone = true
-		}
+		v.OwnerGone = v.Owner != "" && !sh.ownerLives(present, alive, v)
 		out = append(out, v)
 	}
 	return out
+}
+
+// ownerLives is the two-step answer, and the ORDER is the whole point.
+//
+// The roster is asked first because it is the live truth: a session that is attached
+// is doing the work whatever its pid looks like. The pid is asked only when the
+// roster cannot answer, and that is the case a daemon restart creates - every row is
+// gone for the second it takes each child to redial, and without this step every
+// claim on the board read as abandoned in that window, which is an invitation to
+// take over a chunk somebody is writing.
+//
+// A claim with no pid recorded (the CLI's honest zero) falls back to the roster's
+// answer alone. That keeps a shell's write from manufacturing a false orphan the
+// moment the shell exits, at the cost of the restart window for those keys only.
+func (sh *shared) ownerLives(present func(key string) bool, alive func(pid int) bool, v proto.SharedValue) bool {
+	if present != nil && present(v.Owner) {
+		return true
+	}
+	if v.OwnerPID > 0 && alive != nil {
+		return alive(v.OwnerPID)
+	}
+	return false
 }
 
 // emit puts the change on shared:<key>. Through the daemon's postSignal callback,

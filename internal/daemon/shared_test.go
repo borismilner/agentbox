@@ -51,9 +51,16 @@ func newTestShared(t *testing.T, present func(string) bool) (*shared, *[]posted)
 
 func sharedSet(t *testing.T, sh *shared, key, value string, ifVersion *int64, own bool, agent, sess string) proto.SyncSharedResult {
 	t.Helper()
+	return sharedSetPID(t, sh, key, value, ifVersion, own, agent, sess, 0)
+}
+
+// sharedSetPID is the same write with an explicit owning process, for the tests
+// about what happens when the roster cannot answer.
+func sharedSetPID(t *testing.T, sh *shared, key, value string, ifVersion *int64, own bool, agent, sess string, pid int) proto.SyncSharedResult {
+	t.Helper()
 	res, rpcErr := sh.Handle(proto.SyncSharedParams{
 		Identity: proto.Identity{Agent: agent, Key: sess}, Op: proto.SharedOpSet,
-		Key: key, Value: json.RawMessage(value), IfVersion: ifVersion, Own: own,
+		Key: key, Value: json.RawMessage(value), IfVersion: ifVersion, Own: own, PID: pid,
 	})
 	if rpcErr != nil {
 		t.Fatalf("set %s: %s", key, rpcErr.Message)
@@ -310,5 +317,59 @@ func TestSharedDrainsAClaimTableWithoutDoubles(t *testing.T) {
 	}
 	if left := sharedGet(t, sh, "claims/*"); len(left.Values) != 0 {
 		t.Fatalf("the table did not drain: %+v", left.Values)
+	}
+}
+
+// The two-step ownership check, and the case that made it necessary: a daemon
+// restart empties the roster, so for the second it takes every child to redial,
+// asking the roster alone reports LIVE work as abandoned - an invitation to take
+// over a chunk somebody is writing, which is the failure this whole feature exists
+// to prevent. The pid is the only fact about an owner that outlives the daemon.
+func TestSharedOwnershipFallsBackToTheProcess(t *testing.T) {
+	// Nobody is on the roster: exactly the state right after a restart.
+	sh, _ := newTestShared(t, func(string) bool { return false })
+	sh.alive = func(pid int) bool { return pid == 4242 }
+
+	sharedSetPID(t, sh, "claims/live", `"working"`, vp(0), true, "claude", "gone-from-roster", 4242)
+	sharedSetPID(t, sh, "claims/dead", `"working"`, vp(0), true, "codex", "really-dead", 5150)
+	// No pid recorded, which is the CLI's honest zero: the roster is all there is.
+	sharedSetPID(t, sh, "claims/nopid", `"working"`, vp(0), true, "aider", "cli-written", 0)
+
+	live := sharedGet(t, sh, "claims/live")
+	if live.Value.OwnerGone {
+		t.Fatal("a claim whose process is still running read as abandoned; this is the restart window that made the pid necessary")
+	}
+	if dead := sharedGet(t, sh, "claims/dead"); !dead.Value.OwnerGone {
+		t.Fatal("a claim whose process is gone should read as abandoned")
+	}
+	if nopid := sharedGet(t, sh, "claims/nopid"); !nopid.Value.OwnerGone {
+		t.Fatal("with no pid and no roster row there is nothing left to say the owner lives")
+	}
+
+	// And the roster still wins when it CAN answer: a session that is attached is
+	// doing the work whatever a recorded pid looks like.
+	sh.SetObservers(func(string) bool { return true }, func(string) bool { return true }, nil)
+	sh.alive = func(int) bool { return false }
+	if again := sharedGet(t, sh, "claims/dead"); again.Value.OwnerGone {
+		t.Fatal("an attached session's claim must not read as abandoned because of a stale pid")
+	}
+}
+
+// The pid has to survive the round trip through the store, or the fallback above is
+// reading a zero and calling every restart-window claim dead.
+func TestSharedRecordsTheOwningProcess(t *testing.T) {
+	sh, _ := newTestShared(t, nil)
+	res := sharedSetPID(t, sh, "claims/1", `"x"`, vp(0), true, "claude", "k1", 4242)
+	if res.Value.OwnerPID != 4242 {
+		t.Fatalf("the write did not record the owning process: %+v", res.Value)
+	}
+	if got := sharedGet(t, sh, "claims/1"); got.Value.OwnerPID != 4242 {
+		t.Fatalf("the pid did not survive a read: %+v", got.Value)
+	}
+	// An unowned write records none: a counter has no owner and must not inherit the
+	// caller's process.
+	res = sharedSetPID(t, sh, "progress:x", `1`, nil, false, "claude", "k1", 4242)
+	if res.Value.OwnerPID != 0 || res.Value.Owner != "" {
+		t.Fatalf("an unowned write should record no owner at all: %+v", res.Value)
 	}
 }

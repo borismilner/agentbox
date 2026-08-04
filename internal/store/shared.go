@@ -59,7 +59,7 @@ var ErrSharedFull = errors.New("shared value table is full")
 // SharedGet reads one key. The second return is whether it exists at all, which a
 // caller must be able to tell from "exists and holds an empty value".
 func (s *Store) SharedGet(key string) (proto.SharedValue, bool, error) {
-	row := s.db.QueryRow(`SELECT key, value, version, owner, owner_agent, updated_ms
+	row := s.db.QueryRow(`SELECT key, value, version, owner, owner_agent, owner_pid, updated_ms
 		FROM sync_shared WHERE key = ?`, key)
 	v, err := scanShared(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -83,7 +83,7 @@ func (s *Store) SharedList(prefix string, limit int) ([]proto.SharedValue, bool,
 		limit = SharedListMax
 	}
 	// One row past the limit, so "there is more" is known rather than guessed.
-	rows, err := s.db.Query(`SELECT key, value, version, owner, owner_agent, updated_ms
+	rows, err := s.db.Query(`SELECT key, value, version, owner, owner_agent, owner_pid, updated_ms
 		FROM sync_shared WHERE key LIKE ? ESCAPE '\' ORDER BY key LIMIT ?`,
 		likePrefix(prefix)+"%", limit+1)
 	if err != nil {
@@ -114,7 +114,7 @@ func (s *Store) SharedList(prefix string, limit int) ([]proto.SharedValue, bool,
 // The second return is whether the write landed. False is not an error: for a claim
 // it is the normal outcome, and it is exactly the answer a first-writer-wins fan-out
 // is asking for.
-func (s *Store) SharedSet(key, value string, ifVersion *int64, owner, ownerAgent string) (proto.SharedValue, bool, error) {
+func (s *Store) SharedSet(key, value string, ifVersion *int64, owner, ownerAgent string, ownerPID int) (proto.SharedValue, bool, error) {
 	now := time.Now().UnixMilli()
 
 	// The cap is checked in front of the two statements that can ADD a key, and only
@@ -132,13 +132,14 @@ func (s *Store) SharedSet(key, value string, ifVersion *int64, owner, ownerAgent
 	case ifVersion == nil:
 		// Unconditional. Version still rises, so a CAS writer racing an unconditional
 		// one is refused rather than silently overwritten.
-		row := s.db.QueryRow(`INSERT INTO sync_shared (key, value, version, owner, owner_agent, updated_ms)
-			VALUES (?, ?, 1, ?, ?, ?)
+		row := s.db.QueryRow(`INSERT INTO sync_shared (key, value, version, owner, owner_agent, owner_pid, updated_ms)
+			VALUES (?, ?, 1, ?, ?, ?, ?)
 			ON CONFLICT(key) DO UPDATE SET value = excluded.value,
 				version = sync_shared.version + 1, owner = excluded.owner,
-				owner_agent = excluded.owner_agent, updated_ms = excluded.updated_ms
-			RETURNING key, value, version, owner, owner_agent, updated_ms`,
-			key, value, owner, ownerAgent, now)
+				owner_agent = excluded.owner_agent, owner_pid = excluded.owner_pid,
+				updated_ms = excluded.updated_ms
+			RETURNING key, value, version, owner, owner_agent, owner_pid, updated_ms`,
+			key, value, owner, ownerAgent, ownerPID, now)
 		v, err := scanShared(row)
 		if err != nil {
 			return proto.SharedValue{}, false, fmt.Errorf("write shared value %s: %w", key, err)
@@ -149,10 +150,10 @@ func (s *Store) SharedSet(key, value string, ifVersion *int64, owner, ownerAgent
 		// Claim from empty: wins only if nobody has this key. DO NOTHING makes losing
 		// silent at the SQL level, and RETURNING is what turns that silence into an
 		// answer - no row means somebody else got here first.
-		row := s.db.QueryRow(`INSERT INTO sync_shared (key, value, version, owner, owner_agent, updated_ms)
-			VALUES (?, ?, 1, ?, ?, ?) ON CONFLICT(key) DO NOTHING
-			RETURNING key, value, version, owner, owner_agent, updated_ms`,
-			key, value, owner, ownerAgent, now)
+		row := s.db.QueryRow(`INSERT INTO sync_shared (key, value, version, owner, owner_agent, owner_pid, updated_ms)
+			VALUES (?, ?, 1, ?, ?, ?, ?) ON CONFLICT(key) DO NOTHING
+			RETURNING key, value, version, owner, owner_agent, owner_pid, updated_ms`,
+			key, value, owner, ownerAgent, ownerPID, now)
 		v, err := scanShared(row)
 		if errors.Is(err, sql.ErrNoRows) {
 			return s.sharedRefusal(key)
@@ -167,10 +168,11 @@ func (s *Store) SharedSet(key, value string, ifVersion *int64, owner, ownerAgent
 		// "only if it is still at 3" is false for a key that does not exist - and an
 		// insert here would create version 1 for a caller who asked about version 3.
 		row := s.db.QueryRow(`UPDATE sync_shared
-			SET value = ?, version = version + 1, owner = ?, owner_agent = ?, updated_ms = ?
+			SET value = ?, version = version + 1, owner = ?, owner_agent = ?,
+				owner_pid = ?, updated_ms = ?
 			WHERE key = ? AND version = ?
-			RETURNING key, value, version, owner, owner_agent, updated_ms`,
-			value, owner, ownerAgent, now, key, *ifVersion)
+			RETURNING key, value, version, owner, owner_agent, owner_pid, updated_ms`,
+			value, owner, ownerAgent, ownerPID, now, key, *ifVersion)
 		v, err := scanShared(row)
 		if errors.Is(err, sql.ErrNoRows) {
 			return s.sharedRefusal(key)
@@ -192,7 +194,7 @@ func (s *Store) SharedDelete(key string, ifVersion *int64) (proto.SharedValue, b
 		query += ` AND version = ?`
 		args = append(args, *ifVersion)
 	}
-	row := s.db.QueryRow(query+` RETURNING key, value, version, owner, owner_agent, updated_ms`, args...)
+	row := s.db.QueryRow(query+` RETURNING key, value, version, owner, owner_agent, owner_pid, updated_ms`, args...)
 	v, err := scanShared(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s.sharedRefusal(key)
@@ -253,7 +255,7 @@ type scanRow interface{ Scan(dest ...any) error }
 func scanShared(r scanRow) (proto.SharedValue, error) {
 	var v proto.SharedValue
 	var value string
-	if err := r.Scan(&v.Key, &value, &v.Version, &v.Owner, &v.OwnerAgent, &v.UpdatedMS); err != nil {
+	if err := r.Scan(&v.Key, &value, &v.Version, &v.Owner, &v.OwnerAgent, &v.OwnerPID, &v.UpdatedMS); err != nil {
 		return proto.SharedValue{}, err
 	}
 	if value != "" {
