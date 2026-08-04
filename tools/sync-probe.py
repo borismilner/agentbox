@@ -114,6 +114,26 @@ def riders(res):
     return [t for t in texts(res) if t.startswith("sync:")]
 
 
+def structured(res):
+    """The tool's own result object, whatever the server called it.
+
+    An MCP result carries both a text rendering and structured content, and the
+    lock verbs answer in the structured half - so a probe that read only the text
+    would be reading a summary of the thing it is checking.
+    """
+    r = res.get("result", {}) or {}
+    if isinstance(r.get("structuredContent"), dict):
+        return r["structuredContent"]
+    for t in texts(res):
+        try:
+            got = json.loads(t)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(got, dict):
+            return got
+    return {}
+
+
 def cli(*args, key=None):
     env = dict(os.environ)
     if key:
@@ -187,7 +207,163 @@ def scenario_rider():
     return bad
 
 
-SCENARIOS = {"rider": scenario_rider}
+def scenario_locks():
+    """Slice 2's acceptance list, driven by two live mcp children.
+
+    Every check here is a claim the design makes about locks that only two real
+    sessions against a real daemon can settle: that the second one waits rather
+    than proceeding, that a refusal says enough to act on, that a dead session
+    does not free a resource its work still needs, and that a cycle is refused
+    rather than suffered.
+    """
+    bad = []
+    a = Session(agent="claude")
+    b = Session(agent="codex")
+    lock = "probe:deploy"
+    other = "probe:repo"
+
+    a.tool("announce", {"purpose": "sync-probe: holder", "activity": "about to deploy"})
+    b.tool("announce", {"purpose": "sync-probe: waiter", "activity": "wants the deploy"})
+
+    res = a.tool("acquire_lock", {"name": lock, "note": "make deploy", "timeout_s": 5})
+    got = structured(res)
+    show("A acquire", res)
+    if not got.get("granted"):
+        bad.append(f"the first acquire was not granted: {got}")
+
+    # try_lock refuses at once, with everything needed to decide.
+    res = b.tool("try_lock", {"name": lock})
+    got = structured(res)
+    show("B try_lock", res)
+    if got.get("granted") or not got.get("refused"):
+        bad.append(f"try_lock was granted a held lock: {got}")
+    for want in ("holder", "holder_purpose", "holder_activity"):
+        if not got.get(want):
+            bad.append(f"the refusal does not carry {want}: {got}")
+
+    # An unannounced session is refused with a teaching error.
+    c = Session(agent="aider")
+    res = c.tool("try_lock", {"name": "probe:unannounced"})
+    if "announce" not in " ".join(texts(res)).lower():
+        bad.append("an unannounced session was not taught to announce: " + " ".join(texts(res))[:200])
+    c.close()
+
+    # A timeout is a result, and it names the holder.
+    res = b.tool("acquire_lock", {"name": lock, "timeout_s": 1}, timeout=30)
+    got = structured(res)
+    show("B acquire (times out)", res)
+    if not got.get("timed_out"):
+        bad.append(f"expected a timeout result: {got}")
+    if not got.get("holder"):
+        bad.append("the timeout does not name the holder")
+
+    # The deadlock refusal: B holds `other`, waits on `lock`; A holds `lock` and
+    # asks for `other`.
+    b.tool("acquire_lock", {"name": other, "timeout_s": 5})
+    waiter = threading.Thread(target=lambda: b.tool("acquire_lock", {"name": lock, "timeout_s": 8}, timeout=30))
+    waiter.start()
+    time.sleep(1.0)
+    res = a.tool("acquire_lock", {"name": other, "timeout_s": 5}, timeout=30)
+    got = structured(res)
+    show("A acquire (would deadlock)", res)
+    if not got.get("refused") or not got.get("deadlock"):
+        bad.append(f"the cycle was not refused: {got}")
+    elif not all(w in got["deadlock"] for w in (lock, other)):
+        bad.append(f"the refusal does not name both locks: {got['deadlock']}")
+
+    # Releasing hands it to the waiter that is still there.
+    res = a.tool("release_lock", {"name": lock})
+    show("A release", res)
+    waiter.join(timeout=20)
+    b.tool("release_lock", {"name": other})
+
+    # A dead session does not free a lock whose process is still alive: B holds
+    # it with this probe's own pid recorded, and this probe is not going anywhere.
+    res = b.tool("acquire_lock", {"name": lock, "timeout_s": 5})
+    if not structured(res).get("granted"):
+        bad.append("B could not retake the lock for the orphan check")
+    b.close()
+    time.sleep(2.5)
+    out = cli("sync", "locks", "--json")
+    table = json.loads(out.stdout or "{}").get("locks") or []
+    held = [l for l in table if l["name"] == lock]
+    print("--- the table after B's child died")
+    print("   ", json.dumps(table))
+    if not held:
+        bad.append("the dead session's lock was freed although its process is alive")
+    elif not held[0].get("orphaned"):
+        bad.append(f"the hold should read as orphaned: {held[0]}")
+
+    # And a waiter is NOT granted while that pid lives.
+    res = a.tool("acquire_lock", {"name": lock, "timeout_s": 2}, timeout=30)
+    got = structured(res)
+    show("A acquire (behind an orphan)", res)
+    if got.get("granted"):
+        bad.append("an orphaned lock was handed over while its process was still running")
+    if not got.get("orphaned"):
+        bad.append(f"the result does not say the hold is orphaned: {got}")
+
+    # Losing a lock has to reach the agent that lost it, on whatever it calls
+    # next: breaking reassigns the lock without stopping the ex-holder, so an
+    # ex-holder that is never told is one that carries on touching the resource.
+    # It has to be a lock A itself holds - the orphan above belongs to B, whose
+    # child is dead and has nothing left to read a notice with.
+    a.tool("acquire_lock", {"name": "probe:notice", "timeout_s": 3})
+    cli("sync", "break", "probe:notice")
+    time.sleep(0.5)
+    res = a.tool("set_activity", {"activity": "carrying on, unaware"})
+    show("A set_activity (after the human broke its lock)", res)
+    notice = [t for t in texts(res) if "broke your lock" in t]
+    if not notice:
+        bad.append("the ex-holder was never told the human broke its lock: " + " ".join(texts(res))[:200])
+    elif "NOT stopped" not in notice[0]:
+        bad.append(f"the notice is not honest about what breaking does not do: {notice[0]}")
+    a.close()
+    print("--- leaving no state: every probe lock is released or dies with the probe")
+    return bad
+
+
+def scenario_board():
+    """Put a holder, a waiter and an orphan on the live board, then wait.
+
+    The surface is the half of this feature Boris actually looks at, and looking
+    is how every defect in slice 1 was found. This is the fixture for that: real
+    sessions, real locks, held long enough to open the app and read the screen.
+
+        tools/sync-probe.py board        # holds for ~2 minutes, then cleans up
+    """
+    a = Session(agent="claude")
+    b = Session(agent="codex")
+    c = Session(agent="aider")
+    a.tool("announce", {"purpose": "deploying the mirror fix",
+                        "activity": "make deploy, waiting on the build"})
+    b.tool("announce", {"purpose": "FR73: a card body readable after it closes",
+                        "activity": "editing internal/webui/card.go"})
+    c.tool("announce", {"purpose": "the nightly docs pass", "activity": "rewriting 04-ux.md"})
+
+    a.tool("acquire_lock", {"name": "deploy:agentbox", "note": "make deploy", "timeout_s": 5})
+    c.tool("acquire_lock", {"name": "repo:agentbox", "note": "a wide rename", "timeout_s": 5})
+    # C dies holding it: its row goes, the hold does not, and the board has to
+    # show a taken resource with nobody to hang it on.
+    c.close()
+    waiter = threading.Thread(
+        target=lambda: b.tool("acquire_lock", {"name": "deploy:agentbox", "timeout_s": 150}, timeout=200))
+    waiter.start()
+    time.sleep(1.5)
+    print("--- on the board now:")
+    print(cli("sync", "agents").stdout.strip())
+    print(cli("sync", "locks").stdout.strip())
+    print("--- holding for 150s: open `agentbox app --tab agents` and look")
+    time.sleep(150)
+    a.tool("release_lock", {"name": "deploy:agentbox"})
+    waiter.join(timeout=20)
+    b.tool("release_lock", {"name": "deploy:agentbox"})
+    a.close()
+    b.close()
+    return []
+
+
+SCENARIOS = {"rider": scenario_rider, "locks": scenario_locks, "board": scenario_board}
 
 
 def main():

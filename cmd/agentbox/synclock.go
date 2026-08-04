@@ -190,6 +190,12 @@ func runHeld(conn *proto.Conn, id proto.Identity, in lockCLI, attachCtx context.
 		return exitError
 	}
 
+	// Re-point the hold at the command now that it exists. Until this call the
+	// hold names this wrapper, and a SIGKILLed wrapper would then look like work
+	// that is over while the command it started keeps running - the exact case
+	// orphaning exists for. Idempotent: the lock is already ours.
+	retagPID(conn, id, in.name, cmd.Process.Pid)
+
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
@@ -254,6 +260,32 @@ func runSyncUnlock(name, key string, asJSON bool) int {
 	return exitOK
 }
 
+// runSyncBreak is the human taking a lock away, from a terminal instead of from
+// the Agents surface. It says what breaking does NOT do, because a human who
+// thinks it stopped the other agent has been handed the exact failure orphaning
+// exists to prevent.
+func runSyncBreak(name string, asJSON bool) int {
+	if name == "" {
+		fmt.Fprintln(os.Stderr, "agentbox sync break: wants a lock name. `agentbox sync locks` lists them.")
+		return exitNo
+	}
+	req := proto.SyncLockParams{Name: name}
+	var res proto.SyncLockResult
+	if code := syncCLICall(proto.MethodSyncBreakLock, &req, &res); code != exitOK {
+		return code
+	}
+	if asJSON {
+		return printJSON(res)
+	}
+	if !res.Released {
+		fmt.Println(firstLine(res.Note, "nobody holds that lock"))
+		return exitOK
+	}
+	fmt.Printf("broke %s: it is now whoever was waiting, and the ex-holder has been told.\n", name)
+	fmt.Println("This did NOT stop the ex-holder's work - if it was mid-deploy, it still is.")
+	return exitOK
+}
+
 // runSyncLocks lists the table. Ungated like every other read: the human and the
 // agents must never see different answers.
 func runSyncLocks(asJSON bool) int {
@@ -301,6 +333,17 @@ func holdRow(ctx context.Context, id proto.Identity, cwd, area string) {
 	req := proto.SyncAttachParams{Identity: id, Cwd: cwd, PID: os.Getpid(), Area: area}
 	var res proto.SyncResult
 	_ = conn.Call(ctx, proto.MethodSyncAttach, &req, &res)
+}
+
+// retagPID tells the daemon which process the hold really follows. Best effort:
+// if it fails the hold simply keeps naming this wrapper, which is a worse orphan
+// story but not a broken one.
+func retagPID(conn *proto.Conn, id proto.Identity, name string, pid int) {
+	req := proto.SyncLockParams{Identity: id, Name: name, PID: pid}
+	var res proto.SyncLockResult
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = conn.Call(ctx, proto.MethodSyncLock, &req, &res)
 }
 
 // setActivity narrates the wrap on the board: waiting, then running.

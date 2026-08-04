@@ -183,6 +183,13 @@ func runSync(args []string) int {
 	case "unlock":
 		return runSyncUnlock(text, id.Key, *asJSON)
 
+	case "break":
+		// The human's verb, the same one the Agents surface offers, for when the
+		// surface is not open. It is deliberately not something an agent should
+		// reach for: taking a lock away from a peer is a decision about whose work
+		// matters more, which is his.
+		return runSyncBreak(text, *asJSON)
+
 	case "locks":
 		return runSyncLocks(*asJSON)
 

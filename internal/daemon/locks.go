@@ -291,6 +291,15 @@ func (l *locks) tryOrQueue(ctx context.Context, p proto.SyncLockParams, name, ke
 	if held != nil && held.key == key {
 		held.note = firstNonEmpty(p.Note, held.note)
 		held.orphaned = false
+		// A re-acquire may also correct the pid, and the CLI wrap depends on it:
+		// the hold has to be taken BEFORE the command starts, so the only pid it
+		// can name at that moment is the wrapper's. Once the command is running,
+		// the process whose life the resource really follows is that one - kill the
+		// wrapper and the command survives, and the lock must not be handed on
+		// while it does.
+		if p.PID > 0 {
+			held.pid = p.PID
+		}
 		out := l.pictureLocked(name, key)
 		l.mu.Unlock()
 		out.OK, out.Granted, out.Name, out.Reason = true, true, name, "already yours"
@@ -845,7 +854,9 @@ func (l *locks) cycleLocked(key, name string) string {
 				parts = append(parts, fmt.Sprintf("%s waits on %s, held by %s",
 					l.nameOfLocked(chain[i-1].key), chain[i].lock, who))
 			}
-			parts = append(parts, fmt.Sprintf("%s waits on what you hold", l.nameOfLocked(chain[len(chain)-1].key)))
+			// No closing clause: the walk always ends at the caller, so the last
+			// step already reads "... held by you" and saying it again only made the
+			// refusal look like a third party was involved.
 			return strings.Join(parts, "; ")
 		}
 		next, nextHolder := "", ""
