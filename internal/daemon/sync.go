@@ -1080,6 +1080,16 @@ func (d *Daemon) postSignal(topic string, id proto.Identity, data any) {
 // the button has to say so.
 func (d *Daemon) BreakLock(name string) proto.SyncLockResult { return d.locks.Break(name) }
 
+// SharedSnapshot is the whole blackboard for the Agents surface, ownership marked.
+// Read outside every subsystem's mutex, like LockSnapshot, because it asks the
+// roster whether each owner is still here.
+func (d *Daemon) SharedSnapshot() []proto.SharedValue {
+	if d.shared == nil {
+		return nil
+	}
+	return d.shared.snapshot()
+}
+
 // LockSnapshot is every lock the daemon knows, for the surface's pull on mount.
 func (d *Daemon) LockSnapshot() []proto.SyncLockState { return d.locks.Snapshot() }
 

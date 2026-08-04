@@ -45,7 +45,10 @@ func newTestShared(t *testing.T, present func(string) bool) (*shared, *[]posted)
 			var m map[string]any
 			_ = json.Unmarshal(b, &m)
 			got = append(got, posted{topic: topic, data: m})
-		})
+		},
+		// No repaint in a test: the board is not what any of these check, and a nil
+		// observer is the shape every other subsystem's tests use.
+		nil)
 	return sh, &got
 }
 
@@ -85,7 +88,7 @@ func vp(n int64) *int64 { return new(n) }
 // purpose is a coordination he cannot follow when it stalls.
 func TestSharedGatesWritesAndNotReads(t *testing.T) {
 	sh, _ := newTestShared(t, nil)
-	sh.SetObservers(func(string) bool { return false }, func(string) bool { return true }, nil)
+	sh.SetObservers(func(string) bool { return false }, func(string) bool { return true }, nil, nil)
 
 	_, rpcErr := sh.Handle(proto.SyncSharedParams{
 		Identity: proto.Identity{Agent: "claude", Key: "k1"}, Op: proto.SharedOpSet,
@@ -348,7 +351,7 @@ func TestSharedOwnershipFallsBackToTheProcess(t *testing.T) {
 
 	// And the roster still wins when it CAN answer: a session that is attached is
 	// doing the work whatever a recorded pid looks like.
-	sh.SetObservers(func(string) bool { return true }, func(string) bool { return true }, nil)
+	sh.SetObservers(func(string) bool { return true }, func(string) bool { return true }, nil, nil)
 	sh.alive = func(int) bool { return false }
 	if again := sharedGet(t, sh, "claims/dead"); again.Value.OwnerGone {
 		t.Fatal("an attached session's claim must not read as abandoned because of a stale pid")

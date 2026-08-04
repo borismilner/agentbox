@@ -253,6 +253,19 @@ func (u *UI) DemoAgents() {
 			Note: "running the 128-vCPU build", Waiters: 1,
 			Orphaned: true, PID: 40122, PIDLive: true, Holder: "claude · agentbox",
 		}},
+		// The blackboard, with the three cases it has to tell apart on one screen: a
+		// claim whose owner is working, a claim whose owner died holding it, and shared
+		// state that belongs to nobody. The abandoned one is why this block exists, so
+		// the fixture must carry one or the surface is being judged on its easy case.
+		Shared: []wireValue{
+			{Key: "claims/chunk-3", Value: `{"worker":"claude"}`, Version: 1,
+				Owner: "8b94c1", OwnerName: "claude", SinceMS: age(2 * time.Minute)},
+			{Key: "claims/chunk-7", Value: `{"worker":"codex"}`, Version: 1,
+				Owner: "733f69", OwnerName: "codex", OwnerGone: true,
+				SinceMS: age(11*time.Minute + 20*time.Second)},
+			{Key: "progress:migration", Value: `{"done":6,"of":10}`, Version: 7,
+				SinceMS: age(40 * time.Second)},
+		},
 		Partial: true,
 	})
 }

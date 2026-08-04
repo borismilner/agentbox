@@ -430,3 +430,9 @@ func firstLine(s, fallback string) string {
 	}
 	return s
 }
+
+// Shared is the blackboard for the Agents surface (FR83 slice 4). Ownership is
+// already judged when it arrives here: whether a claim's owner is still running is
+// the daemon's answer, and a second opinion computed in the surface could disagree
+// with what an agent was told a moment ago.
+func (r rosterBridge) Shared() []proto.SharedValue { return r.d.SharedSnapshot() }

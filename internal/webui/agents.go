@@ -3,6 +3,7 @@ package webui
 import (
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/borismilner/agentbox/internal/proto"
 )
@@ -124,10 +125,29 @@ type wireItemRef struct {
 	SinceMS int64  `json:"since_ms"`
 }
 
+// wireValue is one shared value, the blackboard's half of the surface (FR83 slice
+// 4). It is global state like the lock table rather than per-agent state, so it gets
+// its own block instead of a chip on a row: a claim outlives the session that made
+// it, which is the whole reason it is worth showing.
+//
+// OwnerGone is the field this block exists for. Everything else here can be read
+// from the CLI at leisure; an abandoned claim is the one thing the human wants to
+// see without asking, because it is work that stopped and nothing else says so.
+type wireValue struct {
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	Version   int64  `json:"version"`
+	Owner     string `json:"owner"`      // the session key, for finding its row
+	OwnerName string `json:"owner_name"` // the agent, which is what a human reads
+	OwnerGone bool   `json:"owner_gone"` // its session AND its process are gone
+	SinceMS   int64  `json:"since_ms"`   // how long since the last write
+}
+
 // wireRoster is the whole surface in one payload.
 type wireRoster struct {
 	Agents  []wireAgent `json:"agents"`
 	Orphans []wireHold  `json:"orphans"` // orphaned holds whose row is already gone
+	Shared  []wireValue `json:"shared"`  // the blackboard, ownership already judged
 
 	// Partial says at least one session is known only from item traffic, so the
 	// roster cannot claim to be everybody. "You are alone" must be true when
@@ -173,6 +193,7 @@ func (u *UI) ShowAgents(r wireRoster) { u.agents.set(r) }
 // rather than widening the split.
 func (u *UI) ShowRoster(agents []proto.SyncAgent, partial bool) {
 	dark := u.themeMode() == "dark"
+	now := time.Now().UnixMilli()
 	rows := make([]wireAgent, 0, len(agents))
 	haveRow := make(map[string]bool, len(agents))
 	for _, a := range agents {
@@ -198,7 +219,35 @@ func (u *UI) ShowRoster(agents []proto.SyncAgent, partial bool) {
 		}
 		rows = append(rows, row)
 	}
-	u.agents.set(wireRoster{Agents: rows, Orphans: orphanRows(u.rosterSrc(), haveRow), Partial: partial})
+	src := u.rosterSrc()
+	u.agents.set(wireRoster{Agents: rows, Orphans: orphanRows(src, haveRow),
+		Shared: sharedRows(src, now), Partial: partial})
+}
+
+// sharedRows converts the blackboard. The age is computed here from the write's
+// timestamp because everything else on this surface travels as an age and is
+// anchored to the moment the payload arrived - a shared value that carried a
+// wall-clock time would be the one thing on the board that lied after a suspend.
+func sharedRows(src Roster, now int64) []wireValue {
+	if src == nil {
+		return nil
+	}
+	values := src.Shared()
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]wireValue, 0, len(values))
+	for _, v := range values {
+		row := wireValue{
+			Key: v.Key, Value: string(v.Value), Version: v.Version,
+			Owner: v.Owner, OwnerName: v.OwnerAgent, OwnerGone: v.OwnerGone,
+		}
+		if v.UpdatedMS > 0 && now > v.UpdatedMS {
+			row.SinceMS = now - v.UpdatedMS
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // holdRows converts the holds on a row.
@@ -264,6 +313,10 @@ type Roster interface {
 	// Locks is the whole table, which the roster rows alone cannot show: a hold
 	// taken by a CLI caller or left by a dead session has no row to sit on.
 	Locks() []proto.SyncLockState
+	// Shared is the blackboard, ownership already judged by the daemon. Judged there
+	// rather than here for the reason pidStillThere gives: a second opinion from the
+	// surface could disagree with the answer an agent was given a moment ago.
+	Shared() []proto.SharedValue
 }
 
 // SetRoster wires it.

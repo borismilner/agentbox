@@ -82,6 +82,11 @@ type shared struct {
 	// alive is the pid probe, swappable so a test can decide a process is gone
 	// without killing anything. Same door the lock table's orphan check uses.
 	alive func(pid int) bool
+	// changed repaints the board. A write is the only thing that changes the
+	// blackboard, so it is the only thing that has to trigger a repaint - the roster
+	// tick would get there eventually, but "eventually" on a claim table is how a
+	// human watches a stale board.
+	changed func()
 
 	maxBytes int
 }
@@ -102,9 +107,9 @@ func (sh *shared) SetStore(st sharedStore) {
 // SetObservers wires the announce gate, the liveness question and the signal door.
 // All three are legitimately nil in a test.
 func (sh *shared) SetObservers(announced, present func(key string) bool,
-	post func(topic string, id proto.Identity, data any)) {
+	post func(topic string, id proto.Identity, data any), changed func()) {
 	sh.mu.Lock()
-	sh.announcedFn, sh.presentFn, sh.post = announced, present, post
+	sh.announcedFn, sh.presentFn, sh.post, sh.changed = announced, present, post, changed
 	sh.mu.Unlock()
 }
 
@@ -145,6 +150,29 @@ func (sh *shared) Handle(p proto.SyncSharedParams) (proto.SyncSharedResult, *pro
 		return proto.SyncSharedResult{}, &proto.RPCError{Code: proto.CodeInvalidParams,
 			Message: fmt.Sprintf("shared: op %q is not one of get, set, delete.", p.Op)}
 	}
+}
+
+// snapshot is the whole blackboard for the Agents surface, ownership marked, in key
+// order. Bounded by the store's own list cap, so a runaway table cannot turn one
+// repaint into a thousand rows on screen.
+//
+// One indexed read per throttled push, which is a different cost from the one slice
+// 3 declined for recent signals: that would have been a read PER ROW on every
+// snapshot, and this is one read for the whole payload. The repaint is throttled to
+// four a second and already walks every roster row, so this is not the expensive
+// part of it.
+func (sh *shared) snapshot() []proto.SharedValue {
+	st := sh.store()
+	if st == nil {
+		return nil
+	}
+	values, _, err := st.SharedList("", 0)
+	if err != nil {
+		sh.log.Warn(logging.EvSync, "component", "daemon", "sync", "shared_read_failed",
+			"error", err.Error())
+		return nil
+	}
+	return sh.markOwners(values)
 }
 
 // get reads one key, or a family when the key ends in the prefix wildcard. Ungated:
@@ -250,6 +278,7 @@ func (sh *shared) set(st sharedStore, p proto.SyncSharedParams, key string) (pro
 	sh.emit(key, p.Identity, map[string]any{
 		"key": key, "version": v.Version, "owner": v.Owner, "owner_agent": v.OwnerAgent,
 	})
+	sh.pushed()
 	return out, nil
 }
 
@@ -289,6 +318,7 @@ func (sh *shared) del(st sharedStore, p proto.SyncSharedParams, key string) (pro
 	// A delete is a change like any other, and a waiter that only heard about writes
 	// would park forever on a key that has been finished and removed.
 	sh.emit(key, p.Identity, map[string]any{"key": key, "deleted": true, "version": v.Version})
+	sh.pushed()
 	return out, nil
 }
 
@@ -381,6 +411,16 @@ func (sh *shared) gate(tool, key string) *proto.RPCError {
 			Message: "announce first: call announce with what this session is FOR, then use shared values. A claim the human cannot attribute to a purpose is one he cannot judge when the work stalls."}
 	}
 	return nil
+}
+
+// pushed repaints the board, outside the mutex like every other observer call.
+func (sh *shared) pushed() {
+	sh.mu.Lock()
+	changed := sh.changed
+	sh.mu.Unlock()
+	if changed != nil {
+		changed()
+	}
 }
 
 func (sh *shared) store() sharedStore {

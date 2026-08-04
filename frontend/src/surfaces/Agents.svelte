@@ -33,7 +33,7 @@
   let base = $state(Date.now());
 
   function take(r) {
-    roster = r ?? { agents: [], orphans: [], partial: false };
+    roster = r ?? { agents: [], orphans: [], shared: [], partial: false };
     base = Date.now();
     // A row that went away must not keep the detail open under a different agent.
     if (open && !(roster.agents ?? []).some((a) => a.key === open)) open = null;
@@ -47,6 +47,13 @@
 
   const agents = $derived(roster?.agents ?? []);
   const orphans = $derived(roster?.orphans ?? []);
+  // The blackboard (FR83 slice 4): global state, so its own block rather than a chip
+  // on a row. Abandoned claims float to the top, because they are the only thing here
+  // that is a problem - the rest is just work in progress.
+  const shared = $derived(
+    [...(roster?.shared ?? [])].sort((a, b) => (b.owner_gone ? 1 : 0) - (a.owner_gone ? 1 : 0)),
+  );
+  const abandoned = $derived(shared.filter((v) => v.owner_gone).length);
 
   // Grouped by area, in first-seen order, so the list does not reshuffle itself
   // every time an agent's state changes.
@@ -171,7 +178,7 @@
 
     {#if roster === null}
       <p class="blank">Reading the roster…</p>
-    {:else if agents.length === 0}
+    {:else if agents.length === 0 && !orphans.length && !shared.length}
       <div class="blank">
         <p class="lead">No agents are attached.</p>
         <p>
@@ -221,6 +228,52 @@
                     {:else}
                       <button class="ghost" onclick={() => (breaking = h.name)}>Break lock</button>
                     {/if}
+                  </span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if shared.length}
+        <div class="area">
+          <div class="head">
+            <span class="label">Shared values</span>
+            <span class="grow"></span>
+            {#if abandoned}<span class="n warnn">{abandoned} abandoned</span>{/if}
+            <span class="n">{shared.length}</span>
+          </div>
+          <!-- A claim outlives the session that made it, which is the point and the
+               risk. An owner that is gone means work was started and never finished,
+               and nothing else on this board says so: the lock table cannot, because
+               a claim is not a lock, and the agent's row cannot, because the agent is
+               gone. -->
+          <div class="rows">
+            {#each shared as v (v.key)}
+              <div class="row" class:orphan={v.owner_gone}>
+                <div class="main plain">
+                  <span class="hue" class:warn={v.owner_gone}></span>
+                  <span class="body">
+                    <span class="l1">
+                      <span class="purpose mono">{v.key}</span>
+                      <span class="val mono">{v.value}</span>
+                    </span>
+                    <span class="l2">
+                      {#if v.owner_gone}
+                        <span class="who">{v.owner_name || "an agent that is gone"}</span>
+                        <span class="act">is gone; this work stopped and nobody took it over</span>
+                      {:else if v.owner_name}
+                        <span class="who">{v.owner_name}</span>
+                        <span class="act">holds it</span>
+                      {:else}
+                        <span class="act">no owner: shared state rather than a claim</span>
+                      {/if}
+                      <span class="when">v{v.version} · {ago(v.since_ms)}</span>
+                    </span>
+                  </span>
+                  <span class="chips">
+                    {#if v.owner_gone}<span class="chip block">owner gone</span>{/if}
                   </span>
                 </div>
               </div>
@@ -517,6 +570,22 @@
     font-family: var(--k-font-mono);
     font-size: 0.7rem;
     color: var(--k-ink-3);
+  }
+  /* The count that is a problem rather than a fact: abandoned claims. It reads in
+     the warning colour so a glance at the heading answers "is anything stuck?"
+     without reading the rows. */
+  .head .n.warnn {
+    color: var(--k-warning);
+  }
+  /* A shared value's contents, beside its key. Bounded rather than wrapped: the cap
+     is 16 KB and one long claim must not push the whole board's layout around. */
+  .val {
+    color: var(--k-ink-2);
+    font-size: 0.82rem;
+    max-width: 40ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* The joined-rows frame every list in the app wears. */

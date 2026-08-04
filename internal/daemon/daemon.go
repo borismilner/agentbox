@@ -555,7 +555,7 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	d.shared = newShared(log)
 	d.shared.SetStore(st)
 	d.shared.SetMaxBytes(cfg.SharedMaxBytes)
-	d.shared.SetObservers(d.roster.announced, d.roster.present, d.postSignal)
+	d.shared.SetObservers(d.roster.announced, d.roster.present, d.postSignal, d.roster.changed)
 	// The scheduler is built here but not STARTED here: it wants a Runner, and
 	// the surface that can carry an assignment out is wired after the daemon
 	// exists (SetRunner, then StartAssignments). A daemon that never gets one
