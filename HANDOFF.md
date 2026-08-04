@@ -1,8 +1,8 @@
-# Handoff - AgentBox: FR83's four primitives are all built; the teaching half of slice 5 is what is left
+# Handoff - AgentBox: FR83 is finished, all five slices, and the last one was not documentation
 
-*Written by session 44, which built shared values, found its own ownership check
-wrong by restarting the daemon, found its own probe proving nothing by looking at
-which pid it recorded, and put the blackboard on the board.*
+*Written by session 45, which set out to install a hook recipe and found it could
+not work, fixed the session key underneath it, and watched a session that had never
+heard of AgentBox put itself on the board in one second.*
 
 **Written:** 2026-08-04 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -10,56 +10,33 @@ which pid it recorded, and put the blackboard on the board.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean, in sync with origin/main
-git log --oneline -12       # newest four: af2db6c ed792e2 3528eca 0645d08
-make deployed               # af2db6c9e79e or newer, NOT "(dirty)"
+git status -sb              # expect clean; PUSH IS PENDING, see below
+git log --oneline -12       # newest three: 0112716 67c8e9c 0fd62bf
+make deployed               # 0112716e08b5 or newer, NOT "(dirty)"
 agentbox pending            # expect "nothing pending"
-agentbox sync agents        # the roster, live
+agentbox sync agents        # your own row should be here, put there by a hook
 agentbox sync locks         # expect "no locks held"
-agentbox sync get 'claims/*'    # expect "no keys under claims/"
-tools/sync-probe.py rider   # slice 1's end-to-end check; must print PASS
-tools/sync-probe.py locks   # slice 2's acceptance list; must print PASS
-tools/sync-probe.py signals # slice 3's acceptance list; must print PASS
-tools/sync-probe.py shared  # slice 4's; RESTARTS THE DAEMON; must print PASS
+tools/sync-probe.py rider   # slice 1; must print PASS
+tools/sync-probe.py locks   # slice 2; must print PASS
+tools/sync-probe.py signals # slice 3; must print PASS
+tools/sync-probe.py shared  # slice 4; RESTARTS THE DAEMON; must print PASS
 ```
 
-**Announce yourself before you touch anything** (standing rule in Boris's global
-`~/.claude/CLAUDE.md`). Your own `mcp__agentbox__announce` works if your mcp child
-postdates the last deploy; otherwise the CLI always does:
+**Announcing yourself is now automatic**, which is new as of this session and is
+the whole of slice 5. A SessionStart hook in `~/.claude/settings.json` puts your row
+on the board before you do anything, and its stdout tells you which peers share your
+area - so you have probably already been told. Still call
+`mcp__agentbox__announce` yourself: the hook can only write a placeholder purpose
+(`agentbox session (purpose not yet stated)`), and your row is dim and uninformative
+until you replace it with a line Boris would recognise. Then keep `set_activity`
+current; the PostToolUse hooks keep the line honest between your calls.
 
-```bash
-export AGENTBOX_SESSION_KEY="$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-export AGENTBOX_AGENT=claude
-setsid agentbox sync attach --area repo:agentbox >/dev/null 2>&1 &
-agentbox sync announce "<why this session exists>" --area repo:agentbox
-agentbox sync activity "<what you are doing now>"     # and again as it changes
-```
+The CLI fallback in previous handoffs (`export AGENTBOX_SESSION_KEY=...` plus
+`setsid agentbox sync attach`) is **obsolete and was wrong** - it is what produced a
+second row for one session. Do not use it. `agentbox sync announce` from any shell
+inside your session now finds your session by itself.
 
-Two notes on that snippet, both learned the hard way. It gives you a row of your
-OWN, separate from your mcp child's row, so the board shows one session twice -
-prefer `mcp__agentbox__announce` if you have it, and only fall back to the CLI. And
-after a `/clear` your mcp child keeps the PREVIOUS conversation's purpose, so
-announce again even if a row already looks like yours.
-
-### FR83 has no build left in it except teaching
-
-**Slices 1 to 4 are complete, deployed and verified live.** All four primitives -
-presence and discovery, locks, signals, shared values - plus the Agents surface
-showing all four. What remains of the design is **slice 5, the teaching half**,
-whose acceptance list in [docs/09-sync.md](docs/09-sync.md) is: a Claude session in
-an unrelated project, given no instruction beyond its own configuration, announces
-itself and appears in the roster; and a second session in the same repo learns about
-the first without being told to look.
-
-Three of the four doors are already open (the global `~/.claude/CLAUDE.md` section,
-both manuals, the CLI). The one that is not is **the hooks in
-[docs/recipes.md](docs/recipes.md)**, which no session has ever installed in a real
-`settings.json` - it is the oldest `[assumed]` in this file and it is what slice 5's
-acceptance actually tests. Note the ordering trap already documented there: a hook
-that posts a signal before its SessionStart announce lands is refused by the
-announce gate.
-
-### Then the short queue Boris deferred until FR83 was finished
+### FR83 is done. The queue Boris deferred until it was finished
 
 - **FR85 with FR86 together** - one agent, two identity colours (Go and the
   frontend hash with different separators), and `Project` is `filepath.Base(cwd)`
@@ -76,7 +53,53 @@ marker** (built session 34, never exercised, needs consent to drive), and the
 **"Claude usage check" assignment retry** (`a0eff4b720959`, failed on a model
 limit, not a defect).
 
-### The lock order, which four subsystems now obey
+### What slice 5 changed under everything, and why it matters to you
+
+**The session key is now DERIVED, not minted.** `proc-PID-STARTTIME`, where PID is
+the agent process found by walking up past the shells (`agentProcess` in
+`cmd/agentbox/main.go`, the same walk `agentName` already used). Read the long
+comment on `inheritedSessionKey`; the short version is that a session has two
+mouths - its mcp child and its hooks - and a minted key is a secret the child
+cannot hand to a hook, because a hook runs inside an environment Claude Code has
+already finished building. Claude's own session id does not bridge them either: the
+child keeps the id it was spawned with and `/clear` mints a new one.
+
+Consequences worth knowing before you touch this:
+
+- **`inheritedSessionKey` may return empty; `sessionKey` may not.** That is
+  deliberate. A CLI call belonging to no session must be refused, where minting a
+  random key would put a phantom row on the board once per invocation.
+- **The start time is load-bearing.** Pids are recycled, and without it a new
+  process landing on a dead agent's number would inherit its locks and its claims.
+  `procStatField` reads it by documented field number; field 21 is usually zero and
+  field 23 is a memory size, and the test pins it against `/proc/uptime` because
+  both of those would pass a check that only asked for non-zero.
+- **A session whose mcp child predates the deploy still shows two rows.** Its child
+  holds the old random key while its hooks derive the new one. Transitional, clears
+  as sessions restart, and this session is an example of it (row
+  `d9cab8bb468444d5`).
+- **`|| true` on the installed hooks is not defensive habit.** `agentbox sync`
+  exits 4 with no daemon and `make deploy` stops the daemon on purpose, so without
+  it one deploy prints a hook failure into every live session on the machine.
+
+### The change that lives OUTSIDE this repo
+
+`~/.claude/settings.json` now has three AgentBox hooks (one SessionStart, two
+PostToolUse). Boris's own hooks - atuin, fingerprint-guard - and everything outside
+`.hooks` were left byte-identical, verified by diffing `del(.hooks)` before and
+after. **This is his live config and it is not under version control**, so if you
+need to revert:
+
+```bash
+jq '(.hooks.SessionStart, .hooks.PostToolUse) |= map(select([.hooks[].command] | any(test("agentbox sync")) | not))
+    | del(.hooks.SessionStart | select(length == 0))' ~/.claude/settings.json > /tmp/s.json
+# read /tmp/s.json, then move it into place
+```
+
+The canonical copy of what was installed is `docs/recipes.md`, and
+`agentbox docs setup` prints it pointed at the installed binary.
+
+### The lock order, which four subsystems obey
 
 **Read every other subsystem's state BEFORE taking your own mutex.** The roster
 reads observers (`asking`, `driving`, locks, listens) outside `r.mu`; the lock table
@@ -86,7 +109,7 @@ callback under `s.mu` and calls it outside; shared values read `presentFn`, `ali
 of these backwards deadlocks the daemon on the first board repaint. The comment is
 on `roster.snapshot`.
 
-### Looking at the surface, which is how four of five slices found their defect
+### Looking at the surface, which is how five of five slices found their defect
 
 ```bash
 loginctl show-session $(loginctl | awk '/boris/ {print $1; exit}') -p LockedHint  # no = unlocked
@@ -94,142 +117,92 @@ DISPLAY=:0 agentbox app --tab agents
 DISPLAY=:0 wmctrl -l | grep 'agentbox · app'          # xdotool's --name misses the middle dot
 DISPLAY=:0 wmctrl -ia <WINID> && sleep 1
 DISPLAY=:0 import -window <WINID> /tmp/board.png      # then READ the png, do not assume
-DISPLAY=:0 xdotool getwindowgeometry <WINID>          # REQUIRED before any click - see below
+DISPLAY=:0 xdotool getwindowgeometry <WINID>          # REQUIRED before any click
 ```
 
 **`xdotool` clicks in SCREEN coordinates; `import -window` captures WINDOW pixels.**
-A click computed off a screenshot lands wherever the window happens to sit. This
-window was at (370,170), so two "clicks on a row" both hit the sidebar and navigated
-to Library, and a third "nothing happened, so the row is inert" was a click into
-empty space that proved nothing. Add the origin from `getwindowgeometry` to every
-coordinate you read off a png.
-
-To drive more than a click, take the desktop first - `agentbox control request
-"reason"` - and `agentbox control release` after. A single click on agentbox's own
-already-focused window is the one case that does not need the strip; say it out loud
-with `agentbox speak` before and after, and put the pointer back where it was
-(`xdotool getmouselocation --shell` first).
+Add the origin from `getwindowgeometry` to every coordinate you read off a png. To
+drive more than a click, take the desktop first (`agentbox control request
+"reason"`) and release after.
 
 For rows to look at: `tools/sync-probe.py board` (real sessions, real locks, a real
-parked listener, 150s). For the blackboard specifically, a fixture has to make one
-claim from a process that really dies - see the probe's `dying_claim`, and the trap
-under it.
+parked listener, 150s). Slice 5 needs no fixture - opening any new Claude session
+puts a real row there.
 
 ## Where we are
 
 FR83's goal: agents on this machine that can see, find and wait for each other, plus
-one surface where Boris watches all of them. **Slices 1 to 4 are complete, deployed
-and verified live**, and the composition the whole feature was for now works end to
-end: park on a signal, take a lock, claim a chunk, and watch the chain on the board
-while it happens. Four defects were fixed on the way through this session: the
-roster-only ownership check (mine, found by restarting the daemon), the probe that
-proved nothing (mine, found by reading which pid it recorded), and two legibility
-defects on the surface. We stopped clean: nothing half-applied, `main` pushed, the
-deployed build equal to the newest Go commit.
+one surface where Boris watches all of them. **All five slices are complete,
+deployed and verified live.** Four primitives (presence, locks, signals, shared
+values), the Agents surface showing all four, and now the teaching that makes it the
+default rather than an option nobody uses. We stopped clean except for the push.
 
 ## What this session changed, and why it matters
 
-**Shared values shipped: the blackboard.** One `shared` tool with `op: get | set |
-delete`, `agentbox sync get|set|del` beside it, migrations 0010 and 0011, and
-`shared_max_bytes` in `[sync]`. Five mechanics worth carrying:
+**Slice 5 was the item four sessions had left alone because it looked like prose,
+and it contained a build.** Three of its four doors had been opened by writing
+documentation. The fourth needed a program to run, and it had been wrong since
+session 40. The recipe told you to export a random `AGENTBOX_SESSION_KEY`, which no
+hook can ever see - so every hook wrote a SECOND row, and two half-stale rows read
+as two agents on the one surface whose job is saying how many there are. The tell
+that killed the next idea, using Claude's own session id, was reading two
+environments side by side: this session's mcp child carried `60bb7c0f` while its own
+shell carried `bd75f814`.
 
-- **Zero is a value here, which is slice 3's decision used the other way round.**
-  `after_seq` could fold "omitted" into 0 because nothing needed to demand a zero. A
-  claim is exactly that thing: versions start at 1, so `if_version: 0` means "only
-  if this key does not exist". Hence a pointer on the wire and a *string* flag on
-  the CLI - an int flag cannot tell "0" from "not given", and the difference is a
-  claim versus an overwrite.
-- **Every CAS is ONE SQL statement**, deliberately. Read-then-write under a mutex
-  would be atomic only because this daemon happens to be one process holding one
-  pool - the kind of true a dev instance breaks silently. `RETURNING` is what turns
-  SQL's silence about a losing write into an answer.
-- **The refusal is the interesting half of the API.** A losing claim returns the
-  current value, version, owner and whether that owner still runs, because
-  "somebody was faster" and "somebody died holding this" call for opposite next
-  moves. `stale: true` is a normal outcome, not an error.
-- **Nothing here is ever trimmed**, the deliberate opposite of signals: retention
-  exists because events are history, and a claim is not. A full table (1000 keys)
-  refuses a NEW key rather than evicting somebody's claim, and never blocks an
-  update.
-- **A `get` on a key ending in `*` reads the family.** Not in the design; it is what
-  makes one-key-per-item usable, and it reuses the topic prefix rule and its LIKE
-  escaping rather than inventing a second one.
+**The generalisable lesson: a door nobody has walked through is not a door.** It is
+worth carrying past this feature, because the repo that writes down every trap it
+pays for had this one sitting in a docs file for four sessions.
 
-**The ownership check was wrong, and only restarting the daemon showed it.**
-Ownership was recorded (session key, agent name) and checked against the live
-roster - correct all day, and false for one second per daemon restart. The roster is
-memory only, so a restart empties it, and until every mcp child redials, **every
-owned claim read as abandoned**: an invitation to take over a chunk somebody is
-writing, which is the exact failure the primitive exists to prevent. Migration 0009's
-lesson a third time - "gone" cannot be told from "not here yet" by looking at what is
-left. Migration 0011 records the owning process, and a read answers in two steps: on
-the roster means alive, otherwise the pid decides. Zero means no pid was recorded,
-which is honest for a CLI write.
+**Both halves of the acceptance were run for real**, and neither is visible in a
+diff. A fresh `claude -p` in a scratch directory that had never heard of AgentBox
+appeared on the roster within one second, with no instruction and no token spent on
+the announce. Then a session in this repo, forbidden in its prompt from using any
+tool, answered "two other agents are in this directory with me", named this
+session's purpose, and said how it knew: "this session's startup hook auto-announced
+me and handed back the roster of peers in my area". A SessionStart hook's stdout is
+context, which is the mechanism the second half of the acceptance rests on and which
+the design never stated.
 
-**A probe can pass and prove nothing, and the tell was which pid it recorded.**
-`Session.close()` kills the mcp child, and the pid a claim records is that child's
-PARENT - the agent process, deliberately, because a child may be restarted while the
-agent works on. Every `Session` in one probe run shares the python process as that
-parent, so a "dead" session left a pid that was very much alive. The scenario had
-passed against the roster-only build and would have passed forever. The dying
-claimer is now a process of its own (the probe re-runs itself with an internal
-`__claim` verb), and there are two of them: one gets taken over, one stays abandoned
-across the restart.
-
-**The blackboard is on the Agents surface**, which is the last thing 09-sync.md's
-prose promised. Its own block beside the lock table, abandoned claims sorted to the
-top, the abandoned count in the heading in the warning colour. One frame after a
-deploy captured the distinction the feature rests on: roster rows healed to 21s old
-while the claims kept their true 3m age - presence does not survive a restart,
-coordination state does.
-
-**Also, at Boris's request: a global usage-budget rule** in `~/.claude/CLAUDE.md`.
-Every session periodically reads `claude -p /usage` and hands off when the weekly
-limit is above 98%, or when the session limit is above 98% and its reset is more than
-20 minutes away. This handoff exists because that rule fired at 97%.
+**One thing that looked like a defect and was not.** A hook-announced row reads
+`[detached]` with no pid behind it, which looks like a row nothing can ever retire.
+`provisionalFor` already retires an unattached row after ten minutes. The design had
+thought about it; the ten-minute comment says why.
 
 ## Traps this session paid for
 
-- **`pkill -f` bit again, in the session that documents it** (session 43 did the
-  same). `pkill -f board-shared.py` killed the invoking shell, exit 144, because the
-  pattern matched the shell's own command line. Kill by pid from `ps -eo pid,args`.
-- **`xdotool` screen coordinates versus window pixels** - see above. It cost three
-  screenshots and one false conclusion.
-- **A leftover claim table blocks the next fixture.** Shared values are never
-  trimmed, so a fixture killed mid-run leaves its claims and the next run's
-  `if_version: 0` is refused. Wipe first (`agentbox sync del KEY`).
-- **A repaint racing daemon shutdown logs `shared_read_failed: sql: database is
-  closed`.** Warned and returns nil, beside the pre-existing `signal_post_failed`
-  noise from the same moment. Not a defect; do not chase it.
+- **A recipe that has never been executed is a guess**, however carefully written.
+  This one had survived an adversarial review.
+- **Settings hooks load at session start.** This session installed them and does not
+  run them; only new sessions do. Do not conclude from your own row that the install
+  failed.
+- **`claude -p` is the cheap way to test a hook end to end.** It fires SessionStart,
+  spawns an mcp child and exits, for a few hundred tokens. Poll the roster while it
+  runs; its row goes when the process does.
+- **The scratch project is at**
+  `/tmp/claude-1000/.../scratchpad/unrelated-widget-shop` and the settings backup
+  beside it. Session scratchpads are not durable; the revert recipe above does not
+  depend on them.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `af2db6c9e79e`, clean stamp, verified with `make deployed`. HEAD is
-  `af2db6c` and it is the newest Go commit, so they match exactly.
+- **Deployed:** `0112716e08b5`, clean stamp, verified with `make deployed`. HEAD is
+  `0112716` and they match exactly.
 - **Git:** clean, `main` pushed to `origin` (GitLab, which push-mirrors to GitHub).
-  This session, oldest first: `0a3cab8` (store + proto + migration 0010), `ebe6880`
-  (the daemon subsystem), `345f96a` (MCP tool, CLI, both manuals), `5ad9443` (the pid
-  fix + migration 0011), `3ae2174` (the probe), `2d89de2` (docs), `02e3241` (the
-  surface), `0645d08` (the probe's dying claimer, which the surface fixture exposed),
-  `3528eca` (two surface legibility fixes), `ed792e2` (docs), `af2db6c` (the
-  prefix-miss message + a test).
-- **Background jobs: none.** The board fixture cleaned up and exited; no dev daemons,
-  no stray `sync attach`. `pgrep -ax agentbox` should show exactly the daemon plus
-  one `agentbox mcp` per live session - if a second `agentbox daemon` appears, read
-  its `/proc/<pid>/environ` for `AGENTBOX_INSTANCE` before touching it. **PRs:**
-  none, ever - Boris pushes `main`.
-- **Nothing pending, no locks held, and the blackboard is empty.** `agentbox sync get
-  'claims/*'` answers "no keys under claims/". Every probe deletes its own claims,
-  unlike its signals, which stay by design.
-- **The desktop was unlocked** and the Agents board was looked at directly, four
-  times. If a capture returns the wallpaper, the session is locked again:
-  `loginctl show-session <id> -p LockedHint` answers it. An `agentbox · app` window
-  may still be open on the Library tab from the mis-aimed clicks.
+  This session, oldest first: `0fd62bf` (the derived key + its tests), `67c8e9c` (the
+  records), `0112716` (the `|| true` fix), and this handoff.
+- **`~/.claude/settings.json` carries three new hooks** (see above). Not under
+  version control, so no commit records it.
+- **Background jobs: none.** `pgrep -ax agentbox` should show the daemon plus one
+  `agentbox mcp` per live session; if a second `agentbox daemon` appears, read its
+  `/proc/<pid>/environ` for `AGENTBOX_INSTANCE` before touching it. **PRs:** none,
+  ever - Boris pushes `main`.
+- **Nothing pending, no locks held, blackboard empty.**
+- **The desktop was NOT looked at this session.** Slice 5 needed no surface work, so
+  no capture was taken and the board's rendering of hook-announced rows has not been
+  photographed - see the assumed list.
 - **Usage:** week (all models) at **97%** when this was written, resetting
-  2026-08-05 05:00 Asia/Jerusalem. A session resuming before that reset has almost
-  nothing to spend; one resuming after has a full week. Read it with
-  `claude -p /usage 2>/dev/null | grep -E '^Current '`, and see the new
-  usage-budget section in `~/.claude/CLAUDE.md` for when to hand off.
+  2026-08-05 05:00 Asia/Jerusalem, unchanged from session 44's reading. Read it with
+  `claude -p /usage 2>/dev/null | grep -E '^Current '`.
 - **Rename fallout still on disk, on purpose** (session 36): `~/.config/qq`,
   `~/.local/state/qq`, `~/.cache/qq`, `~/.local/share/qq` are fallback copies;
   `~/.local/bin/qq` is a compat symlink.
@@ -237,33 +210,29 @@ limit is above 98%, or when the session limit is above 98% and its reset is more
 
 ## Blocked on you (Boris)
 
-Nothing - proceed autonomously. Two things you may want to weigh in on, neither of
-which blocks work:
+Nothing - proceed autonomously. Two things you may want to weigh in on:
 
-- **Whether slice 5's teaching is worth building now** or whether FR83 is finished
-  enough at four primitives and the older queue should come first. The design counts
-  teaching as part of the feature ("the difference between a feature that exists and
-  a feature every agent uses"), and three of its four doors are already open; the
-  hooks are the missing one. You were asked at the end of sessions 40 to 43 about
-  continuing FR83 and did not answer, and the default has been to continue in the
-  design's order.
+- **The hooks in your global settings.** They are live, they cost no tokens, and
+  every new session on the machine now announces itself. If the placeholder purpose
+  or the activity lines read wrong on your board, that is a wording call and it is
+  yours. Revert recipe above.
 - **FR84's visual approach.** You said it needs thinking about, so it waits for a
-  mock and your eyes on it.
+  mock and your eyes on it. Unanswered since session 40.
 
 ## I can do solo (no input needed)
 
-1. **Slice 5's hooks** - install the `recipes.md` recipes in a real `settings.json`
-   and run the acceptance list, which retires this file's oldest `[assumed]`.
-2. **FR85 with FR86 together** - one identity colour, one project name, pinned by a
+1. **FR85 with FR86 together** - one identity colour, one project name, pinned by a
    test over a fixed table of identities.
-3. **The lock chip's duplication** - a blocked row says "blocked: lock X, held by Y"
+2. **The lock chip's duplication** - a blocked row says "blocked: lock X, held by Y"
    in the chip AND "waiting on X for 20s, held by Y" in the line below. Honest, but
    it reads twice. Trim the chip on the surface, not in the daemon (the CLI has no
    second line).
-4. **Two additions signals deliberately left out**, either of which is small: the
-   row detail could list recent signals posted and received (bounded store read per
-   row, so on expand rather than in the snapshot), and a listening row could show
-   the wait's own age beside its topics.
+3. **Photograph a hook-announced row** on the real board, which this session never
+   did - the one visual thing slice 5 leaves unverified.
+4. **Two additions signals deliberately left out**: the row detail could list recent
+   signals posted and received (bounded store read per row, so on expand rather than
+   in the snapshot), and a listening row could show the wait's own age beside its
+   topics.
 5. **A shared-value row could open** the way an agent row does, showing the full
    value when it is longer than the 40ch the line gives it. Today it highlights on
    hover and does nothing on click, which is honest but is a dead end a human will
@@ -272,87 +241,86 @@ which blocks work:
 
 ## Facts - verified vs assumed
 
-- [verified] **Slice 4's whole acceptance list, live against the deployed daemon**
-  (`tools/sync-probe.py shared` prints PASS): three sessions racing over a ten-chunk
-  table claim 10 of 10 with zero double-claims and no session winning them all; two
-  chunks abandoned by processes that really died read as ownerless and name the agent
-  that left them, while eight live ones do not; the refusal on an abandoned key says
-  "take it over with if_version 1"; a peer parked on `shared:probe:claims/*` is woken
-  by the take-over with the key and version and NO value; a real `systemctl --user
-  restart` leaves all ten claims with their versions, the live owners still live and
-  the dead one still dead; the table drains; and the CLI exits 0 on a won claim and 1
-  on a lost one.
-- [verified] **The pid fix in the field, twice.** Once through the probe's restart,
-  and once through a `make deploy`: one frame after the daemon came back, two live
-  claims still read as live and the abandoned one still read as abandoned, from a
-  daemon that had never seen either session.
-- [verified] **The surface renders it, photographed.** All three cases at once - two
-  live claims, one `owner gone` with an amber dot and its chip, and an unowned
-  counter reading "no owner: shared state rather than a claim" - with the heading
-  reading "4 · 1 abandoned". Clicking a shared row highlights it and does not expand
-  (inert by design); clicking an agent row still opens its detail panel with the
-  block above it. Both clicks re-done at true screen coordinates after the first
-  attempt missed.
-- [verified] **The CLI's messages, run by hand**: an empty family says "no keys
-  under claims/" and exits 1; a missing key says "does not exist (version 0)" and
-  exits 1; a won claim exits 0; a lost one exits 1 naming the live winner.
-- [verified] `make check` passes (gofmt, vet, race) with the new tests, and slices 1
-  to 3's probes still PASS against this build.
+- [verified] **Slice 5's whole acceptance list, live, twice.** A fresh `claude -p`
+  in a directory that had never heard of AgentBox on the roster in 1s with the
+  placeholder purpose; and a tool-forbidden session in this repo naming its peers
+  and attributing them to its own startup hook. Re-confirmed after the final deploy
+  with the exact installed config: one row, key `proc-675459-4319514`, 1s.
+- [verified] **A hook and an mcp child write ONE row.** A session whose model called
+  `announce` itself held exactly one row while alive (three for this repo, minus this
+  session's two), and its purpose replaced the hook's placeholder in place.
+- [verified] **The two-row failure it fixes, watched happening.** An announce run by
+  hand from this session put a duplicate of this very session on the board, because
+  this session's child predates the fix.
+- [verified] **The daemon-down case is silent.** `sync announce` exits 4 with no
+  daemon; wrapped in `|| true` as installed it exits 0, so no session shows a hook
+  failure during a deploy. Both states run by hand.
+- [verified] **Everything outside `.hooks` in `~/.claude/settings.json` is
+  unchanged**, by diffing `jq -S 'del(.hooks)'` before and after.
+- [verified] **`agentbox docs setup`'s new snippet is valid JSON** and points at the
+  invoking binary, parsed with `jq -e`.
+- [verified] `make check` passes (gofmt, vet, race) with the new tests, and the
+  derived key's five tests run the walk over a real process tree with both shapes in
+  it.
 - [verified] No em-dashes, curly quotes or filler vocabulary in the lines this
-  session added to the docs (checked over `git diff`, not by eye).
-- [assumed] **The empty-roster case on screen.** The condition that used to hide the
-  blackboard and the orphaned locks behind "No agents attached" is fixed, and the fix
-  is one boolean - but it could not be photographed, because this session's own mcp
-  child is always on the roster, so `agents.length === 0` never happened.
+  session added, checked over `git diff` rather than by eye.
+- [assumed] **How a hook-announced row LOOKS on the real board.** Every check this
+  session ran was through the CLI and the JSON. The `[detached]` state and the
+  placeholder purpose have never been photographed, and four of the five slices found
+  their defect by looking at the surface. This is the first thing to do if anything
+  about slice 5 reads wrong.
+- [assumed] **That `provisionalFor` really retires a hook-only row after ten
+  minutes.** Read in the code and it explains what was seen; no run waited it out.
+- [assumed] **A non-Claude agent's derived key.** The walk stops at the first
+  non-placeholder ancestor, so `aider` or a bare script gets its own key - but only
+  Claude Code has been exercised. A hand-run call from Boris's terminal resolves to
+  `gnome-shell`, which is a key rather than a refusal; harmless for the keyless verbs
+  and untested for the others.
 - [assumed] **The 200-key prefix cap on the surface and in a tool result.** Tested at
   the store layer only; no run has ever held more than four shared values.
 - [assumed] **`@me` in a shared key.** The child expands it the way it does for
   topics; nothing exercised it.
-- [assumed] **A Claude session's own `await_signal` parks correctly through a real
-  client for longer than a few seconds.** The daemon side, the CLI and the MCP tool
-  are all exercised, and the keep-alive ticker was measured in session 42 - but no
-  park in the last two sessions lasted more than 20 seconds, so the 1500s ceiling and
-  the ticker have not been exercised together on a signal.
+- [assumed] **A Claude session's own `await_signal` parking through a real client for
+  longer than a few seconds.** The daemon side, the CLI and the MCP tool are all
+  exercised and the keep-alive ticker was measured in session 42, but no park in the
+  last three sessions lasted more than 20 seconds, so the 1500s ceiling and the
+  ticker have not been exercised together on a signal.
 - [assumed] **The `holder parked on ask_user` lock warning** and **the 600s long-wait
   lock warning.** Unit-tested, same `warnOf` path the deadlock refusal proved on
   screen, never run live. Carried from session 42.
-- [assumed] That the hook recipes in [docs/recipes.md](docs/recipes.md) work as
-  written - the CLI under them is exercised, the hooks have never been installed in a
-  real `settings.json`. Left assumed by sessions 40 to 44, and it is exactly what
-  slice 5's acceptance list tests.
 - [assumed] That `webui-demo agents` still renders. Its fixture gained three shared
-  values this session and that path was not re-opened.
+  values in session 44 and that path has not been re-opened.
 
 ## Declutter ledger
 
 | Removed / condensed | Where its knowledge now lives |
 |---|---|
-| The previous handoff's "Slice 4 is the next build" section, with its four facts (post through the signal hub, the store is at 0009, copy the trim/gap pattern for owners, any verb needing an area carries the cwd) | All four are consumed. Slice 4's record in [docs/09-sync.md](docs/09-sync.md) has what each one turned into, including the two migrations and why 0011 is not an edit to 0010 |
-| The previous handoff's FR89 section (dismiss, retract, pending) as a live-state item | Shipped and verified in session 43. FR89 in [docs/07-field-requests.md](docs/07-field-requests.md); the probe's own cleanup is `OwnToasts` in `tools/sync-probe.py` |
-| The previous handoff's FR90 paragraph and its three consequences | Fixed and verified in session 43. Slice 3's record in 09-sync.md ends with it, and session 43 in [docs/history.md](docs/history.md) has the full account |
-| The previous handoff's "signals shipped" section, with the doorbell/AUTOINCREMENT/`after_seq` mechanics and the listening chip | All four are in slice 3's record in 09-sync.md and in session 43 of history.md. The `after_seq` decision is repeated here only where slice 4 inverted it |
-| The previous handoff's "unix socket path 108-byte limit" and "test asserting at the wrong layer" traps | Session 43 in history.md. Neither recurred, and neither is on the path of the work now in front of this file |
-| The previous handoff's board-fixture command list | Kept, minus the lines that only mattered to the signals fixture, plus the xdotool coordinate rule this session paid for |
+| The previous handoff's CLI announce snippet (`export AGENTBOX_SESSION_KEY`, `setsid agentbox sync attach`) and its two "learned the hard way" notes | Deleted rather than moved: it is the thing this session proved wrong, and the double row it warned about was caused by the snippet itself. The mechanism that replaced it is under "What slice 5 changed" above and in 09-sync.md's "Identity: the session key" |
+| The previous handoff's "FR83 has no build left in it except teaching" section, with the four-doors state and the ordering trap | Consumed. Slice 5's record in [docs/09-sync.md](docs/09-sync.md) has what installing it found; the four doors are all open and door 3 says so |
+| The previous handoff's "shared values shipped" section, with its five mechanics (zero is a value, one-SQL-statement CAS, the refusal is the interesting half, nothing is trimmed, `*` reads the family) | All five are in slice 4's record in 09-sync.md and in session 44 of [docs/history.md](docs/history.md). None is on the path of the work now in front of this file |
+| The previous handoff's ownership-check and probe-pid paragraphs | Slice 4's record in 09-sync.md, which carries migration 0009's lesson in full, and session 44 in history.md |
+| The previous handoff's three shared-value traps (`pkill -f`, a leftover claim table, the `shared_read_failed` shutdown race) | Session 44 in history.md. `pkill` is in [CLAUDE.md](CLAUDE.md) where every session reads it; the other two only bite a session running the shared fixture |
+| The previous handoff's global usage-budget paragraph | Shipped into `~/.claude/CLAUDE.md`, which every session loads. Only the current reading is kept, under live state |
 | Nothing else was removed | The rest is either live state (rewritten above) or history that moved into `docs/history.md` when it happened |
 
 ## Map
 
-1. [docs/09-sync.md](docs/09-sync.md) - FR83, the design. Slices 1 to 4 complete;
-   read before any sync work, including what building each slice changed. Four of
-   the five slices found something the design had wrong, and each record says what.
+1. [docs/09-sync.md](docs/09-sync.md) - FR83, the design. **All five slices
+   complete**; read before any sync work. Every slice's record says what building it
+   changed, and all five found something the design had wrong. "Identity: the session
+   key" carries slice 5's mechanism.
 2. [docs/STATUS.md](docs/STATUS.md) - current state, what works, known gaps.
-3. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers; FR89 and
-   FR90 are fixed; FR84/FR85/FR86 are the open ones.
+3. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers; FR84/FR85/FR86
+   are the open ones.
 4. [docs/history.md](docs/history.md) - session by session; this session is
-   "Forty-fourth".
-5. [docs/agent-manual.md](docs/agent-manual.md) - the tool reference, now including
-   `shared` and "Splitting work nobody doubles". `internal/manual/agent.md` is the
-   embedded copy; both were updated, and a test (`TestManualListsEveryTool`) fails
-   if a tool ships without them.
-6. [docs/06-configuration.md](docs/06-configuration.md) - the `[sync]` knobs and why
-   each default is what it is, including why `shared_max_bytes` has no retention
-   knob beside it.
-7. [docs/recipes.md](docs/recipes.md) - the hooks slice 5 needs installed.
+   "Forty-fifth".
+5. [docs/recipes.md](docs/recipes.md) - the hooks, now installed, and why there is no
+   key in the snippet.
+6. [docs/agent-manual.md](docs/agent-manual.md) - the tool reference.
+   `internal/manual/agent.md` is the embedded copy; a test
+   (`TestManualListsEveryTool`) fails if a tool ships without them.
+7. [docs/06-configuration.md](docs/06-configuration.md) - the `[sync]` knobs and why
+   each default is what it is.
 8. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions; read before touching the
    build or the daemon.
 9. `tools/sync-probe.py` - `rider`, `locks`, `signals`, `shared`, `board` scenarios;
