@@ -7,10 +7,10 @@ already share. And the human sees all of it live: every agent's purpose, what
 it is doing right now, what it holds and what it waits on, in one surface.
 
 Requested by Boris 2026-08-04 (session 39). FR83. This document is the design;
-**Slice 1 is complete, deployed and verified live** (2026-08-04, sessions 40 and
-41: session 40 built the roster and the surface, session 41 looked at the surface
-with real rows, fixed the four defects that turned up, and built the discovery
-rider). Slices 2 to 4 and the lock half of slice 5 are not started. It has
+**slices 1, 2 and 3 are complete, deployed and verified live** (2026-08-04,
+sessions 40 to 43: the roster and the surface, then the discovery rider and the
+four defects a real screen turned up, then locks, then signals). Slice 4 (shared
+values) and the teaching half of slice 5 are not started. It has
 survived one adversarial review, whose findings are folded in, plus the mock, the
 live run, and a look at the real surface. Status: **triaged** (all three owner
 calls answered 2026-08-04, recorded at the foot); slice 1 shipped. An ADR comes at implementation kickoff, the way ADR-0012
@@ -494,8 +494,12 @@ The insertion points follow the control/walkthrough precedent:
   response envelope when the caller's area roster changed since its last
   call; the child appends the line to the tool result it hands the model.
 - `internal/store`: migration 0008 - `sync_signals` (seq, topic, identity,
-  data, at; seq is the global cursor) and `sync_shared` (key, value,
-  version, owner, updated). Roster and locks are memory only, on principle:
+  data, at; seq is the global cursor, and AUTOINCREMENT is load-bearing so a
+  trimmed table cannot restart the sequence under a live cursor) - and 0009,
+  `sync_signal_trim` (topic, high_water), which is what makes the gap answerable
+  at all. `sync_shared` (key, value, version, owner, updated) comes with slice 4;
+  it is a later migration rather than 0008's second table, because a table with
+  no code above it rots. Roster and locks are memory only, on principle:
   a hold must not outlive the ability to observe its holder. After a daemon
   restart the locks are gone and the first touch says so honestly.
 - `internal/webui`: an `Agents` surface registered like the others, fed over
@@ -522,7 +526,9 @@ wait_max_s = 1500         # ceiling on any parked call; hitting it returns
 holder_gone_grace_s = 5   # attach drop -> roster row removed; held locks go
                           # orphaned (pid-checked), never silently released
 signal_keep = 1000        # per topic, and:
-signal_keep_days = 7      # whichever trims first; a trimmed cursor reports gap
+signal_keep_days = 7      # whichever trims first. What retention took is recorded
+                          # per topic, so a cursor below it reports gap rather than
+                          # being served a batch with a hole in it
 shared_max_bytes = 16384
 ```
 
@@ -685,15 +691,72 @@ ceilings are unrelated and the manual must not let them read as one number.
    the board and the ex-holder is told on its next call. The one line covered by
    test rather than by a live run is the *holder parked on `ask_user`* warning: the
    toast path is the same `warnOf` the deadlock refusal proved on screen.
-3. **Signals.** Post/await, the global cursor, gap reporting, migration,
-   retention, the built-in `agents:<area>` and `to:<key>` topics. Accept: a
-   tests-green handoff between two sessions with no polling in either
-   transcript; a signal posted with no waiter is picked up after a daemon
-   restart by cursor; a cursor older than retention returns `gap: true`;
-   two waiters on one topic both wake; a direct request/reply round trip
-   between two live sessions; a parked wait outlives the client's idle cap
-   thanks to the child's progress ticks, and `wait_max_s` returns a
-   resumable timeout.
+3. **Signals. COMPLETE, DEPLOYED AND VERIFIED LIVE 2026-08-04 (session 43).**
+   Post/await, the one global cursor, gap reporting, migrations 0008 and 0009,
+   retention, and the built-in `agents:<area>`, `to:<key>` and `lock:<name>`
+   topics. Driven against the deployed daemon by live mcp children
+   (`tools/sync-probe.py signals`) and looked at on screen
+   (`tools/sync-probe.py board`, photographed).
+
+   Five things the build changed in this design:
+
+   - **The gap check as designed was wrong, and only running it showed that.**
+     "A cursor has fallen off the edge if it is below the oldest surviving
+     sequence" reads as obviously correct and is false for a PER-TOPIC retention
+     policy: one quiet topic's ancient row holds the global minimum down while
+     the topic a caller asked about is trimmed out from under it. Measured on a
+     live daemon within an hour of shipping it - cursor 1, oldest surviving 1,
+     sequences 2 and 3 gone from the awaited topic, and the batch reported as
+     complete. "Trimmed" cannot be told from "never existed" by looking at what
+     remains, so migration 0009 records the highest sequence retention took from
+     each topic, and the watermark outlives the topic's own signals. Per topic
+     and not one global number, because `agents:<area>` is the chattiest topic on
+     this machine and a global watermark would cry gap at every unrelated cursor,
+     which is how an agent learns to skim the one answer here it must not.
+   - **The channel is a doorbell, not a delivery.** A woken waiter re-reads the
+     store from its cursor rather than taking a payload off its channel. That is
+     what makes a batch a batch, it is why a buffer of one suffices for a hub
+     that fans out, and it makes a wake that races a trim harmless: the waiter
+     finds nothing and keeps waiting rather than returning an empty batch that
+     would read as "the event happened".
+   - **`after_seq` needs no third state.** The design has "omitted means from now
+     on" and "a cursor means everything I have not seen". Since sequences start
+     at 1, zero IS omitted, so no pointer and no companion flag - and "everything
+     ever retained" is deliberately not offered, because an agent that wants the
+     backlog has a cursor from the peer that made it.
+   - **The state chip the surface was built with in slice 1 had nothing feeding
+     it.** `listening: TOPIC` existed in the frontend from the mock and no daemon
+     ever set it. It does now, from the parked-waiter map, and it sits below
+     `blocked` on purpose: blocked means an agent cannot proceed and somebody else
+     is why, listening means it is waiting to be told and that is the feature
+     working. Photographed side by side, because they look alike and mean
+     opposite things. A listening row also holds its state instead of decaying to
+     `quiet`, which is the whole "a parked agent must not look like a hung one"
+     case.
+   - **A lock keeps both paths, and that was a real choice.** Slice 2 shipped
+     "the human broke your lock" on the discovery rider rather than as a signal.
+     Both stay: the notice is owed to the ex-holder personally and must arrive
+     whatever it calls next, while `lock:<name>` is for whoever is watching that
+     lock - an agent that timed out of a queue and would rather be told the
+     resource freed than park in `acquire_lock` again. Different audience,
+     different mechanism, and neither is a duplicate of the other. The signal is
+     posted by `agentbox` rather than by either agent, because a break is the
+     human's doing and an expiry is nobody's.
+
+   Accept: a tests-green handoff between two sessions with no polling in either
+   transcript; a signal posted with no waiter picked up afterwards by cursor; two
+   waiters on one topic both woken by one post; a timeout returning the cursor
+   unchanged; a direct request round trip over `to:<key>` with `@me` expanded by
+   the child; a departure and a lock release arriving as signals; a cursor below
+   retention's watermark answered with `gap: true` and the sequence a whole read
+   starts from; and the board showing a parked session as listening rather than
+   as working or quiet.
+
+   Two things deliberately NOT built, so the next session does not read them as
+   oversights: the row detail does not list recent signals posted and received
+   (it would cost a store read per row on every snapshot, and the chip already
+   answers what the row is waiting for), and a listening row shows no age of its
+   own beyond its activity line's. Both are additions, not corrections.
 4. **Shared values.** The `shared` tool, CAS, owners, change signals.
    Accept: three sessions drain a ten-chunk claim table (one key per chunk)
    with zero double-claims; restart the daemon mid-drain - claims survive,

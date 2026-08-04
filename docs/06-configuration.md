@@ -170,8 +170,8 @@ prewarm = false            # true loads the model at daemon start, so the first
 [sync]                     # several agents taking turns, and one board to watch
                            # them on (FR83). Nothing here turns the roster on or
                            # off: presence and the Agents surface are not knobs
-wait_max_s = 1500          # the ceiling on a PARKED tool call - a lock wait
-                           # today, a signal wait later. It exists because the
+wait_max_s = 1500          # the ceiling on a PARKED tool call - a lock wait or
+                           # a signal wait. It exists because the
                            # MCP client aborts a call it has heard nothing about
                            # for 1800s (measured, FR88), so a wait that promised
                            # more would be a lie the transport eventually tells.
@@ -188,6 +188,17 @@ holder_gone_grace_s = 5    # a hold whose session died goes orphaned, not free.
                            # counts as proof the work is over. Short, because the
                            # pid check is the real evidence and this only keeps
                            # the probe from racing a process that is exiting
+signal_keep = 1000         # how many signals each topic keeps, and:
+signal_keep_days = 7       # how old any of them may get. Whichever bites first.
+                           # Per topic rather than a global count so one chatty
+                           # topic cannot evict another topic's only signal.
+                           # Neither has an "off": what retention took is recorded
+                           # per topic, so an agent whose cursor falls off the edge
+                           # is TOLD (gap: true, plus the sequence a whole read
+                           # starts from) rather than served a batch with a hole in
+                           # it - which means finite retention costs honesty and
+                           # not correctness, while unbounded growth would be a
+                           # leak with no ceiling
 
 [markdown]
 code_theme = "auto"        # auto | nord | gruvbox | github | onedark | dracula; auto follows the ground

@@ -2013,8 +2013,17 @@ returning same-area peers with `partial`, `set_activity` generalized to write th
 roster always, `list_agents`, derived areas, the `agentbox sync` CLI, the Agents
 rail surface, and the teaching in the same commit as the tools.
 
-Still to build: the discovery rider (slice 1's one missing piece), locks,
-signals, shared values. See the slice list in 09-sync.md.
+**Slices 2 and 3 shipped the same day** (sessions 42 and 43), each verified live
+against the deployed daemon and looked at on screen: the discovery rider, then
+named locks with orphaning, deadlock refusal and break, then signals - post/await
+over one global cursor, per-topic retention that reports a gap rather than serving
+a batch with a hole in it, and the built-in `agents:<area>`, `to:<key>` and
+`lock:<name>` topics. The ledger's four primitives are now three of four: claims
+are locks, the notes are signals, the polling is over. Only the shared-value
+blackboard (slice 4) is left.
+
+Still to build: shared values with compare-and-swap for claim tables. See the
+slice list in 09-sync.md.
 
 Two things this work turned up that were nothing to do with sync, both recorded
 in [history.md](history.md) session 40: `Conn.Serve` never told a blocking

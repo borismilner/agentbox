@@ -1,9 +1,10 @@
 # STATUS
 
-Updated: 2026-08-04, forty-second session (FR83 slice 2 is COMPLETE: locks,
-verified live and on screen; and every blocking card turned out to have been
-dying at 30 minutes, which is now fixed). Session 41 the same day finished slice
-1; session 40 built it; session 39 designed FR83.
+Updated: 2026-08-04, forty-third session (FR83 slice 3 is COMPLETE: signals,
+verified live and on screen, and its gap check was wrong until a live run caught
+it). Session 42 the same day shipped locks and fixed the 30-minute fuse under
+every blocking card; session 41 finished slice 1; session 40 built it; session 39
+designed FR83.
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config
@@ -85,8 +86,39 @@ children and looked at on screen. Four things worth knowing:
   ticker over every tool call. The last guessed number in the design is now
   measured: `tools/idlecap-probe.sh`.
 
-**What remains of FR83:** signals and shared values - slices 3 and 4 in
-[09-sync.md](09-sync.md).
+**Slice 3 is live: agents wake each other.** `post_signal` and `await_signal`
+(plus `agentbox sync post|await`), one global sequence as the only cursor, and
+retention per topic and by age. A signal is stored, so it is delivered whether or
+not anybody was listening: a peer that was busy picks it up later by cursor, and a
+daemon restart loses nothing inside the window. `await_signal` returns everything
+matching since the cursor in ONE batch, so three events that fired while an agent
+was editing arrive together. Three topics the daemon posts itself -
+`agents:<area>` on a join, announce or departure, `lock:<name>` when a lock
+changes hands, and `to:<key>` for a message addressed to one session, which is how
+direct messages ride the same rails with no mailbox subsystem. The composition is
+the point: `await_signal(["tests:green"])` then `acquire_lock("deploy:agentbox")`
+replaces a poll loop that spent a model turn per look. Three things worth knowing:
+
+- **The gap check as designed was wrong, and only running it showed that.** "A
+  cursor has fallen off the edge if it is below the oldest surviving sequence" is
+  false for per-topic retention: one quiet topic's ancient row holds the global
+  minimum down while the awaited topic is trimmed away underneath. Measured live
+  with `signal_keep = 1` - a batch with two sequences missing came back reported as
+  complete. Migration 0009 records what retention took, per topic, so a stale
+  cursor is told (`gap: true`, plus the sequence a whole read starts from). Per
+  topic and not globally, because `agents:<area>` is the chattiest topic here and a
+  global watermark would cry gap at every unrelated read.
+- **The `listening` chip finally has something behind it.** It had been on the
+  surface since slice 1's mock with no daemon ever setting it. It sits below
+  `blocked` deliberately - blocked is contention, listening is the feature working
+  - and a listening row holds its state instead of decaying to `quiet`, so a parked
+  agent does not look like a hung one. Photographed beside a row that had decayed.
+- **A lock keeps two paths on purpose.** "The human broke your lock" still rides
+  the discovery rider, because it is owed to the ex-holder personally; `lock:<name>`
+  is for whoever is watching that lock and would rather be told it freed than park
+  in `acquire_lock` again.
+
+**What remains of FR83:** shared values - slice 4 in [09-sync.md](09-sync.md).
 
 What else remains is the showcase re-record (decided, not yet scheduled) and the
 verification and refinement queue.
@@ -840,30 +872,27 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
-**FR83, multi-agent sync (designed in [09-sync.md](09-sync.md)): slice 1 is
-finished, deployed and verified live as of session 41.** All three gates are
-closed, the surface has been looked at with real rows, and the discovery rider
-ships. Next in the design's order: **slice 2, locks** - and before it or slice 3,
-measure the MCP client's tool-call idle cap, which is the last guessed number in
-that document (`wait_max_s = 1500`). A CLI hold's ceiling is already measured at
-120s for a foreground call and 600s with an explicit timeout, which is why
-`agentbox sync lock NAME -- CMD` cannot be the naive wrap the design first
-described.
+**FR83, multi-agent sync (designed in [09-sync.md](09-sync.md)): slices 1, 2 and 3
+are finished, deployed and verified live as of session 43.** Presence, discovery,
+the rider, the Agents surface, locks, and signals. Every number the design guessed
+is now measured: the client's tool-call idle cap at 1800s
+(`tools/idlecap-probe.sh`, which is why `wait_max_s` is 1500), and a CLI hold's
+ceiling at 120s for a foreground call and 600s with an explicit timeout, which is
+why `agentbox sync lock NAME -- CMD` cannot be the naive wrap the design first
+described. Next in the design's order: **slice 4, shared values** - the
+compare-and-swap blackboard, whose change signals ride the hub that now exists.
 
-**Two defects found in the field on 2026-08-04, both recorded, neither fixed:**
-FR86 (a project is named after whatever directory the agent stood in, so an agent
-in `frontend/src` reports project `src` and gets a second identity colour - fix it
-with FR85, they are the same story) and FR87 (a daemon restart replays the
-announce, so a row comes back with an activity line that was true an hour ago,
-timestamped as fresh). Both are in
-[07-field-requests.md](07-field-requests.md).
+**One defect found in the field on 2026-08-04 and still open:** FR86 (a project is
+named after whatever directory the agent stood in, so an agent in `frontend/src`
+reports project `src` and gets a second identity colour - fix it with FR85, they
+are the same story). FR87 (a daemon restart replaying a stale activity line) was
+fixed in session 42. Both are in [07-field-requests.md](07-field-requests.md).
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (the idle-cap measurement, then FR83's slices 2 to
-4, then FR85 with FR86, FR87, FR84, and the older FR73/FR65/FR74-marker queue); the
-numbered list below is the long tail behind it, kept for the items nothing else
-records.
+carries the current short order (FR83 slice 4, then FR85 with FR86, FR89, FR84,
+and the older FR73/FR65/FR74-marker queue); the numbered list below is the long
+tail behind it, kept for the items nothing else records.
 
 1. **FR74's last open piece: the fullscreen marker.** A fullscreen window may
    cover the strip, but a small always-visible marker must stay on top of it;

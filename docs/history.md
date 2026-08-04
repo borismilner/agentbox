@@ -9,6 +9,74 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Forty-third session (2026-08-04): signals, and a gap check that only running it caught
+
+Resumed from session 42's handoff, which said slice 3 was next and nothing gated
+it. It was right: the measurement that gated slices 2 and 3 was done, the
+keep-alive ticker was already shipped, and the acceptance list read straight off
+the design.
+
+**Slice 3 shipped: signals.** `post_signal` and `await_signal` as MCP tools,
+`sync post` and `sync await` from a shell, one global sequence as the only cursor,
+per-topic and by-age retention, and the built-in `agents:<area>`, `to:<key>` and
+`lock:<name>` topics. What it buys is the shape the whole feature was for: "deploy
+when the tests are green" is `await_signal(["tests:green"])` then
+`acquire_lock("deploy:agentbox")` - two calls, no poll loop spending a model turn
+per look, and the chain visible on Boris's board while it happens.
+
+**The design's gap check was wrong, and reading the diff would never have shown
+it.** The rule as written - a cursor has fallen off the edge if it is below the
+oldest surviving sequence - is obviously correct and false. Retention is *per
+topic*, so one quiet topic's ancient row holds the global minimum down while the
+topic a caller actually asked about is trimmed away underneath it. Found by
+running the thing against a real daemon with `signal_keep = 1`: cursor 1, oldest
+surviving 1, sequences 2 and 3 gone from the awaited topic, and the batch came
+back reported as complete. That is the silent hole FR61's rule exists to close,
+in the one place the design says it must never appear - a batch that skips what
+retention ate is how two agents both come to own one chunk of work.
+
+The fix is a recorded fact rather than a cleverer deduction, because "trimmed"
+cannot be told from "never existed" by looking at what is left: migration 0009
+keeps the highest sequence retention took from each topic, written by the one
+function that deletes, and the row outlives the topic's own signals so a family
+aged away whole can still be answered for. Per topic and not one global number -
+`agents:<area>` is the chattiest topic on this machine, and a global watermark
+would report a gap to every unrelated stale cursor, which is how an agent learns
+to skim the one answer here it must never skim. Two migrations in one slice is the
+honest record of that: 0008 had already been deployed when the live run found the
+hole, and migrations are forward-only on principle.
+
+Three smaller things the build settled:
+
+- **The channel is a doorbell, not a delivery.** A woken waiter re-reads the store
+  from its cursor instead of taking a payload off the channel. That is what makes
+  the batch a batch, it is why a buffer of one is enough for the daemon's first
+  multi-consumer hub, and it makes a wake that races a trim harmless - the waiter
+  finds nothing and keeps waiting rather than returning an empty batch that would
+  read as "the event happened".
+- **`after_seq` needs no third state.** Sequences start at 1, so zero *is*
+  omitted, so "from now on" and "everything I have not seen" fit in one integer
+  with no pointer and no companion flag.
+- **The `listening` chip had been on the surface since slice 1 with nothing
+  feeding it.** It came from the mock and no daemon ever set it. It does now, and
+  it sits below `blocked` deliberately: blocked means an agent cannot proceed and
+  somebody else is why, listening means it is waiting to be told and that is the
+  feature working. Photographed side by side, because they look alike and mean
+  opposite things - and a listening row holds its state rather than decaying to
+  `quiet` after 90 seconds, which is the whole "a parked agent must not look like
+  a hung one" case. The row beside it in the same photograph had decayed, which is
+  what makes the difference visible.
+
+Verified live against the deployed daemon (`tools/sync-probe.py signals`, PASS):
+a parked wait woken by a post, two waiters on one topic both woken by one, a
+signal fired with nobody listening picked up afterwards by cursor, a timeout
+leaving the cursor where it was, a request addressed over `to:<key>` with `@me`
+expanded by the child, a departure and a lock release arriving as signals, and the
+board reading a parked session as listening. The gap path was proved separately
+against a throwaway daemon with retention turned down to one, because the live
+store still holds sequence 1 and has nothing to confess - and the probe says which
+of the two cases it exercised rather than printing PASS either way.
+
 ## Forty-second session (2026-08-04): locks, and the 30-minute fuse under every card
 
 Resumed from session 41's handoff. Its "do this next" was one measurement before
