@@ -53,6 +53,21 @@ One thing that looked like a defect and was not: a hook-announced row reads
 retire. `provisionalFor` already retires an unattached row after ten minutes - the
 design had thought about it, and the ten-minute comment says why.
 
+**Then the board was looked at, and it had a line that slice 5 made false.** A
+detached row read "last seen through an item", written when a card was the only way
+a keyless row could appear. A SessionStart hook is now the usual way, so the line
+was about to say something untrue about nearly every new session on the machine. It
+reads "announced on its behalf" now, which is true of both a hook and a call by
+hand. Five of five slices have now found something by looking at the surface, and
+this one was found in the first screenshot.
+
+One thing that looked like a second defect and was not: this session's own row came
+back from each deploy on its ANNOUNCE-time activity rather than the line
+`set_activity` had moved it to, which is FR87 exactly - fixed in session 42. The
+explanation is in the timestamps: this session's mcp child started at 16:49 and the
+FR87 fix landed at 18:59, so the child runs a binary with no `rememberActivity` in
+it. **Your own row is not evidence about a fix younger than your mcp child.**
+
 The lesson worth keeping is about the shape of the work, not the key: **a door
 nobody has walked through is not a door.** The three open doors had been opened by
 writing prose. The one that needed a program to run was wrong, and had been wrong

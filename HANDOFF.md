@@ -10,9 +10,9 @@ heard of AgentBox put itself on the board in one second.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean; PUSH IS PENDING, see below
-git log --oneline -12       # newest three: 0112716 67c8e9c 0fd62bf
-make deployed               # 0112716e08b5 or newer, NOT "(dirty)"
+git status -sb              # expect clean, in sync with origin/main
+git log --oneline -12       # newest four: 940ce52 0112716 67c8e9c 0fd62bf
+make deployed               # 940ce52ac690 or newer, NOT "(dirty)"
 agentbox pending            # expect "nothing pending"
 agentbox sync agents        # your own row should be here, put there by a hook
 agentbox sync locks         # expect "no locks held"
@@ -135,7 +135,7 @@ FR83's goal: agents on this machine that can see, find and wait for each other, 
 one surface where Boris watches all of them. **All five slices are complete,
 deployed and verified live.** Four primitives (presence, locks, signals, shared
 values), the Agents surface showing all four, and now the teaching that makes it the
-default rather than an option nobody uses. We stopped clean except for the push.
+default rather than an option nobody uses. We stopped clean.
 
 ## What this session changed, and why it matters
 
@@ -178,6 +178,12 @@ thought about it; the ten-minute comment says why.
 - **`claude -p` is the cheap way to test a hook end to end.** It fires SessionStart,
   spawns an mcp child and exits, for a few hundred tokens. Poll the roster while it
   runs; its row goes when the process does.
+- **Your own row is not evidence about a fix younger than your mcp child.** This
+  session's row came back from every deploy on its announce-time activity rather than
+  the line `set_activity` had moved it to, which is FR87 and was fixed in session 42.
+  The child started at 16:49 and the fix landed at 18:59, so it runs a binary without
+  `rememberActivity`. Check `ps -o lstart` against the fix before filing a
+  regression.
 - **The scratch project is at**
   `/tmp/claude-1000/.../scratchpad/unrelated-widget-shop` and the settings backup
   beside it. Session scratchpads are not durable; the revert recipe above does not
@@ -185,11 +191,12 @@ thought about it; the ten-minute comment says why.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `0112716e08b5`, clean stamp, verified with `make deployed`. HEAD is
-  `0112716` and they match exactly.
+- **Deployed:** `940ce52ac690`, clean stamp, verified with `make deployed`. HEAD is
+  `940ce52` plus this handoff's own commit, so the newest code commit is deployed.
 - **Git:** clean, `main` pushed to `origin` (GitLab, which push-mirrors to GitHub).
   This session, oldest first: `0fd62bf` (the derived key + its tests), `67c8e9c` (the
-  records), `0112716` (the `|| true` fix), and this handoff.
+  records), `0112716` (the `|| true` fix), `940ce52` (the board's wording, found by looking at
+  it), and this handoff.
 - **`~/.claude/settings.json` carries three new hooks** (see above). Not under
   version control, so no commit records it.
 - **Background jobs: none.** `pgrep -ax agentbox` should show the daemon plus one
@@ -197,9 +204,13 @@ thought about it; the ten-minute comment says why.
   `/proc/<pid>/environ` for `AGENTBOX_INSTANCE` before touching it. **PRs:** none,
   ever - Boris pushes `main`.
 - **Nothing pending, no locks held, blackboard empty.**
-- **The desktop was NOT looked at this session.** Slice 5 needed no surface work, so
-  no capture was taken and the board's rendering of hook-announced rows has not been
-  photographed - see the assumed list.
+- **The desktop was unlocked and the Agents board was looked at twice**, before and
+  after the wording fix. An `agentbox · app` window may still be open on the Agents
+  tab. If a capture returns the wallpaper the session is locked again:
+  `loginctl show-session <id> -p LockedHint` answers it.
+- **Two dead `unrelated-widget-shop` rows may still be on the board**, left by the
+  `claude -p` fixtures. They are hook-announced rows with no child behind them, so
+  `provisionalFor` retires them ten minutes after the last one was written.
 - **Usage:** week (all models) at **97%** when this was written, resetting
   2026-08-05 05:00 Asia/Jerusalem, unchanged from session 44's reading. Read it with
   `claude -p /usage 2>/dev/null | grep -E '^Current '`.
@@ -264,11 +275,13 @@ Nothing - proceed autonomously. Two things you may want to weigh in on:
   it.
 - [verified] No em-dashes, curly quotes or filler vocabulary in the lines this
   session added, checked over `git diff` rather than by eye.
-- [assumed] **How a hook-announced row LOOKS on the real board.** Every check this
-  session ran was through the CLI and the JSON. The `[detached]` state and the
-  placeholder purpose have never been photographed, and four of the five slices found
-  their defect by looking at the surface. This is the first thing to do if anything
-  about slice 5 reads wrong.
+- [verified] **How a hook-announced row looks on the real board, photographed
+  twice.** Its own area group with the project path, the chip reading "seen, not
+  attached", the derived key on the row, and the age beside the line. The first
+  capture found the defect: the line read "last seen through an item", true only of
+  the card path it was written for and false for the hook that is now the usual
+  source. It reads "announced on its behalf" now, and the second capture confirms it
+  live. Five of five slices have now found something by looking.
 - [assumed] **That `provisionalFor` really retires a hook-only row after ten
   minutes.** Read in the code and it explains what was seen; no run waited it out.
 - [assumed] **A non-Claude agent's derived key.** The walk stops at the first
