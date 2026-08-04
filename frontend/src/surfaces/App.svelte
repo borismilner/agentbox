@@ -248,10 +248,11 @@
     justify-content: space-between;
     padding: 12px 12px 8px 14px;
   }
+  /* The shared label voice (Home's h2), a step down for the narrow column. */
   .label {
-    font-family: var(--k-font-mono);
-    font-size: 0.62rem;
-    letter-spacing: 0.13em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--k-ink-3);
   }

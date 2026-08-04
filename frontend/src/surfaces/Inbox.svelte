@@ -272,12 +272,14 @@
     color: var(--k-ink-3);
   }
 
+  /* The label voice every surface shares (Home's h2): UI caps for headings,
+   * mono only for data. */
   .section {
     display: block;
     padding: 14px 8px 5px;
-    font-family: var(--k-font-mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.14em;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--k-ink-3);
   }

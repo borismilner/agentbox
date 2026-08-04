@@ -188,19 +188,22 @@
 {/if}
 
 <style>
+  /* The serif empty-state voice the viewer and the library use. */
   .blank {
     margin: auto;
     text-align: center;
+    font-family: var(--k-font-read);
+    font-size: 0.9rem;
     color: var(--k-ink-3);
   }
   .blank h2 {
     margin: 0 0 4px;
-    font-size: 1rem;
+    font-size: 1.05rem;
+    font-weight: 400;
     color: var(--k-ink-2);
   }
   .blank p {
     margin: 0;
-    font-family: var(--k-font-read);
   }
 
   .top {
@@ -234,14 +237,16 @@
   }
   .seg {
     display: flex;
+    gap: 2px;
+    padding: 2px;
     border: 1px solid var(--k-edge);
-    border-radius: 7px;
-    overflow: hidden;
+    border-radius: 8px;
     background: var(--k-surface-2);
   }
   .seg button {
-    font-size: 0.74rem;
-    padding: 3px 10px;
+    font-size: 0.75rem;
+    padding: 2px 10px;
+    border-radius: 6px;
     color: var(--k-ink-3);
     background: transparent;
     border: 0;

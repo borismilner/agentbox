@@ -59,25 +59,28 @@
     {:else if stats.empty}
       <p class="empty">Nothing in the {stats.label}. A quiet desktop is the goal.</p>
     {:else}
+      <!-- The same tile grammar as Home: the number first, in mono, with a
+           lowercase word under it. Two dashboards that draw a count two ways
+           read as two products. -->
       <div class="tiles">
         <div class="tile">
-          <span class="k">Interruptions</span>
           <strong>{stats.total}</strong>
+          <span class="l">interruptions</span>
           <span class="sub">{stats.perDay} · {stats.label}</span>
         </div>
         <div class="tile">
-          <span class="k">Questions</span>
           <strong>{stats.questions}</strong>
+          <span class="l">questions</span>
           <span class="sub">blocked an agent</span>
         </div>
         <div class="tile">
-          <span class="k">Answered</span>
           <strong>{stats.answered}<em>{stats.questions ? ` · ${stats.answeredPct}%` : ""}</em></strong>
+          <span class="l">answered</span>
           <span class="sub">{stats.questions - stats.answered} went unanswered</span>
         </div>
         <div class="tile">
-          <span class="k">Median answer</span>
           <strong>{stats.median}</strong>
+          <span class="l">median answer</span>
           <span class="sub">card up to answered</span>
         </div>
       </div>
@@ -163,8 +166,7 @@
   .windows button {
     padding: 3px 11px;
     border-radius: 6px;
-    font-family: var(--k-font-mono);
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     color: var(--k-ink-3);
   }
   .windows button:hover {
@@ -192,29 +194,23 @@
   .tiles {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
-    gap: 10px;
+    gap: 12px;
   }
   .tile {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 12px 14px;
+    padding: 16px 18px;
     border: 1px solid var(--k-edge-soft);
-    border-radius: 10px;
-    background: var(--k-surface-2);
-  }
-  .tile .k {
-    font-family: var(--k-font-mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--k-ink-3);
+    border-radius: 12px;
+    background: var(--k-surface);
   }
   .tile strong {
+    font-family: var(--k-font-mono);
     font-size: 1.55rem;
-    font-weight: 600;
+    font-weight: 500;
     line-height: 1.2;
-    letter-spacing: -0.02em;
+    color: var(--k-ink);
     font-variant-numeric: tabular-nums;
   }
   .tile strong em {
@@ -222,6 +218,10 @@
     font-size: 0.86rem;
     font-weight: 400;
     color: var(--k-ink-2);
+  }
+  .tile .l {
+    font-size: 0.8rem;
+    color: var(--k-ink-3);
   }
   .tile .sub {
     font-size: 0.72rem;
@@ -233,10 +233,9 @@
   }
   .panel h2 {
     margin: 0 0 10px;
-    font-family: var(--k-font-mono);
-    font-size: 0.62rem;
-    font-weight: 500;
-    letter-spacing: 0.13em;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--k-ink-3);
   }
@@ -315,10 +314,9 @@
     border-bottom: 1px solid var(--k-edge-soft);
   }
   th {
-    font-family: var(--k-font-mono);
-    font-size: 0.6rem;
+    font-size: 0.68rem;
     font-weight: 500;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--k-ink-3);
   }

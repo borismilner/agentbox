@@ -374,17 +374,19 @@
     gap: 3px;
     max-width: 760px;
   }
+  /* The shared label voice (Home's h2): UI caps for headings, mono for data. */
   .cap {
-    font-family: var(--k-font-mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.13em;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--k-ink-3);
     margin-bottom: 5px;
   }
   .cap em {
     font-style: normal;
-    letter-spacing: 0.06em;
+    font-weight: 400;
+    letter-spacing: 0.02em;
     text-transform: none;
   }
 
@@ -467,13 +469,15 @@
 
   .seg {
     display: inline-flex;
+    gap: 2px;
+    padding: 2px;
     border: 1px solid var(--k-edge);
-    border-radius: 7px;
-    overflow: hidden;
+    border-radius: 8px;
     background: var(--k-surface-2);
   }
   .seg button {
-    padding: 3px 11px;
+    padding: 2px 11px;
+    border-radius: 6px;
     font-size: 0.75rem;
     color: var(--k-ink-3);
   }
