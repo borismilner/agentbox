@@ -1,11 +1,13 @@
 # STATUS
 
-Updated: 2026-08-04, forty-fourth session (FR83 slice 4 is COMPLETE: shared
-values, verified live against the deployed daemon, and its ownership check was
-wrong until the probe restarted the daemon). **All four sync primitives now
-exist.** Session 43 shipped signals and FR89; session 42 shipped locks and fixed
-the 30-minute fuse under every blocking card; session 41 finished slice 1; session
-40 built it; session 39 designed FR83.
+Updated: 2026-08-04, forty-fifth session (**FR83 is COMPLETE: all five slices**).
+Session 45 installed the hooks in Boris's real `~/.claude/settings.json` and found
+the recipe could not work as written, so the session key is now derived from the
+agent process instead of minted - every session on this machine announces itself
+without being asked, and a new one is told who else is there. Session 44 shipped
+shared values; session 43 shipped signals and FR89; session 42 shipped locks and
+fixed the 30-minute fuse under every blocking card; session 41 finished slice 1;
+session 40 built it; session 39 designed FR83.
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config
@@ -174,7 +176,9 @@ turned up two things the diff did not: the key and value were touching, and an e
 roster hid the blackboard and the orphaned locks behind "No agents attached", which
 is the state where leftover coordination state matters most.
 
-**What remains of FR83:** the teaching half of slice 5.
+**Nothing remains of FR83.** Slice 5's hooks are installed in
+`~/.claude/settings.json`, so a session shows up on the board with no tokens and no
+instruction, and its SessionStart stdout tells it who else is in its area.
 
 What else remains is the showcase re-record (decided, not yet scheduled) and the
 verification and refinement queue.
@@ -928,21 +932,25 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
-**FR83, multi-agent sync (designed in [09-sync.md](09-sync.md)): slices 1 to 4
-are finished, deployed and verified live as of session 44.** Presence, discovery,
+**FR83, multi-agent sync (designed in [09-sync.md](09-sync.md)): all five slices
+are finished, deployed and verified live as of session 45.** Presence, discovery,
 the rider, the Agents surface, locks, signals and shared values - all four
 primitives, and the composition the feature was for: park on a signal, take a
-lock, claim a chunk. Every number the design guessed is now measured: the client's
-tool-call idle cap at 1800s (`tools/idlecap-probe.sh`, which is why `wait_max_s`
-is 1500), and a CLI hold's ceiling at 120s for a foreground call and 600s with an
-explicit timeout, which is why `agentbox sync lock NAME -- CMD` cannot be the naive
-wrap the design first described. What is left of FR83 is the teaching half of slice
-5, plus the blackboard's missing panel on the Agents surface.
+lock, claim a chunk. Plus the teaching that makes it the default: the hooks are in
+`~/.claude/settings.json`, so every session on this machine is on the board whether
+its model remembers anything or not. Every number the design guessed is now
+measured: the client's tool-call idle cap at 1800s (`tools/idlecap-probe.sh`, which
+is why `wait_max_s` is 1500), and a CLI hold's ceiling at 120s for a foreground call
+and 600s with an explicit timeout, which is why `agentbox sync lock NAME -- CMD`
+cannot be the naive wrap the design first described.
 
-Four of the five slices found something the design had wrong, and **every one was
+**All five** slices found something the design had wrong, and **every one was
 found by running it rather than by reading the diff**: slice 1's four surface
 defects, slice 2's CLI-wrap ceiling, slice 3's gap check, slice 4's roster-only
-ownership check. That is the pattern worth carrying to the next feature.
+ownership check, and slice 5's un-shareable minted session key - which four
+sessions had missed by reading a recipe instead of installing it. That is the
+pattern worth carrying to the next feature, and slice 5 is its sharpest form: **a
+door nobody has walked through is not a door.**
 
 **One defect found in the field on 2026-08-04 and still open:** FR86 (a project is
 named after whatever directory the agent stood in, so an agent in `frontend/src`

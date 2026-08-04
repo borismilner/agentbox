@@ -6,18 +6,18 @@ each other, wake each other, message each other - through the daemon they
 already share. And the human sees all of it live: every agent's purpose, what
 it is doing right now, what it holds and what it waits on, in one surface.
 
-Requested by Boris 2026-08-04 (session 39). FR83. This document is the design;
-**slices 1 to 4 are complete, deployed and verified live** (2026-08-04,
-sessions 40 to 44: the roster and the surface, then the discovery rider and the
+Requested by Boris 2026-08-04 (session 39). FR83. This document is the design, and
+**all five slices are complete, deployed and verified live** (2026-08-04,
+sessions 40 to 45: the roster and the surface, then the discovery rider and the
 four defects a real screen turned up, then locks, then signals, then shared
-values). All four primitives exist, and the human's board shows all four. Only the
-teaching half of slice 5 is not started. It has
-survived one adversarial review, whose findings are folded in, plus the mock, the
-live run, and a look at the real surface. Status: **triaged** (all three owner
+values, then the teaching). All four primitives exist, the human's board shows all
+four, and every session on this machine now announces itself without being asked.
+It has survived one adversarial review, whose findings are folded in, plus the mock,
+the live run, and a look at the real surface. Status: **triaged** (all three owner
 calls answered 2026-08-04, recorded at the foot). Each slice's record below says
 what building it changed in this design, which is where the ADR's material lives:
-four of the five slices found something the design had wrong, and every one of
-those was found by running the thing rather than by reading the diff.
+**all five** slices found something the design had wrong, and every one of those
+was found by running the thing rather than by reading the diff.
 
 ## Why
 
@@ -87,6 +87,22 @@ ownership check - who holds this lock, whose roster row, whose private topic
 - is the key and only the key. The control run's ownership check moves to the
 key in the same change; that is a shipped-defect fix riding along, not a
 refactor for its own sake.
+
+**What slice 5 changed here: a minted key is not enough, because a session has
+two mouths.** The child mints, but the session's hooks also speak for it, and a
+minted key is a secret the child cannot hand to a hook - the hook runs inside an
+environment Claude Code has already built. So every hook wrote a SECOND row, and
+two half-stale rows read as two agents on the one surface whose job is saying how
+many there are. Claude's own session id looks like the bridge and is not: the child
+keeps the id it was spawned with, `/clear` mints a new one, and they disagree from
+the first `/clear` on. The key therefore has to be a fact both sides can look up
+rather than something either invents - **the agent process**, `proc-PID-STARTTIME`,
+found by the walk `agentName` already did. The child is that process's child and
+already reported its pid; a hook reaches the same one by stepping over the shell it
+was run through. The start time is load-bearing, not decoration: pids are recycled,
+and without it a new process landing on a dead agent's number would inherit its
+locks and its claims. Minting survives as the last resort, for a child with no
+agent above it.
 
 ## Presence: the attach connection
 
@@ -867,6 +883,33 @@ ceilings are unrelated and the manual must not let them read as one number.
    configuration, announces itself and appears in the roster; and a second
    session in the same repo learns about the first without being told to look.
 
+   **Both verified live, and the slice turned out to contain a build.** Four
+   sessions had left the hooks `[assumed]` and called it documentation; installing
+   them showed the recipe could not work as written, for the reason now recorded
+   under "Identity: the session key". The fix is that the session key is derived
+   from the agent process rather than minted, which is what lets a hook write its
+   own session's row instead of a second one. The lesson generalises past this
+   slice: **a door nobody has walked through is not a door.** The three that were
+   open had all been opened by writing prose, and the one that needed a program to
+   run was the one that had been wrong for four sessions.
+
+   How each half was shown, since neither is visible in a diff. First: a fresh
+   `claude -p` in a scratch directory that had never heard of AgentBox put
+   `unrelated-widget-shop session (purpose not yet stated)` on the roster **within
+   one second**, with no instruction and no token spent on the announce. Second: a
+   session in this repo, forbidden in its prompt from using any tool, answered
+   "two other agents are in this directory with me", named this session's purpose,
+   and attributed it correctly to "this session's startup hook auto-announced me
+   and handed back the roster of peers in my area". That is the acceptance exactly:
+   it learned without looking, because the hook's stdout is context.
+
+   Also confirmed on the way: a session whose model DID call `announce` kept **one**
+   row, not two - the hook's row and the child's are the same row now. And the
+   duplicate is still visible for a session whose mcp child predates the deploy,
+   which is transitional and clears as sessions restart. The `[detached]` state such
+   a row wears is honest and self-clearing: `provisionalFor` retires an unattached
+   row after ten minutes, which is the design already having thought about this.
+
 ## Making it the default for every agent
 
 Boris's mandate is that **every** agent using the platform declares itself and
@@ -894,7 +937,11 @@ doors, each reaching a different kind of agent:
 3. **Hooks, in [recipes.md](recipes.md)** - the layer that keeps the roster
    honest when a model forgets: SessionStart announces, PostToolUse updates
    the activity line. Zero tokens, and it means even an agent that ignores
-   every instruction still shows up truthfully.
+   every instruction still shows up truthfully. **Installed in Boris's real
+   `~/.claude/settings.json` in session 45**, which is what turned this door from
+   a recipe into a door - and which is when the recipe was found to be wrong. The
+   snippet now needs nothing exported, and `agentbox docs setup` prints it beside
+   the other two.
 4. **This machine's own workflow** - `make deploy` wrapped in
    `agentbox sync lock deploy:agentbox`, so the repo that invented the trap
    stops relying on agents remembering it.

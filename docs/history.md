@@ -9,6 +9,55 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Forty-fifth session (2026-08-04): FR83's last slice was documentation until it wasn't
+
+Resumed from session 44's handoff, which said all four sync primitives were built
+and only slice 5's teaching remained. Slice 5 was the item four sessions had left
+alone because it looked like prose: three of its four doors were already open, and
+the fourth was a hook recipe sitting in [recipes.md](recipes.md) that nobody had
+ever installed. It had been this repo's oldest `[assumed]` since session 40.
+
+**Installing it showed the recipe could not work.** It told you to export a random
+`AGENTBOX_SESSION_KEY`, and there is no moment in which to export one: a hook runs
+inside an environment Claude Code has already built, so a key a user can reach is
+either too late or shared by every session on the machine. Claude's own session id
+looked like the bridge, and the check that killed that idea was reading two
+environments side by side - this session's mcp child carried `60bb7c0f`, its own
+shell carried `bd75f814`, because a child keeps the id it was spawned with and
+`/clear` mints a new one. Either way the hook writes a SECOND row, and two
+half-stale rows read as two agents on the one surface whose job is saying how many
+there are. That failure was then watched happening: an announce run by hand put a
+duplicate of this very session on the board.
+
+What both mouths of a session DO share is the process that runs it. The key is now
+derived - `proc-PID-STARTTIME`, off the walk `agentName` already did - so the child
+and the hook arrive at the same answer without either being told. The start time is
+not decoration: pids are recycled, and a new process landing on a dead agent's
+number would otherwise inherit its locks and its claims. Minting survives as the
+last resort. `inheritedSessionKey` may return empty where `sessionKey` may not,
+which is the point: a CLI call belonging to no session must be refused, where a
+random key would put a phantom row on the board once per invocation.
+
+**Both halves of the acceptance were run for real, and neither is visible in a
+diff.** A fresh `claude -p` in a scratch directory that had never heard of AgentBox
+appeared on the roster within one second, no instruction and no token spent. Then a
+session in this repo, forbidden in its prompt from using any tool, answered "two
+other agents are in this directory with me", named this session's purpose, and said
+how it knew: "this session's startup hook auto-announced me and handed back the
+roster of peers in my area". Learning without looking, because a SessionStart hook's
+stdout is context. A third session, this one calling `announce` itself, kept one row
+rather than two.
+
+One thing that looked like a defect and was not: a hook-announced row reads
+`[detached]` with no pid behind it, which seemed to mean a row nothing could ever
+retire. `provisionalFor` already retires an unattached row after ten minutes - the
+design had thought about it, and the ten-minute comment says why.
+
+The lesson worth keeping is about the shape of the work, not the key: **a door
+nobody has walked through is not a door.** The three open doors had been opened by
+writing prose. The one that needed a program to run was wrong, and had been wrong
+for four sessions, in a repo that writes down every trap it pays for.
+
 ## Forty-fourth session (2026-08-04): shared values, and an ownership check that a daemon restart caught
 
 Resumed from session 43's handoff, which said slice 4 was next and nothing gated
