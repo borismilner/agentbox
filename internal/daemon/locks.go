@@ -128,6 +128,15 @@ type locks struct {
 	warn        func(title, body string)
 	changed     func()
 
+	// post puts a lock:NAME signal on the wire when a lock changes hands (FR83
+	// slice 3). It is a SECOND path beside the notices above, and deliberately so:
+	// a notice is owed to the ex-holder personally and must arrive whatever it calls
+	// next, while the signal is for whoever is watching this lock - an agent that
+	// timed out of a queue and would rather be told when the resource frees than
+	// park in acquire again. Different audience, different mechanism. Called outside
+	// l.mu: it reaches the signal hub, which reaches the store.
+	post func(topic string, id proto.Identity, data any)
+
 	// alive is the liveness probe, swappable so a test can kill a pid without
 	// owning a process.
 	alive func(pid int) bool
@@ -171,6 +180,46 @@ func (l *locks) SetObservers(announced func(string) bool, agentOf func(string) (
 	l.mu.Lock()
 	l.announcedFn, l.agentOf, l.askingFn, l.warn, l.changed = announced, agentOf, asking, warn, changed
 	l.mu.Unlock()
+}
+
+// SetPost wires the signal hub. Nil in a daemon without one, and the lock table
+// works exactly as before: the notice on the rider is what the ex-holder is owed,
+// and the signal is the optional broadcast on top of it.
+func (l *locks) SetPost(post func(topic string, id proto.Identity, data any)) {
+	l.mu.Lock()
+	l.post = post
+	l.mu.Unlock()
+}
+
+// handover is one lock changing hands, as the signal describes it. Collected under
+// l.mu and posted outside it, like every other cross-subsystem call here.
+type handover struct {
+	name       string
+	reason     string
+	wasHeldBy  string
+	newHolder  string
+	newHolders string // the session key, so a listener can address the new holder
+}
+
+// lockSignal announces a lock changing hands on its own topic, so an agent that
+// gave up queueing can be told when the resource frees instead of parking in
+// acquire again. Callers must NOT hold l.mu.
+//
+// The poster is agentbox rather than either agent: the daemon is the authority on
+// the lock table, a break is the human's doing and an expiry is nobody's, so
+// attributing the event to the ex-holder would be wrong in three of the four
+// cases. Who held it and who has it now are in the payload.
+func (l *locks) lockSignal(h handover) {
+	l.mu.Lock()
+	post := l.post
+	l.mu.Unlock()
+	if post == nil || h.name == "" {
+		return
+	}
+	post("lock:"+h.name, proto.Identity{Agent: "agentbox"}, map[string]any{
+		"lock": h.name, "reason": h.reason, "was_held_by": h.wasHeldBy,
+		"holder": h.newHolder, "holder_key": h.newHolders, "free": h.newHolders == "",
+	})
 }
 
 // SetPolicy applies the two knobs that bound a wait and an orphan.
@@ -393,12 +442,13 @@ func (l *locks) Release(p proto.SyncLockParams) (proto.SyncLockResult, *proto.RP
 		out.Note = "not yours to release: another agent holds it. Only the holder may release, so a stray call cannot free a resource somebody is still using."
 		return out, nil
 	}
-	l.releaseLocked(name, LockReasonReleased)
+	h := l.releaseLocked(name, LockReasonReleased)
 	l.mu.Unlock()
 
 	l.log.Info(logging.EvSync, "component", "daemon", "sync", "lock_released",
 		"lock", name, "agent", p.Identity.Agent, "key", key)
 	l.pushed()
+	l.lockSignal(h)
 	return proto.SyncLockResult{OK: true, Name: name, Released: true}, nil
 }
 
@@ -415,11 +465,12 @@ func (l *locks) Break(name string) proto.SyncLockResult {
 	}
 	who := held.identity.Agent
 	l.noticeLocked(held.key, fmt.Sprintf("sync: the human broke your lock %s. It has been handed to whoever was waiting. Your own work was NOT stopped - stop touching what the lock protects, or take it again.", name))
-	l.releaseLocked(name, LockReasonBroken)
+	h := l.releaseLocked(name, LockReasonBroken)
 	l.mu.Unlock()
 
 	l.log.Warn(logging.EvSync, "component", "daemon", "sync", "lock_broken", "lock", name, "was_held_by", who)
 	l.pushed()
+	l.lockSignal(h)
 	return proto.SyncLockResult{OK: true, Name: name, Released: true, Reason: LockReasonBroken}
 }
 
@@ -431,6 +482,7 @@ func (l *locks) SessionGone(key string) {
 	}
 	now := time.Now()
 	var released, orphaned []string
+	var handovers []handover
 
 	l.mu.Lock()
 	for name, held := range l.held {
@@ -438,7 +490,7 @@ func (l *locks) SessionGone(key string) {
 			continue
 		}
 		if held.releaseOnDetach {
-			l.releaseLocked(name, LockReasonHolderGone)
+			handovers = append(handovers, l.releaseLocked(name, LockReasonHolderGone))
 			released = append(released, name)
 			continue
 		}
@@ -461,6 +513,9 @@ func (l *locks) SessionGone(key string) {
 	}
 	if len(released) > 0 || len(orphaned) > 0 {
 		l.pushed()
+	}
+	for _, h := range handovers {
+		l.lockSignal(h)
 	}
 }
 
@@ -558,6 +613,7 @@ func (l *locks) tick() {
 	type freed struct{ name, why string }
 	var free []freed
 	var longWaits []*lockWaiter
+	var handovers []handover
 
 	l.mu.Lock()
 	for name, h := range l.held {
@@ -578,7 +634,7 @@ func (l *locks) tick() {
 			}
 			l.noticeLocked(h.key, fmt.Sprintf("sync: your lock %s was released - %s. Take it again if you still need it.", f.name, why))
 		}
-		l.releaseLocked(f.name, f.why)
+		handovers = append(handovers, l.releaseLocked(f.name, f.why))
 	}
 	if l.waitWarn > 0 {
 		for _, q := range l.queue {
@@ -608,6 +664,9 @@ func (l *locks) tick() {
 	}
 	if len(free) > 0 {
 		l.pushed()
+	}
+	for _, h := range handovers {
+		l.lockSignal(h)
 	}
 }
 
@@ -678,7 +737,16 @@ func (l *locks) holdLocked(h *lockHold) { l.held[h.name] = h }
 
 // releaseLocked frees a lock and hands it to the first waiter still there.
 // Callers hold l.mu.
-func (l *locks) releaseLocked(name, reason string) {
+//
+// It returns the handover so the caller can announce it on the lock's topic once
+// it has dropped l.mu. Returning it rather than posting from here is the same rule
+// the rest of this file follows: nothing reaches another subsystem while holding
+// this one's mutex.
+func (l *locks) releaseLocked(name, reason string) handover {
+	h := handover{name: name, reason: reason}
+	if held := l.held[name]; held != nil {
+		h.wasHeldBy = nameOr(held.identity.Agent, held.key)
+	}
 	delete(l.held, name)
 	for len(l.queue[name]) > 0 {
 		w := l.queue[name][0]
@@ -691,11 +759,13 @@ func (l *locks) releaseLocked(name, reason string) {
 			name: name, key: w.key, identity: w.identity, note: w.note,
 			pid: w.pid, since: now, releaseOnDetach: w.releaseOnDetach,
 		})
+		h.newHolder, h.newHolders = nameOr(w.identity.Agent, w.key), w.key
 		// Buffered, so this cannot block on a waiter that has stopped listening.
 		// One that has given up releases what it was handed (see giveUp).
 		w.out <- lockGrant{reason: reason}
-		return
+		return h
 	}
+	return h
 }
 
 // grantedLocked is the waiter's side of a grant: it already owns the hold the
@@ -726,12 +796,13 @@ func (l *locks) giveUp(w *lockWaiter, name, key string) proto.SyncLockResult {
 		// already dropped. Check the channel rather than assume.
 		select {
 		case <-w.out:
-			l.releaseLocked(name, LockReasonReleased)
+			h := l.releaseLocked(name, LockReasonReleased)
 			out := l.pictureLocked(name, key)
 			l.mu.Unlock()
 			l.log.Info(logging.EvSync, "component", "daemon", "sync", "lock_released",
 				"lock", name, "key", key, "why", "granted after the waiter gave up")
 			l.pushed()
+			l.lockSignal(h)
 			out.OK, out.Name = true, name
 			out.Note = "granted just as you stopped waiting, so it was released again rather than held by a call that had moved on. Ask again if you still need it."
 			return out

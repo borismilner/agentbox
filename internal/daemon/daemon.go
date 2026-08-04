@@ -173,6 +173,13 @@ type Config struct {
 	SyncWaitMax         time.Duration
 	SyncWaitWarn        time.Duration // 0 disables
 	SyncHolderGoneGrace time.Duration
+	// Signal retention (FR83 slice 3), per topic and by age, whichever trims
+	// first. Neither has an "off": a signal table that grew forever would be a leak
+	// with no upper bound, and a cursor that fell off a trimmed edge is reported
+	// rather than served silently, so finite retention costs honesty and not
+	// correctness.
+	SignalKeep     int
+	SignalKeepDays int
 }
 
 func (c *Config) fill() {
@@ -305,6 +312,10 @@ type Daemon struct {
 	// the same reason again: an acquire is parked for as long as the caller is
 	// patient, and holding d.mu across that would stop the daemon.
 	locks *locks
+	// signals is how agents wake and message each other (FR83 slice 3). Same
+	// isolation once more, and it is the most parked of the three: await is the
+	// design's one sanctioned way for an agent to spend a turn doing nothing.
+	signals *signals
 
 	closing atomic.Bool // FR45: set at shutdown so a teardown disconnect is not shown as "caller gone"
 }
@@ -510,6 +521,22 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	// free the resources its work may still be using (locks.go, the orphan rule).
 	d.roster.SetOnGone(d.locks.SessionGone)
 	d.roster.SetLocks(d.locks.rows)
+	// Signals (FR83 slice 3). The store is the whole point - a signal is delivered
+	// whether or not anybody was waiting - so the subsystem is built with it rather
+	// than falling back to a hub that would lose a hand-off on the first restart.
+	d.signals = newSignals(log)
+	d.signals.SetStore(st)
+	d.signals.SetRetention(cfg.SignalKeep, cfg.SignalKeepDays)
+	d.signals.SetObservers(d.roster.announced, d.roster.changed)
+	// What a session is parked on, so a listening row says so instead of looking
+	// hung. Read-only from the roster's side, like every other observer.
+	d.roster.SetListens(d.signals.listens)
+	// The built-in topics, both of them the same mechanism: a join, an announce or
+	// a departure is itself a signal, so an agent that is genuinely idle can park on
+	// its area instead of polling the roster. A lock changing hands is the other
+	// one - see the note on postLockSignal.
+	d.roster.SetPost(d.postSignal)
+	d.locks.SetPost(d.postSignal)
 	// The scheduler is built here but not STARTED here: it wants a Runner, and
 	// the surface that can carry an assignment out is wired after the daemon
 	// exists (SetRunner, then StartAssignments). A daemon that never gets one
@@ -847,6 +874,23 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 		return d.locks.Break(p.Name), nil
 	case proto.MethodSyncLocks:
 		return proto.SyncLocksResult{OK: true, Locks: d.locks.Snapshot()}, nil
+	// Signals (FR83 slice 3, signals.go). await parks like acquire does, so ctx is
+	// load-bearing again: a caller that goes away must take its registration with
+	// it, or the hub fans out to a listener that will never read.
+	case proto.MethodSyncPost:
+		p, rpcErr := signalParams[proto.SyncPostParams](params, "sync_post",
+			`{"identity": {...}, "topic": "kind:scope", "data"?: {...}}`)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return d.signals.Post(p)
+	case proto.MethodSyncAwait:
+		p, rpcErr := signalParams[proto.SyncAwaitParams](params, "sync_await",
+			`{"identity": {...}, "topics": ["kind:scope", "done:*"], "after_seq"?: N, "timeout_s"?: N}`)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return d.signals.Await(ctx, p, d.cfg.SyncWaitMax)
 	case proto.MethodProgress:
 		var u proto.ProgressUpdate
 		if err := json.Unmarshal(params, &u); err != nil {

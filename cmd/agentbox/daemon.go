@@ -143,6 +143,8 @@ func daemonConfig(cfg config.Config) daemon.Config {
 		SyncWaitMax:         time.Duration(cfg.Sync.WaitMaxS) * time.Second,
 		SyncWaitWarn:        time.Duration(cfg.Sync.WaitWarnS) * time.Second,
 		SyncHolderGoneGrace: time.Duration(cfg.Sync.HolderGoneGraceS) * time.Second,
+		SignalKeep:          cfg.Sync.SignalKeep,
+		SignalKeepDays:      cfg.Sync.SignalKeepDays,
 	}
 }
 
@@ -329,6 +331,10 @@ func runDaemon() {
 	// died, a ttl that has run out, a wait long enough to be contention. None of
 	// those is caused by a verb, so nothing else would notice them.
 	d.StartLocks()
+	// Retention's clock (FR83 slice 3). Signals are trimmed by count on every post,
+	// but nothing a caller does makes a signal a week old, so age needs its own
+	// tick for the same reason the two above do.
+	d.StartSignals()
 	// And the rider, which is how an agent already deep in a file hears that it
 	// has company: it rides back on whatever call it makes next (FR83).
 	lst.SetRider(d.SyncRider)
@@ -369,8 +375,12 @@ func runDaemon() {
 		}
 		d.StopAssignments() // no new runs; one in flight is left to finish
 		d.StopRoster()      // stop repainting a board that is about to go
-		u.ShutdownApp()     // close button only hides to tray; quit ends the sessions
-		d.BeginShutdown()   // a disconnect now is teardown, not a caller drop (FR45)
+		// Before st.Close() below, and that ordering is the reason this call exists:
+		// retention's tick writes to the store, so a trim in flight when the database
+		// closed would be a use-after-close on the way out.
+		d.StopSignals()
+		u.ShutdownApp()   // close button only hides to tray; quit ends the sessions
+		d.BeginShutdown() // a disconnect now is teardown, not a caller drop (FR45)
 		cancel()
 		lst.Close()
 		st.Close()

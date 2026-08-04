@@ -58,6 +58,14 @@ type Config struct {
 		// on it would train the human to ignore the toast that matters.
 		WaitWarnS        int `toml:"wait_warn_s"`
 		HolderGoneGraceS int `toml:"holder_gone_grace_s"`
+		// Signal retention, per topic and by age, whichever trims first. Per topic
+		// rather than globally so one chatty topic cannot evict another topic's only
+		// signal. Neither has an "off": a cursor that falls off the trimmed edge is
+		// REPORTED (gap: true, with the oldest surviving sequence), so finite
+		// retention costs honesty rather than correctness, and unbounded growth would
+		// be a leak with no ceiling.
+		SignalKeep     int `toml:"signal_keep"`
+		SignalKeepDays int `toml:"signal_keep_days"`
 	} `toml:"sync"`
 	// Panel is the drop-down session panel (M10). Hotkey is grabbed by the
 	// daemon on X11, so it works with no desktop configuration; an empty string
@@ -207,6 +215,8 @@ func Default() Config {
 	c.Sync.WaitMaxS = 1500
 	c.Sync.WaitWarnS = 600
 	c.Sync.HolderGoneGraceS = 5
+	c.Sync.SignalKeep = 1000
+	c.Sync.SignalKeepDays = 7
 	c.Panel.Hotkey = "Ctrl+Alt+grave"
 	c.Panel.HeightFrac = 0.5 // half the monitor, never more: see the clamp below
 	c.Panel.WidthFrac = 0.74

@@ -134,12 +134,18 @@ type roster struct {
 	seenUnattached map[string]time.Time
 
 	// observers answer the questions a self-report cannot: who is parked on a
-	// human answer, who holds the desktop, and who holds or waits on a lock. All
-	// three are already tracked elsewhere, so the roster asks rather than
-	// duplicating.
+	// human answer, who holds the desktop, who holds or waits on a lock, and who is
+	// listening for a signal. All four are already tracked elsewhere, so the roster
+	// asks rather than duplicating.
 	askingFn  func() map[string]bool
 	drivingFn func() string
 	lockRows  func() (map[string][]proto.SyncHold, map[string]proto.SyncWait)
+	listensFn func() map[string]proto.SyncListen
+
+	// post puts a signal on a topic (FR83 slice 3), so a join, an announce and a
+	// departure are events an idle agent can park on rather than poll for. Called
+	// outside r.mu, like every other subsystem call: signals reach the store.
+	post func(topic string, id proto.Identity, data any)
 
 	// onGone is told when a session's attach drops, after the row is removed.
 	onGone func(key string)
@@ -196,6 +202,25 @@ func (r *roster) SetLocks(rows func() (map[string][]proto.SyncHold, map[string]p
 	r.mu.Unlock()
 }
 
+// SetListens wires what each session is parked on in await_signal (FR83 slice 3),
+// which is what makes a listening row say so instead of decaying to quiet and
+// looking like a session that died. Nil in a roster with no signals.
+func (r *roster) SetListens(listens func() map[string]proto.SyncListen) {
+	r.mu.Lock()
+	r.listensFn = listens
+	r.mu.Unlock()
+}
+
+// SetPost wires the signal hub, so presence events are also signals. Nil in a
+// roster with no signals, and the roster works exactly as before without it: the
+// rider is how a working agent hears about company, and the topic is for one that
+// is deliberately idle.
+func (r *roster) SetPost(post func(topic string, id proto.Identity, data any)) {
+	r.mu.Lock()
+	r.post = post
+	r.mu.Unlock()
+}
+
 // SetOnGone wires what happens when a session's attach drops. The roster's own
 // answer is to remove the row; the lock table's is more careful, because a dead
 // child does not prove the work it started is over.
@@ -240,7 +265,7 @@ func (r *roster) agentOf(key string) (proto.SyncAgent, bool) {
 	// Deliberately without holds and waits: this is what a LOCK result embeds, and
 	// a holder's own hold on the lock being asked about would be saying the same
 	// thing twice in one answer.
-	a.State, a.Detail = derivedState(row, key, asking, driving, nil, now)
+	a.State, a.Detail = derivedState(row, key, asking, driving, nil, nil, now)
 	return a, true
 }
 
@@ -274,6 +299,41 @@ func (r *roster) lockState() (map[string][]proto.SyncHold, map[string]proto.Sync
 		return map[string][]proto.SyncHold{}, map[string]proto.SyncWait{}
 	}
 	return rows()
+}
+
+// listenState is who is parked on which topics, read outside r.mu for the reason
+// snapshot explains. An empty map when there is no signal hub, which keeps every
+// row rendering correctly in a daemon built without one.
+func (r *roster) listenState() map[string]proto.SyncListen {
+	r.mu.Lock()
+	listens := r.listensFn
+	r.mu.Unlock()
+	if listens == nil {
+		return map[string]proto.SyncListen{}
+	}
+	return listens()
+}
+
+// presenceSignal posts a join, an announce or a departure on the area's own topic
+// (FR83 slice 3). Callers must NOT hold r.mu: this reaches the signal hub, which
+// reaches the store.
+//
+// The discovery rider and this topic answer the same question for two different
+// agents. The rider reaches one that is mid-task, by riding whatever it calls
+// next; this reaches one that is deliberately idle and has parked on
+// `agents:<area>` rather than polling the roster. Neither replaces the other, and
+// an agent doing neither still sees peers in its own announce.
+func (r *roster) presenceSignal(event string, id proto.Identity, area, purpose string) {
+	r.mu.Lock()
+	post := r.post
+	r.mu.Unlock()
+	if post == nil || area == "" {
+		return
+	}
+	post("agents:"+area, id, map[string]any{
+		"event": event, "agent": id.Agent, "key": id.Key,
+		"project": id.Project, "area": area, "purpose": purpose,
+	})
 }
 
 // betterIdentity keeps the most informative version of a session's identity
@@ -333,15 +393,22 @@ func (r *roster) Attach(ctx context.Context, p proto.SyncAttachParams) (proto.Sy
 	// A redial after a daemon restart replays the announce, so an existing
 	// purpose is kept rather than blanked by the reconnect.
 	delete(r.seenUnattached, key)
+	area, purpose := row.area, row.purpose
 	r.mu.Unlock()
 
 	r.log.Info(logging.EvSync, "component", "daemon", "sync", "attach",
 		"agent", p.Identity.Agent, "project", p.Identity.Project, "key", key, "pid", p.PID)
 	r.changed()
+	r.presenceSignal("join", p.Identity, area, purpose)
 
 	<-ctx.Done()
 
 	r.mu.Lock()
+	if row := r.rows[key]; row != nil {
+		// Read before the delete: a departure has to name the area it left, and the
+		// row is the only thing that knows it.
+		area, purpose = row.area, row.purpose
+	}
 	delete(r.rows, key)
 	gone := r.onGone
 	r.mu.Unlock()
@@ -351,6 +418,7 @@ func (r *roster) Attach(ctx context.Context, p proto.SyncAttachParams) (proto.Sy
 		gone(key)
 	}
 	r.changed()
+	r.presenceSignal("leave", p.Identity, area, purpose)
 
 	return proto.SyncResult{OK: true}, nil
 }
@@ -409,6 +477,7 @@ func (r *roster) Announce(p proto.SyncAnnounceParams) (proto.SyncResult, *proto.
 	r.log.Info(logging.EvSync, "component", "daemon", "sync", "announced",
 		"agent", p.Identity.Agent, "key", key, "purpose", row.purpose, "area", area)
 	r.changed()
+	r.presenceSignal("announce", p.Identity, area, strings.TrimSpace(p.Purpose))
 
 	res := r.peersOf(key, area)
 	res.OK = true
@@ -533,11 +602,11 @@ func (r *roster) riderFor(key string) string {
 		if peer.purpose != "" {
 			what = `"` + peer.purpose + `"`
 		}
-		// Without the lock state: this runs under r.mu, and reaching the lock
-		// table from here would invert the two subsystems' lock order (see
-		// snapshot). A peer's lock is one call away on the board; what the rider
-		// owes the agent is that the peer EXISTS.
-		state, _ := derivedState(peer, k, asking, driving, nil, now)
+		// Without the lock or listen state: this runs under r.mu, and reaching
+		// another subsystem from here would invert the lock order (see snapshot). A
+		// peer's lock is one call away on the board; what the rider owes the agent is
+		// that the peer EXISTS.
+		state, _ := derivedState(peer, k, asking, driving, nil, nil, now)
 		return fmt.Sprintf("%s %s (%s)", name, what, state)
 	}
 
@@ -648,6 +717,7 @@ func (r *roster) snapshot() ([]proto.SyncAgent, bool) {
 	// the two subsystems opposite lock orders and deadlock the daemon.
 	asking, driving := r.observed()
 	holds, waits := r.lockState()
+	listens := r.listenState()
 
 	r.mu.Lock()
 	now := time.Now()
@@ -672,6 +742,11 @@ func (r *roster) snapshot() ([]proto.SyncAgent, bool) {
 			a.ActivitySinceMS = now.Sub(row.activityAt).Milliseconds()
 		}
 		a.Holds = holds[key]
+		var listen *proto.SyncListen
+		if l, ok := listens[key]; ok {
+			listen = &l
+			a.Listening = listen
+		}
 		var wait *proto.SyncWait
 		if w, ok := waits[key]; ok {
 			// The holder's NAME comes from here rather than from the lock table: the
@@ -684,7 +759,7 @@ func (r *roster) snapshot() ([]proto.SyncAgent, bool) {
 			wait = &w
 			a.Waiting = wait
 		}
-		a.State, a.Detail = derivedState(row, key, asking, driving, wait, now)
+		a.State, a.Detail = derivedState(row, key, asking, driving, wait, listen, now)
 		out = append(out, a)
 	}
 	partial := len(r.seenUnattached) > 0
@@ -709,7 +784,12 @@ func (r *roster) snapshot() ([]proto.SyncAgent, bool) {
 // stopped, and a row that says "working" while its call is parked behind another
 // agent hides the one thing the human could act on. It names the holder, because
 // "blocked" without a holder is a puzzle rather than a state.
-func derivedState(row *rosterRow, key string, asking map[string]bool, driving string, wait *proto.SyncWait, now time.Time) (string, string) {
+// Listening sits below blocked and above working, and the order between those two
+// is the whole distinction the design draws: blocked means an agent cannot
+// proceed and somebody else is why, while listening means it is waiting to be told
+// and that is exactly what it meant to do. One is contention, the other is the
+// feature working.
+func derivedState(row *rosterRow, key string, asking map[string]bool, driving string, wait *proto.SyncWait, listen *proto.SyncListen, now time.Time) (string, string) {
 	switch {
 	case asking[key]:
 		return StateAsking, ""
@@ -724,6 +804,8 @@ func derivedState(row *rosterRow, key string, asking map[string]bool, driving st
 			detail += fmt.Sprintf(", %d ahead of you", wait.Ahead)
 		}
 		return StateBlocked, detail
+	case listen != nil && len(listen.Topics) > 0:
+		return StateListening, strings.Join(listen.Topics, ", ")
 	case !row.announced:
 		return StateUnannounced, ""
 	case !row.attached:
@@ -927,6 +1009,40 @@ func (d *Daemon) lockWarn(title, body string) {
 // orphan whose process has died and a wait worth warning about.
 func (d *Daemon) StartLocks() { d.locks.Start() }
 func (d *Daemon) StopLocks()  { d.locks.Stop() }
+
+// StartSignals and StopSignals run retention's clock. Delivery needs no clock;
+// what needs one is the fact that a week has passed, which no verb can cause.
+func (d *Daemon) StartSignals() { d.signals.Start() }
+func (d *Daemon) StopSignals()  { d.signals.Stop() }
+
+// postSignal is how the daemon's own subsystems put an event on a topic: a
+// presence change from the roster, a lock changing hands from the lock table.
+//
+// It goes through the same store the agents' posts do, but not through the same
+// gate: the caller here is the daemon acting on an agent's behalf, so whether that
+// agent has announced is not this call's question. Errors are logged and
+// swallowed on purpose - a signal that could not be stored must not fail the
+// attach, announce or release that caused it, because the event is a by-product of
+// that verb rather than its contract.
+func (d *Daemon) postSignal(topic string, id proto.Identity, data any) {
+	if d.signals == nil {
+		return
+	}
+	var raw json.RawMessage
+	if data != nil {
+		b, err := json.Marshal(data)
+		if err != nil {
+			d.log.Warn(logging.EvSync, "component", "daemon", "sync", "signal_encode_failed",
+				"topic", topic, "error", err.Error())
+			return
+		}
+		raw = b
+	}
+	if err := d.signals.emit(topic, id, raw); err != nil {
+		d.log.Warn(logging.EvSync, "component", "daemon", "sync", "signal_post_failed",
+			"topic", topic, "error", err.Error())
+	}
+}
 
 // BreakLock is the human's, from the Agents surface. It reassigns the lock and
 // tells the ex-holder; it does not stop the ex-holder's work, and the copy beside
