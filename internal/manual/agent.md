@@ -227,8 +227,9 @@ artifact sandbox, no network) and its channel is two-way: values out with
 `window.agentbox.emit("params", {key: value})`, merged over what is stored;
 values in from `window.agentbox.params`, refreshed by an `agentbox:params`
 window event on every change. What the human sets there is what
-`read_assignment` returns. Declare a spec as well, because a panel that fails
-to load must never make an assignment uneditable.
+`read_assignment` returns. Declare a spec as well - a panel that fails to load
+must never make an assignment uneditable, and a key with no knob behind it is
+dropped by the next `params` update.
 
 Write for an agent nobody is watching: say what to do, what is worth
 interrupting for, and how to report.

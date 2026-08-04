@@ -72,11 +72,57 @@ keys - with no spec that is an empty map, so every saved value vanished at the
 door while the save path had deliberately kept them. Both paths now use
 `mergeParams`.
 
-Commits `c15fce6`, `bacb64b`, `368ffbf`; 568 tests green. **This entry was
-reconstructed from those commits and STATUS after the fact** (the session that
-wrote them left STATUS naming session 38 but added no entry here), so it
-records what the code says and not what that session saw on screen - the
-panel's live behaviour is theirs, and unverified elsewhere in these docs.
+A second defect only the live pass could find: the panel rendered its chrome
+unstyled with code and preview both showing, because every `.k-artifact` rule
+in `app.css` is scoped under `.k-md` and the host div did not carry it. The
+markdown knob beside it was worse - `use:markdown` only hydrates a node that
+already holds the HTML, and that div was empty, so a `markdown` block in a
+spec had been rendering nothing at all since M12. Both fixed in `e77029f`.
+
+Commits `c15fce6`, `bacb64b`, `368ffbf`, `e77029f`; 568 tests green.
+
+**Exercised live** on the deployed daemon (app window, real `claude` children,
+values read back out of SQLite each time), with a probe assignment carrying
+both typed knobs and a React panel:
+
+- the panel loads in the sandbox already holding its values
+  (`{"threshold":80,"window":"7d"}`) with its controls set to them, so the
+  inbound push beats first paint;
+- clicking `24h` inside the panel wrote `window` to the database AND moved the
+  typed enum knob above it;
+- typing into a `note` field the spec has no knob for stored that key too, and
+  then dragging the typed threshold slider left it intact - the regression the
+  `currentValues()` change exists for;
+- `update_assignment` from an agent, with nobody touching the window, moved the
+  panel's own buttons and slider and both typed knobs (the `agentbox:assignments`
+  poke; the surface no longer polls at all). It also dropped the undeclared
+  `note` key with a warning, which is the save path's deliberate rule and worth
+  knowing: **a key only the panel writes survives until an agent's next
+  `params` update**, so declare a knob for every key a panel writes;
+- a run substituted the values it was given (`Window 7d, threshold 80.`) and
+  the surface showed it start and finish without a poll.
+
+Not exercised: the bar note for a wrong event name (the routing is unit-tested,
+the sentence is not). One accident to know about: a stray click fired one
+manual run of Boris's own "Claude usage check" assignment - read-only, but it
+is in his history and was not his.
+
+Three mechanics, all of which cost time here:
+
+- **`agentbox control release` matches on agent identity**, and the CLI takes its
+  identity from the process. Requesting through `timeout 180 agentbox control
+  request` registers the holder as `timeout`, and a bare `agentbox control
+  release` then answers `held by timeout` and does nothing. Wrap both ends the
+  same way.
+- **A config reload resizes windows** (`resizeToConfig`), so another agent
+  touching `config.toml` mid-script moves the window your coordinates were
+  measured against. Two `hotkey.rebound` pairs in the log are what a stray
+  click looks like afterwards.
+- **`import -window` can capture a window that is not repainting** (occluded,
+  or on another monitor): the shot looked plausible and was minutes stale, and
+  it was the mismatch between it and `read_assignment` that gave it away. Raise
+  the window first - `agentbox drive --window TITLE run -` with a `move` step
+  does it, and its target lock reports which window each event went into.
 
 ## Thirty-seventh session (2026-08-04): one visual language (FR81)
 

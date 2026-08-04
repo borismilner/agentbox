@@ -494,7 +494,7 @@ agentbox webui-demo panel                  # the drop-down console with a canned
 
 `make check` = gofmt + vet + `go test ./... -race`; **21 packages** (incl.
 `internal/hand`, `internal/session`, `internal/webui`, `internal/speech` and
-`frontend`), **568 tests**, all green as of the custom panel (session 37;
+`frontend`), **568 tests**, all green as of the custom panel (session 38;
 the count is `grep -c "^func Test"` top-level tests, 2026-08-04). There is no
 automated *visual* check (see "Known gaps"); what a surface is *allowed to
 do* is tested, and so is the HTML Go hands it.

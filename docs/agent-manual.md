@@ -512,6 +512,11 @@ What the human sets in the panel is what `read_assignment` returns and what
 the next run's `{{key}}` substitution uses, so a panel is also how a run gets
 input from the human without asking: leave a control, read the value.
 
+**Declare a knob for every key your panel writes.** A panel may write a key no
+knob describes and it is stored - but the save path drops undeclared keys (with
+a warning), so the next `update_assignment` that sends any `params` erases it.
+A `text` knob you never look at is enough to make the key permanent.
+
 Write the prompt for an agent nobody is watching. Say what to do, what counts
 as worth interrupting for, and how to report - `notify_user` for something
 worth knowing, `level="urgent"` when the number is bad, `show_document` for a
