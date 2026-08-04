@@ -205,6 +205,59 @@ func TestControlOnlyTheHolderCanWriteTheActivityLine(t *testing.T) {
 	}
 }
 
+func TestControlTwoSameNamedSessionsAreNotEachOther(t *testing.T) {
+	// The FR74 defect FR83's session key fixes, and it is not hypothetical: on
+	// 2026-08-04 three Claude sessions shared this checkout, and any of them
+	// could have written the driver's HANDS OFF line, because ownership was
+	// agent-name equality and `Agent` is only the parent process name. Both
+	// sessions here are called "claude" in the same project - the identical
+	// triple - and differ only by key.
+	c, _ := newTestControl()
+	first := proto.Identity{Agent: "claude", Project: "agentbox", Key: "aaaa1111"}
+	second := proto.Identity{Agent: "claude", Project: "agentbox", Key: "bbbb2222"}
+
+	c.Request(context.Background(), first, "driving", 30*time.Millisecond)
+	c.Activity(first, "checking the fullscreen marker")
+
+	if res := c.Activity(second, "formatting your disk"); res.Granted {
+		t.Errorf("a same-named second session wrote the holder's activity line: %+v", res)
+	}
+	if got := c.State().Activity; got != "checking the fullscreen marker" {
+		t.Errorf("the strip reads %q, so the wrong session's words reached the human", got)
+	}
+	if res := c.Release(second); res.HeldBy == "" {
+		t.Errorf("a same-named second session released the holder's run: %+v", res)
+	}
+	if !c.State().Live {
+		t.Error("the run ended, so a second session handed back a desktop it never held")
+	}
+
+	// And the holder itself is unaffected: same key, so still the same session.
+	if res := c.Activity(first, "moving the pointer"); !res.Granted {
+		t.Errorf("the holder lost its own run: %+v", res)
+	}
+}
+
+func TestControlAKeylessCallerStillOwnsItsRunByName(t *testing.T) {
+	// A hook script and a Makefile have no key to offer - they are not sessions.
+	// Tightening ownership to "key and only key" here would break every keyless
+	// caller in order to fix a case they are not part of, so the fallback to
+	// agent-name equality is deliberate. The sync primitives are the strict
+	// ones; this check is not.
+	c, _ := newTestControl()
+	keyed := proto.Identity{Agent: "claude", Project: "agentbox", Key: "aaaa1111"}
+	keyless := proto.Identity{Agent: "claude", Project: "agentbox"}
+
+	c.Request(context.Background(), keyless, "driving", 30*time.Millisecond)
+	if res := c.Activity(keyless, "running make deploy"); !res.Granted {
+		t.Errorf("a keyless caller could not write its own activity line: %+v", res)
+	}
+	// One side keyless falls back to the name, which is today's behaviour.
+	if res := c.Activity(keyed, "same name, has a key"); !res.Granted {
+		t.Errorf("a keyed caller lost a run held by its own keyless CLI calls: %+v", res)
+	}
+}
+
 func TestControlActivityResetsItsAgeSoStuckIsVisible(t *testing.T) {
 	// The age is the whole of "nothing is stuck": Boris asked to know "every moment
 	// where we are, that nothing is stuck and so on". A line that never changes has

@@ -177,7 +177,7 @@ func (c *control) Activity(id proto.Identity, activity string) proto.ControlResu
 		c.mu.Unlock()
 		return proto.ControlResult{OK: true}
 	}
-	if run.identity.Agent != id.Agent {
+	if !run.identity.SameSession(id) {
 		held := run.identity.Agent
 		c.mu.Unlock()
 		return proto.ControlResult{OK: true, Live: true, HeldBy: held}
@@ -205,7 +205,7 @@ func (c *control) Release(id proto.Identity) proto.ControlResult {
 		c.mu.Unlock()
 		return proto.ControlResult{OK: true}
 	}
-	if run.identity.Agent != id.Agent {
+	if !run.identity.SameSession(id) {
 		held := run.identity.Agent
 		c.mu.Unlock()
 		return proto.ControlResult{OK: true, Live: true, HeldBy: held}

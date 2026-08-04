@@ -56,6 +56,39 @@ type Identity struct {
 	Agent   string `json:"agent"`
 	Project string `json:"project,omitempty"`
 	Session string `json:"session,omitempty"`
+
+	// Key names THIS session and only this one (FR83). The other three fields
+	// cannot: Agent is the parent process name, Project is a directory
+	// basename, and Session is empty unless AgentBox spawned the agent - so two
+	// Claude sessions in one repo are the identical triple, and FR74 shipped an
+	// ownership check that a same-named second session could walk straight
+	// through. Observed live on 2026-08-04: a control run displayed its holder
+	// as `timeout`, because that session had been launched under the `timeout`
+	// command.
+	//
+	// The mcp child mints one at startup and stamps it on every call it makes.
+	// A CLI caller is not a session and normally has none; it can act on behalf
+	// of one with --key.
+	Key string `json:"key,omitempty"`
+}
+
+// SameSession reports whether two identities are the same session, for the
+// ownership checks that predate the key.
+//
+// Deliberately lenient in one direction: two identities that BOTH carry a key
+// are compared by key alone, which is what fixes the collision. If either side
+// has no key, it falls back to agent-name equality, which is exactly today's
+// behaviour - a hook script or a Makefile has no key to offer, and tightening
+// this would break every keyless caller to fix a case they are not part of.
+//
+// The sync primitives do NOT use this. They compare Key directly and refuse a
+// caller without one, because a lock whose owner is "whatever exec'd the agent"
+// is not a lock.
+func (i Identity) SameSession(other Identity) bool {
+	if i.Key != "" && other.Key != "" {
+		return i.Key == other.Key
+	}
+	return i.Agent == other.Agent
 }
 
 type Option struct {

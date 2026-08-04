@@ -6,6 +6,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -184,7 +187,32 @@ func identityFlags(fs *flag.FlagSet) *proto.Identity {
 	fs.StringVar(&id.Agent, "agent", parentComm(), "calling agent name")
 	fs.StringVar(&id.Project, "project", filepath.Base(mustGetwd()), "project the agent works on")
 	fs.StringVar(&id.Session, "session", "", "agent session id")
+	// A CLI call is not a session and has no key of its own (FR83). It can act
+	// on behalf of one, which is what a hook script wrapping an agent's work
+	// does; AGENTBOX_SESSION_KEY is the default so a script inherits it without
+	// every recipe having to pass a flag.
+	fs.StringVar(&id.Key, "key", os.Getenv("AGENTBOX_SESSION_KEY"), "session key to act on behalf of")
 	return id
+}
+
+// sessionKey is the identity of one session (FR83). AgentBox's own session tab
+// already hands the child an id, and reusing it keeps one name for one session
+// across both doors; otherwise the child mints a key nobody else can guess and
+// nothing outside this process needs to.
+func sessionKey() string {
+	if k := os.Getenv("AGENTBOX_SESSION_KEY"); k != "" {
+		return k
+	}
+	if s := os.Getenv("AGENTBOX_SESSION_ID"); s != "" {
+		return s
+	}
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand does not short-read on Linux. If it ever does, the clock
+		// keeps two sessions apart rather than colliding both on zeros.
+		binary.BigEndian.PutUint64(b[:], uint64(time.Now().UnixNano()))
+	}
+	return hex.EncodeToString(b[:])
 }
 
 func mustGetwd() string {
@@ -1101,10 +1129,13 @@ func runControl(args []string) int {
 	}
 
 	req := proto.ControlRequestParams{
-		Action:   action,
-		Identity: proto.Identity{Agent: parentComm(), Project: filepath.Base(mustGetwd()), Session: os.Getenv("AGENTBOX_SESSION_ID")},
-		Reason:   text,
-		WindowS:  *window,
+		Action: action,
+		Identity: proto.Identity{
+			Agent: parentComm(), Project: filepath.Base(mustGetwd()),
+			Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: os.Getenv("AGENTBOX_SESSION_KEY"),
+		},
+		Reason:  text,
+		WindowS: *window,
 	}
 	if action == proto.ControlActivity {
 		req.Reason, req.Activity = "", text
@@ -1665,7 +1696,13 @@ func runMCP(args []string) int {
 	// AGENTBOX_SESSION_ID, set by agentbox's own session tab when it spawns claude,
 	// tags interactions so the daemon can route them inline to that session
 	// (M8, FR49) instead of a standalone card.
-	id := proto.Identity{Agent: parentComm(), Project: filepath.Base(mustGetwd()), Session: os.Getenv("AGENTBOX_SESSION_ID")}
+	// The key is minted once, here, and rides on every call this child makes for
+	// the rest of the session (FR83). One child is one session, so this is the
+	// only place in the system with the standing to say what that session is.
+	id := proto.Identity{
+		Agent: parentComm(), Project: filepath.Base(mustGetwd()),
+		Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: sessionKey(),
+	}
 	if err := agentboxmcp.Serve(context.Background(), runtimeDir(), version.Get().Revision, id); err != nil {
 		fmt.Fprintf(os.Stderr, "agentbox mcp: %v\n", err)
 		return exitError
