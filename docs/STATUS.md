@@ -834,10 +834,11 @@ timestamped as fresh). Both are in
 [07-field-requests.md](07-field-requests.md).
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
-assignments (FR81/FR82) first, and both shipped by 2026-08-04. HANDOFF.md
-carries the current short order (FR83's gates, then FR73, FR65, the FR74
-marker, the usage-check retry); the numbered list below is the long tail behind
-it, kept for the items nothing else records.
+assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
+carries the current short order (the idle-cap measurement, then FR83's slices 2 to
+4, then FR85 with FR86, FR87, FR84, and the older FR73/FR65/FR74-marker queue); the
+numbered list below is the long tail behind it, kept for the items nothing else
+records.
 
 1. **FR74's last open piece: the fullscreen marker.** A fullscreen window may
    cover the strip, but a small always-visible marker must stay on top of it;
