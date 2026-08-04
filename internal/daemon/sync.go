@@ -49,7 +49,19 @@ const (
 	StateWorking     = "working"
 	StateQuiet       = "quiet"
 	StateUnannounced = "unannounced"
+	// StateDetached is a row nothing is holding open: an announce or an activity
+	// line that arrived from a hook or a CLI call on behalf of a session whose
+	// own child has not attached. Real, worth showing, and not evidence that
+	// anybody is still there.
+	StateDetached = "detached"
 )
+
+// provisionalFor is how long a row with no attach behind it survives. The
+// SessionStart hook in recipes.md announces before the agent's child has made
+// its first tool call, so a provisional row is the normal case for a few seconds
+// and it must not become permanent: nothing would ever clear it, and the board
+// would fill with sessions that ended days ago.
+const provisionalFor = 10 * time.Minute
 
 // workingFor is how long an activity line still counts as "working". Past it
 // the row reads quiet, with its age shown, which is the visible form of a
@@ -69,12 +81,17 @@ type rosterRow struct {
 	area     string
 	tags     []string
 
-	purpose      string
-	activity     string
-	activityAt   time.Time
-	attachedAt   time.Time
-	announced    bool
-	lastActivity time.Time
+	purpose    string
+	activity   string
+	activityAt time.Time
+	attachedAt time.Time
+	announced  bool
+
+	// attached says a live connection is holding this row open. False for a row
+	// created by a hook or a CLI call on behalf of a session whose own child has
+	// not attached yet: real, but not evidence anybody is still there.
+	attached bool
+	touched  time.Time
 }
 
 type roster struct {
@@ -145,6 +162,7 @@ func (r *roster) Attach(ctx context.Context, p proto.SyncAttachParams) (proto.Sy
 		r.rows[key] = row
 	}
 	row.identity = p.Identity
+	row.attached, row.touched = true, now
 	row.cwd, row.pid = p.Cwd, p.PID
 	if p.Area != "" {
 		row.area = p.Area
@@ -201,6 +219,7 @@ func (r *roster) Announce(p proto.SyncAnnounceParams) (proto.SyncResult, *proto.
 		r.rows[key] = row
 		row.identity = p.Identity
 	}
+	row.touched = now
 	row.purpose = strings.TrimSpace(p.Purpose)
 	row.announced = true
 	if p.Activity != "" {
@@ -245,6 +264,7 @@ func (r *roster) Activity(p proto.SyncActivityParams) (proto.SyncResult, *proto.
 	}
 	// An unchanged line is not progress and must not reset the age, or a stalled
 	// agent looks busy forever. Same rule the control strip already applies.
+	row.touched = now
 	if line != row.activity {
 		row.activity, row.activityAt = line, now
 	}
@@ -332,6 +352,14 @@ func (r *roster) snapshot() ([]proto.SyncAgent, bool) {
 		driving = r.drivingFn()
 	}
 	now := time.Now()
+	// Reap provisional rows nothing has touched. A row with a live attach is
+	// removed by the attach ending; a row without one has no such event, so its
+	// only exit is this.
+	for key, row := range r.rows {
+		if !row.attached && now.Sub(row.touched) > provisionalFor {
+			delete(r.rows, key)
+		}
+	}
 	out := make([]proto.SyncAgent, 0, len(r.rows))
 	for key, row := range r.rows {
 		a := proto.SyncAgent{
@@ -372,6 +400,10 @@ func derivedState(row *rosterRow, key string, asking map[string]bool, driving st
 		return StateDriving, ""
 	case !row.announced:
 		return StateUnannounced, ""
+	case !row.attached:
+		// Announced by a hook or a CLI call, with nothing holding it open. It
+		// says what the session is for and does not claim the session is live.
+		return StateDetached, ""
 	case row.activity == "":
 		return StateQuiet, ""
 	case now.Sub(row.activityAt) <= workingFor:

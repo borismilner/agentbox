@@ -29,18 +29,20 @@ func attached(t *testing.T, r *roster, i proto.Identity, cwd, area string) conte
 		defer close(done)
 		r.Attach(ctx, proto.SyncAttachParams{Identity: i, Cwd: cwd, Area: area, PID: os.Getpid()})
 	}()
-	// The row must exist before the test looks at it; the attach registers
-	// before it parks.
+	// Wait for the ATTACH, not merely for a row: a row may already exist because
+	// a hook announced on this session's behalf, and returning on that would let
+	// the test read the roster before the connection was registered.
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		rows, _ := r.snapshot()
-		for _, a := range rows {
-			if a.Key == i.Key {
-				return func() { cancel(); <-done }
-			}
+		r.mu.Lock()
+		row := r.rows[i.Key]
+		live := row != nil && row.attached
+		r.mu.Unlock()
+		if live {
+			return func() { cancel(); <-done }
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("attach never registered a row for %s", i.Key)
+			t.Fatalf("attach never registered a live row for %s", i.Key)
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
@@ -234,6 +236,79 @@ func TestAnnounceSurvivesADaemonRestartByReplay(t *testing.T) {
 	rows, _ := r.snapshot()
 	if len(rows) != 1 || rows[0].Purpose != "shipping the roster" {
 		t.Errorf("the roster did not heal: %+v", rows)
+	}
+}
+
+func TestAHookAnnouncedRowDoesNotClaimTheSessionIsLive(t *testing.T) {
+	// The SessionStart hook in recipes.md announces before the agent's own child
+	// has attached, so a row with nothing holding it open is the normal case for
+	// a few seconds. It must say what the session is for without claiming
+	// anybody is still there - otherwise the board shows a working agent for a
+	// session that never started.
+	r := newTestRoster()
+	if _, err := r.Announce(proto.SyncAnnounceParams{
+		Identity: id("claude", "agentbox", "hooked"), Purpose: "agentbox session (purpose not yet stated)",
+	}); err != nil {
+		t.Fatalf("announce: %v", err)
+	}
+	rows, _ := r.snapshot()
+	if len(rows) != 1 {
+		t.Fatalf("a hook announce produced %d rows", len(rows))
+	}
+	if rows[0].State != StateDetached {
+		t.Errorf("a row with no attach reads %q, want %q", rows[0].State, StateDetached)
+	}
+
+	// And the real attach takes it over rather than making a second row.
+	defer attached(t, r, id("claude", "agentbox", "hooked"), "/repo", "repo:agentbox")()
+	rows, _ = r.snapshot()
+	if len(rows) != 1 {
+		t.Fatalf("the child's attach made a second row: %+v", rows)
+	}
+	if rows[0].Purpose != "agentbox session (purpose not yet stated)" {
+		t.Errorf("the attach dropped the purpose the hook had already posted: %+v", rows[0])
+	}
+	if rows[0].State == StateDetached {
+		t.Error("the row still reads detached with a live attach holding it open")
+	}
+}
+
+func TestAProvisionalRowIsReapedRatherThanLivingForever(t *testing.T) {
+	// A row with a live attach is removed when the attach ends. A row without one
+	// has no such event, so if nothing reaped it the board would fill with
+	// sessions that ended days ago - and every session start adds one, because
+	// the hook recipe announces on every session start.
+	r := newTestRoster()
+	r.Announce(proto.SyncAnnounceParams{
+		Identity: id("claude", "agentbox", "stale"), Purpose: "long gone",
+	})
+	r.mu.Lock()
+	r.rows["stale"].touched = time.Now().Add(-2 * provisionalFor)
+	r.mu.Unlock()
+
+	if rows, _ := r.snapshot(); len(rows) != 0 {
+		t.Errorf("a provisional row nothing has touched for %s is still on the board: %+v",
+			2*provisionalFor, rows)
+	}
+}
+
+func TestAnAttachedRowIsNeverReapedForBeingQuiet(t *testing.T) {
+	// The reaper must only ever take provisional rows. An agent thinking hard for
+	// twenty minutes is still there, and dropping its row would be the roster
+	// lying in the other direction.
+	r := newTestRoster()
+	defer attached(t, r, id("claude", "agentbox", "thinker"), "/repo", "repo:agentbox")()
+	r.Announce(proto.SyncAnnounceParams{Identity: id("claude", "agentbox", "thinker"), Purpose: "thinking"})
+	r.mu.Lock()
+	r.rows["thinker"].touched = time.Now().Add(-10 * provisionalFor)
+	r.mu.Unlock()
+
+	rows, _ := r.snapshot()
+	if len(rows) != 1 {
+		t.Fatalf("a live attached session was reaped for being quiet: %+v", rows)
+	}
+	if rows[0].State != StateQuiet {
+		t.Errorf("a long-silent attached session reads %q, want %q", rows[0].State, StateQuiet)
 	}
 }
 
