@@ -327,22 +327,34 @@ def scenario_locks():
 
 
 def scenario_board():
-    """Put a holder, a waiter and an orphan on the live board, then wait.
+    """Put a holder, a waiter, a listener and an orphan on the live board, then wait.
 
     The surface is the half of this feature Boris actually looks at, and looking
     is how every defect in slice 1 was found. This is the fixture for that: real
-    sessions, real locks, held long enough to open the app and read the screen.
+    sessions, real locks, real parked waits, held long enough to open the app and
+    read the screen.
 
         tools/sync-probe.py board        # holds for ~2 minutes, then cleans up
     """
     a = Session(agent="claude")
     b = Session(agent="codex")
     c = Session(agent="aider")
+    d = Session(agent="claude")
     a.tool("announce", {"purpose": "deploying the mirror fix",
                         "activity": "make deploy, waiting on the build"})
     b.tool("announce", {"purpose": "FR73: a card body readable after it closes",
                         "activity": "editing internal/webui/card.go"})
     c.tool("announce", {"purpose": "the nightly docs pass", "activity": "rewriting 04-ux.md"})
+    d.tool("announce", {"purpose": "the release gate: deploy when the suite is green",
+                        "activity": "waiting for the suite"})
+    # A parked await, so the board has a listening row beside the blocked one. The
+    # two look similar and mean opposite things - blocked is contention, listening
+    # is the feature working - so they belong on screen together.
+    listener = threading.Thread(
+        target=lambda: d.tool("await_signal",
+                              {"topics": ["tests:green", "done:*"], "timeout_s": 160},
+                              timeout=200))
+    listener.start()
 
     a.tool("acquire_lock", {"name": "deploy:agentbox", "note": "make deploy", "timeout_s": 5})
     c.tool("acquire_lock", {"name": "repo:agentbox", "note": "a wide rename", "timeout_s": 5})
@@ -361,8 +373,13 @@ def scenario_board():
     a.tool("release_lock", {"name": "deploy:agentbox"})
     waiter.join(timeout=20)
     b.tool("release_lock", {"name": "deploy:agentbox"})
+    # Wake the listener rather than leaving it to time out, so the fixture ends
+    # with the board empty instead of with one row still parked.
+    a.tool("post_signal", {"topic": "tests:green", "data": {"fixture": True}})
+    listener.join(timeout=30)
     a.close()
     b.close()
+    d.close()
     return []
 
 
