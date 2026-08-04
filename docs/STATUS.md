@@ -1,7 +1,8 @@
 # STATUS
 
-Updated: 2026-08-04, thirty-eighth session (the custom panel runs). Session 37
-was FR81's visual pass, in a second agent's checkout the same day.
+Updated: 2026-08-04, fortieth session (FR83 slice 1: the agent roster is live).
+Sessions 37 and 38 the same day were FR81's visual pass and M12's last piece;
+session 39 designed FR83.
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config
@@ -18,11 +19,25 @@ agent's edit lands in a panel somebody is looking at. See
 FR81's visual pass over the remaining surfaces shipped in session 37, so the
 rail speaks one language end to end.
 
-**The next feature is designed and not built: FR83, multi-agent coordination
-and a live Agents surface** ([09-sync.md](09-sync.md)), asked for by Boris on
-2026-08-04 and written in session 39. It is where new work starts once he
-triages it. What else remains is the showcase re-record (decided, not yet
-scheduled) and the verification and refinement queue.
+**FR83's first slice is live: agents can see each other**
+([09-sync.md](09-sync.md)). Every session can say what it is for and what it is
+doing, find the peers sharing its repo, and appear on a new **Agents** rail
+surface with a state chip the daemon derives rather than the agent claims. The
+`~/.claude/CLAUDE.md` contract, the embedded manual and the hook recipes shipped
+in the same commit as the tools, so every session on this machine is told to
+announce itself. Two shipped bugs fell out of building it: `Conn.Serve` never
+told a blocking handler its caller had hung up (so FR45's caller-gone indicator
+had never fired), and the identity hue has two disagreeing implementations
+(FR85, deferred).
+
+**What remains of FR83:** the discovery rider (slice 1's one unbuilt piece, and
+the first thing to pick up), then locks, signals and shared values - slices 2 to
+4 in [09-sync.md](09-sync.md). Nothing about the Agents surface rendering *real*
+roster data has been seen on screen yet; the canned mock was walked, the live
+board has not been.
+
+What else remains is the showcase re-record (decided, not yet scheduled) and the
+verification and refinement queue.
 
 This file is the current state. The session-by-session narrative - what each
 session shipped, broke, learned and verified - is in [history.md](history.md).

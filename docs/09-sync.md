@@ -7,10 +7,11 @@ already share. And the human sees all of it live: every agent's purpose, what
 it is doing right now, what it holds and what it waits on, in one surface.
 
 Requested by Boris 2026-08-04 (session 39). FR83. This document is the design;
-nothing here is implemented. It has survived one adversarial review, whose
-findings are folded in. Status: **triaged** (all three owner calls answered
-2026-08-04, recorded at the foot); awaiting the surface mock and the slice-0
-spike. An ADR comes at implementation kickoff, the way ADR-0012
+**Slice 1 is built and deployed** (2026-08-04, session 40); slices 2 to 4 and the
+lock half of slice 5 are not. It has survived one adversarial review, whose
+findings are folded in, plus the mock and the first live run. Status:
+**triaged** (all three owner calls answered 2026-08-04, recorded at the foot);
+slice 1 shipped. An ADR comes at implementation kickoff, the way ADR-0012
 did for the review board, and it records what the mock and the spike changed
 rather than restating this document.
 
@@ -564,9 +565,30 @@ ceilings are unrelated and the manual must not let them read as one number.
    surface - but the step that tells us what the results must carry before
    the tool schemas freeze, which is the part an armchair spec gets wrong
    (the FR58 lesson).
-1. **Roster and discovery.** The session key, the attach, announce
-   (returning same-area peers and `partial`), generalized `set_activity`,
-   `list_agents`, the discovery rider, the Agents surface, hook recipes.
+1. **Roster and discovery. BUILT AND DEPLOYED 2026-08-04.** The session key, the
+   attach, announce (returning same-area peers and `partial`), generalized
+   `set_activity`, `list_agents`, the Agents surface, hook recipes, the CLI, and
+   the teaching doors. **The discovery rider is the one piece not built** - it
+   needs the JSON-RPC response envelope to carry a `sync` member and the child to
+   append it to a tool result, and it is the first thing slice 2 should pick up,
+   because without it a mid-work agent only learns about company when it next
+   asks.
+
+   Two things the build changed in this design:
+
+   - **A row must know whether anything holds it open.** A hook or CLI
+     `announce` creates a row for a session whose child has not attached, and
+     nothing removed it: an attached row goes when its attach ends, a provisional
+     one had no such event, so every session start left one behind forever. Rows
+     now carry that fact, read as `detached` rather than `working`, and are reaped
+     after ten idle minutes; an attached row is never reaped, however long its
+     agent thinks. The state table below gains `detached` for this, distinct from
+     "seen, not attached" which is about item traffic with no row at all.
+   - **The presence mechanic needed a shipped bug fixed first.** `Conn.Serve`
+     never cancelled a blocked handler when its peer hung up, so a parked attach
+     would have kept a dead agent's row forever. Fixed in the same session; FR45's
+     caller-gone indicator was broken by the same defect and had never fired in
+     the field.
    Accept: three real sessions in three projects show three rows with
    purpose and live activity, grouped by area; a second session joining
    this repo gets the first session's row back from its own announce, and

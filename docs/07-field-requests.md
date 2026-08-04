@@ -2003,11 +2003,24 @@ whether the other one is still alive.
 - A **session key** on `proto.Identity`, which is the prerequisite for all of
   it and fixes FR74's ownership check on the way past.
 
-**Triaged 2026-08-04**, all three open questions answered in the design's
-favour; the answers and the one sharpening they gained are at the foot of
-[09-sync.md](09-sync.md). Next: the surface mock (`agentbox webui-demo agents`
-over canned roster data, per the working rule at the top of this file) and a
-throwaway CLI spike driven by two real sessions.
+**Triaged and slice 1 shipped, 2026-08-04.** All three open questions were
+answered in the design's favour; the answers and the one sharpening they gained
+are at the foot of [09-sync.md](09-sync.md).
+
+Built, deployed and verified live: the session key on `proto.Identity` (which
+fixed FR74's ownership check on the way past), the attach stream, `announce`
+returning same-area peers with `partial`, `set_activity` generalized to write the
+roster always, `list_agents`, derived areas, the `agentbox sync` CLI, the Agents
+rail surface, and the teaching in the same commit as the tools.
+
+Still to build: the discovery rider (slice 1's one missing piece), locks,
+signals, shared values. See the slice list in 09-sync.md.
+
+Two things this work turned up that were nothing to do with sync, both recorded
+in [history.md](history.md) session 40: `Conn.Serve` never told a blocking
+handler its caller had hung up, so **FR45's caller-gone indicator had never
+fired in the field**, and the CLI hold ceiling is 120s rather than the 1500s the
+design assumed.
 
 ---
 

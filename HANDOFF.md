@@ -1,7 +1,7 @@
-# Handoff - AgentBox: FR83 designed, M12 and FR81 shipped, panel proved live
+# Handoff - AgentBox: FR83 slice 1 is live, slices 2-4 are next
 
-*Written by the FR83 session (39) and corrected by the panel session (38) after
-its live pass; the live-state and deployed lines are the panel session's.*
+*Written by session 40, which triaged FR83 with Boris, mocked the surface, built
+and deployed slice 1, and found two shipped bugs on the way.*
 
 **Written:** 2026-08-04 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -10,244 +10,185 @@ its live pass; the live-state and deployed lines are the panel session's.*
 ```bash
 cd ~/me/projects/agentbox
 git status -sb              # expect clean, in sync with origin/main
-git log --oneline -6        # head: this handoff; then 728b537 (panel live pass), 3fcee1b/1c19d5a/ef1dc6c (FR83 docs)
-make deployed               # 728b537a939e or newer - it holds every code commit AND the embedded manual
+git log --oneline -8        # head: this handoff; then c73427f, 030e4b8, aa4b77e, 16e1d18, 23fc4d5
+make deployed               # c73427f9b2a2 or newer, and NOT "(dirty)"
+agentbox sync agents        # the roster, live - this is the feature
 agentbox control state      # "no run: the desktop is the human's"
-agentbox show docs/09-sync.md   # the design Boris asked for, in the reader
 ```
 
-**The next feature is designed and not built: FR83, multi-agent coordination
-plus a live Agents surface** - [docs/09-sync.md](docs/09-sync.md), field case in
-[docs/07-field-requests.md](docs/07-field-requests.md). Boris asked for it on
-2026-08-04 across five messages, so it outranks everything below by the
-field-requests rule. It has already taken one adversarial review and a
-cold-start resumability test; read it before proposing changes, because the
-obvious designs are in there as rejected options with reasons.
+**Announce yourself before you touch anything.** That is now the standing rule in
+Boris's global `~/.claude/CLAUDE.md`, and this repo is where it was built, so
+breaking it here would be absurd:
 
-**Boris also set two requirements for the implementation** (2026-08-04, after
-the design was written), and both are in 09-sync.md under "Making it the
-default for every agent": the **global `~/.claude/CLAUDE.md`** must tell every
-one of his agents, in every project, that they announce themselves and
-coordinate through AgentBox, and the **embedded manual**
-(`internal/manual/agent.md`, served by `agentbox docs agent`) must teach the
-sync tools. Those ship in the same slice as the tools, not after - an agent
-whose MCP child predates the deploy cannot see new tools at all, so
-instructions that arrive first would point at tools nobody can call.
+```bash
+export AGENTBOX_SESSION_KEY="$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+setsid agentbox sync attach --area repo:agentbox >/dev/null 2>&1 &
+agentbox sync announce "<why this session exists>" --area repo:agentbox
+agentbox sync activity "<what you are doing now>"     # and again as it changes
+```
 
-**Three gates before slice 1, in this order.** Do not skip the first two; the
-doc argues why, and FR58 is the precedent that earned the rule.
+Your own `mcp__agentbox__announce` will not work if your mcp child predates the
+deploy - the handshake fixes the tool list. The CLI above always works. To
+exercise a tool as an agent would, speak stdio JSON-RPC to a fresh `agentbox mcp`
+(recipe under "Mechanics discovered" in
+[docs/07-field-requests.md](docs/07-field-requests.md)); a working probe is at
+`/tmp/claude-1000/.../scratchpad/mcp_probe.py` if it survived, and it is 80 lines
+to rewrite if not.
 
-1. **Boris triages** the three open questions at the foot of 09-sync.md (how
-   hard the announce gate is, whether Agents is its own rail surface, and how
-   area granularity is decided).
-2. **Mock the surface.** Write a throwaway `agentbox webui-demo agents` case -
-   it does **not** exist yet, the harness has no Agents case - rendering canned
-   roster data: two working agents in one area, one asking, one blocked on a
-   lock another holds, one dim and unannounced, one orphaned lock. Walk it with
-   him before any daemon code exists. Showing a working-copy surface means
-   holding the desktop's only daemon, so read the one-UI trap in `CLAUDE.md`
-   and pick a window when no other agent is live.
-3. **Slice-0 spike** - CLI-only lock and signal against a scratch daemon
-   (`AGENTBOX_INSTANCE=dev`), driven by two real sessions doing real work. This
-   is what tells you what the results must carry before the tool schemas
-   freeze. Two things it cannot answer, each needing its own small probe (both
-   named in the doc): the MCP client's tool-call idle cap and whether progress
-   notifications defeat it (probe a fresh `agentbox mcp` over stdio), and the
-   Bash-tool timeout that will cut a CLI `sync lock -- CMD` hold long before
-   `wait_max_s`. Every wait-ceiling number in the design is a review-derived
-   guess until those two run.
+### The one thing Boris has not seen
 
-**One piece can ship alone if a small win is wanted:** the session key on
-`proto.Identity`. Every sync primitive needs it, and it fixes a shipped FR74
-defect - ownership is checked by `run.identity.Agent` string equality, so a
-second same-named session can write the first one's hands-off activity line.
-Proven live this session: the strip named its holder **`timeout`**, because
-`Agent` is the parent process name and that session was launched under the
-`timeout` command.
+**The Agents surface rendering real roster data.** The canned mock was walked and
+clicked with him; the live board has not been looked at by anybody. His screen was
+black when the daemon was deployed (the whole X root captured as solid black), and
+waking it was not mine to do. So:
 
-Then the queue, unchanged and still valid:
+```bash
+agentbox app --tab agents     # then LOOK at it, do not assume
+```
 
-**1. FR73 - a card body must be readable after the card closes.** The inbox row
-truncates the body to a tooltip and offers no detail view, so a card that timed
-out takes its message with it. Boris hit this on 2026-07-31. Nothing new needs
-storing - it is a reader. The Inbox surface was restyled on 2026-08-04; extend
-it in its current shape (joined rows, UI-caps section labels, mono only for
-data).
+Grouping by area, the state chips, the session key on each row, and the "not
+everybody" notice all have real data behind them now and have never been on
+screen together. Expect defects; the mock's five were all found by looking.
 
-**2. FR65 - open a citation in the editor.** An open button per code block on
-the review board, next to copy, running a configured editor command template.
-The JetBrains invocation is under "Mechanics discovered" in
-[docs/07-field-requests.md](docs/07-field-requests.md).
+## What is built, and what is not
 
-**3. FR74's fullscreen marker** - built in session 34, still never exercised.
-Needs a real fullscreen window and Boris's consent to drive: take the desktop
-with `request_control`, and read the one-UI trap in `CLAUDE.md` first. The
-specific unknown is whether GTK honours a 4px-tall window at all.
+**Slice 1 of FR83 is deployed.** Read [docs/09-sync.md](docs/09-sync.md) before
+touching any of it - the whole design is there, the obvious alternatives are in it
+as rejected options with reasons, and the slice list says what each slice must
+prove.
 
-**4. Retry the "Claude usage check" assignment** (`a0eff4b720959`). Its first
-manual run failed on 2026-08-04 for an environmental reason, not a defect:
-`You've reached your Fable 5 limit. /model to switch models.` The assignment
-declares no model, so a run inherits whatever `claude` defaults to; Boris
-switched his default to Opus 5 the same hour, so a retry may simply pass. A
-second run fired the same morning from a stray click during the panel's live
-pass - not Boris's, and worth ignoring when reading that history.
-`run_assignment` then `assignment_runs` to see. Still ad-hoc (schedule-or-delete
-remains his call).
+Built: the session key on `proto.Identity` (`SameSession`), the attach stream, the
+roster (`internal/daemon/sync.go`), `announce` returning same-area peers with
+`partial`, `set_activity` generalized to write the roster always, `list_agents`,
+derived areas, `agentbox sync` (`cmd/agentbox/sync.go`), the Agents rail surface
+(`frontend/src/surfaces/Agents.svelte`, fed by `internal/webui/agents.go`), and
+all four teaching doors.
 
-## Where we are
+**Not built, in the order the design wants them:**
 
-M0 through M12 are complete and the app's surfaces read as one product. Three
-agents worked this checkout on 2026-08-04: session 37 shipped FR81's visual pass
-over the remaining surfaces, session 38 shipped M12's last piece (the custom
-HTML panel running in the artifact sandbox with a two-way channel), and session
-39 - this stream - designed FR83 and wrote no code. Both code streams are
-committed, pushed and deployed. The design is committed and pushed. The stopping
-point is clean: FR83 is fully specified and waiting on Boris's triage, and
-nothing is half-applied anywhere.
+1. **The discovery rider** - slice 1's one missing piece. The daemon should
+   piggyback a `sync` member on the JSON-RPC response envelope when the caller's
+   area roster changed since its last call, and the child should append that line
+   to the tool result. Without it, a mid-work agent only learns about company when
+   it next asks. Pick this up first; everything else in slice 1 is done.
+2. **Locks** (slice 2) - and note the measured ceiling below, which changes the
+   Makefile wrap the design describes.
+3. **Signals** (slice 3), **shared values** (slice 4).
 
-Read [docs/08-assignments.md](docs/08-assignments.md) before touching
-assignments: a run's last assistant message is its summary, and a fenced
-agentbox-data block in it becomes the run's `data` column.
+The mock lives on as `agentbox webui-demo agents` over canned rows, including the
+lock and orphan cases slice 2 will need. `internal/webui/agents.go` has a
+`mockBreak` that slice 2 deletes.
+
+## Measured numbers, so nobody re-guesses them
+
+- **A CLI hold dies at 120s.** A foreground shell call from a Claude Code session
+  is killed at exactly 120s (SIGTERM, exit 143); an explicit timeout caps at 600s.
+  `make deploy` here runs longer than that, so `agentbox sync lock NAME -- CMD`
+  from an agent's shell cannot be the naive wrap: `--ttl` is the normal path, and
+  a wrapped hold must release on SIGTERM or every long command leaves an orphan.
+  Folded into 09-sync.md.
+- **The MCP client's tool-call idle cap is still unmeasured.** It is the last
+  guessed number in the design (`wait_max_s = 1500`) and it only matters once
+  something blocks - so it gates slice 2 and 3, not the rider. Probe it by parking
+  a call past the cap against a fresh `agentbox mcp`, once with progress
+  notifications and once without.
+
+## Two shipped bugs found on the way, both fixed
+
+- **`Conn.Serve` never told a blocking handler its caller had hung up** (`aa4b77e`).
+  `cancel()` was registered before `wg.Wait()`, and defers run
+  last-registered-first. **FR45's caller-gone indicator had therefore never fired
+  in the field**, and its test cancels the context by hand rather than closing a
+  socket, which is why nobody noticed. FR83's presence rests on this. The new test
+  in `internal/proto/hangup_test.go` closes a real socket and fails on the old
+  order.
+- **A provisional row lived forever** (`c73427f`). Found by using the feature, not
+  by reading it: a hook or CLI announce creates a row with no attach behind it,
+  and only attached rows had an exit event. Boris's board would have filled up one
+  row per session start.
+
+## Deferred by Boris, explicitly, until FR83 is finished
+
+- **FR84** - a form card clips sentence-length choice options mid-word, and the
+  fields sit below the fold. He sent a screenshot; his words were "we'll have to
+  think of a better visual approach". Mock it before building it.
+- **FR85** - one agent, two identity colours. Go hashes `agent + " " + project`,
+  the frontend hashes `agent + "\0" + project`, and four of five sampled
+  identities differ between a card's pill and an inbox row. The literal NUL is
+  also why `grep`/`rg` skip `frontend/src/lib/tokens.js` as a binary file, which
+  is how the second implementation stayed invisible. Fix: one separator, pinned by
+  a test over a fixed table of identities.
+
+Then the older queue, unchanged: **FR73** (a card body must be readable after the
+card closes), **FR65** (open a citation in the editor), **FR74's fullscreen
+marker** (built session 34, never exercised, needs consent to drive), and the
+**"Claude usage check" assignment retry** (`a0eff4b720959`, failed on a model
+limit, not a defect).
 
 ## Live state (volatile - verify on resume)
 
-- **Background jobs:** none. At FR83-write time two other agent sessions were
-  live and one **held the desktop**; the session-38 agent has since released it
-  and `agentbox control state` answers "no run". Re-check before driving anyway.
-- **PRs:** none, ever - this repo pushes `main` directly.
-- **Git:** clean, `main` pushed to `origin` (GitLab). This stream's commits, in
-  order: `ef1dc6c` (FR83 field entry + docs index rows), `1c19d5a` (STATUS queue
-  pointer + history session 39), `3fcee1b` (the ADR note), and the one carrying
-  this handoff plus the design's teaching section. The other two agents' commits
-  interleave with them (`f2bb394`, `728b537`), so read `git log` rather than
-  assuming a contiguous block. `docs/09-sync.md` itself is committed inside
-  `e77029f`, another agent's commit, because a catch-all `git add` swept it in
-  while it was still untracked; the file is intact and was deliberately not
-  rebased out. **GitLab push-mirrors to GitHub on its own**: a direct
-  `git push github` can lose the race and be rejected with "cannot lock ref",
-  and the mirror can lag the head by a commit or two - fetch and compare heads
-  before treating either as a real failure. Pushing `origin` is enough.
-- **Deployed:** `728b537a939e`, verified by `make deployed`. It holds every code
-  commit and the current embedded manual (`agentbox docs agent` answers with the
-  panel-key rule, which is how that was checked). The stamp reads `(dirty)`
-  because another agent held uncommitted docs when it was built. With several
-  agents in one checkout, `make deploy` from this tree will always stamp dirty -
-  build and deploy from a clean worktree at HEAD for an honest stamp.
-- **In-flight edits:** none.
-- **Two git hazards this tree proved, 2026-08-04** (recorded by the session-37
-  agent and by this one; both cost real recovery work). `git commit --amend`
-  rewrote another agent's commit because they had committed between the commit
-  and the amend. And a `git reset` dropped a finished, unpushed commit off
-  `main` while its author was still working - recovered from the reflog, nothing
-  lost. While more than one agent shares a checkout: **never `--amend`, never
-  `git add -A` or `git add .`, always `git commit -- <explicit paths>`, and push
-  promptly so a reset cannot strand your work.**
-- **The parallel-agent ledger** lived at `/tmp/agentbox-agents.md`: file
-  ownership claims, a hand-maintained `Current holder:` line for the desktop,
-  dist rules, and timestamped notes between agents. It is volatile and will not
-  survive a reboot, which is why FR83 quotes it at length rather than linking
-  it. It is the workaround FR83 replaces.
+- **Deployed:** `c73427f9b2a2`, verified by `make deployed`, clean stamp (not
+  dirty). It holds every code commit and the current embedded manual.
+- **Git:** clean, `main` pushed to `origin` (GitLab). This session's commits:
+  `bb2c965` `5943fff` (triage + FR84/FR85 docs), `23fc4d5` (the mock), `16e1d18`
+  (the session key), `aa4b77e` (the rpc fix), `030e4b8` (slice 1), `c73427f` (the
+  provisional-row fix), then the docs and this handoff. GitLab push-mirrors to
+  GitHub on its own; pushing `origin` is enough.
+- **Two other repos were touched**, both committed and pushed:
+  `~/me/laptop-setup` gained the desktop-verification package set
+  (`playbooks/03-packages.md`) and, at last, a **tracked copy of
+  `~/.claude/CLAUDE.md`** - `snapshot.sh` had always copied it, but a blanket
+  `CLAUDE.md` rule in the global gitignore meant git had always skipped it. A
+  repo-local negation fixes that. `~/.claude/CLAUDE.md` itself is edited in place
+  and is not in any repo.
+- **A row of mine may still be on the roster.** Session 40 announced itself with
+  key `fr83session` and left a `setsid agentbox sync attach` running. If you see
+  it and it is stale, kill it by pid - **never `pkill agentbox` or `pkill -f`**,
+  which killed this session's own shell once today when used on `webui-demo`.
+- **`partial: true` is expected and correct** while any session's mcp child
+  predates the deploy. This session's own child did, so its items arrived without
+  a key, which is exactly the case the design predicted.
+- **Background jobs:** none besides that attach. **PRs:** none, ever.
+- **Usage:** Boris asked to be kept under 95% of his weekly limit. Read it with
+  `claude -p /usage 2>/dev/null | grep -E '^Current (session|week \(all models\))'`
+  (he aliased it to `cu`). It was 84% when this was written; the week resets
+  2026-08-05 05:00 Asia/Jerusalem.
 - **Rename fallout still on disk, on purpose** (session 36): `~/.config/qq`,
-  `~/.local/state/qq`, `~/.cache/qq`, `~/.local/share/qq` are fallback copies
-  (delete after a quiet few days); `~/.local/bin/qq` is a compat symlink to
-  `agentbox`.
-- **How to exercise an MCP tool added this session:** you cannot call
-  `mcp__agentbox__*` for a tool newer than your own `agentbox mcp` child. Speak
-  stdio JSON-RPC to a fresh `agentbox mcp` instead - the recipe is under
-  "Mechanics discovered" in
-  [docs/07-field-requests.md](docs/07-field-requests.md).
-- **The session-34 `-race` flake watch item** did not recur. Keep watching; do
-  not close it yet.
-
-## Blocked on you (Boris)
-
-- **FR83's three open questions**, at the foot of
-  [docs/09-sync.md](docs/09-sync.md). Slice 1 should not start before these:
-  how hard the announce gate is, whether Agents is its own rail surface or a
-  Home panel, and how area granularity is decided.
-- **Whether FR83 is the next thing built at all**, or whether FR73/FR65 come
-  first. Priorities have been reset twice in five sessions, and FR83 is a
-  multi-slice feature.
-
-Two older items, when convenient: delete the old-name fallback dirs
-(`rm -rf ~/.config/qq ~/.local/state/qq ~/.cache/qq ~/.local/share/qq`), and
-give "Claude usage check" a schedule (`daily 09:00`) or delete it.
-
-## I can do solo (no input needed)
-
-1. The FR83 surface mock (`agentbox webui-demo agents` over canned roster data)
-   and the slice-0 CLI spike - both are throwaway by construction and both
-   answer questions the design left open on purpose.
-2. The session key on `proto.Identity` plus the FR74 ownership fix, which is
-   useful on its own and is a prerequisite either way.
-3. FR73 and FR65.
+  `~/.local/state/qq`, `~/.cache/qq`, `~/.local/share/qq` are fallback copies;
+  `~/.local/bin/qq` is a compat symlink.
 
 ## Facts - verified vs assumed
 
-- [verified] The design, the field entry, the index rows, the STATUS pointer,
-  the history entry and this handoff are committed and pushed; `git status`
-  clean and in sync with `origin/main`. A cold-start test caught an earlier
-  draft of this file asserting exactly that while sitting uncommitted, so if you
-  are reading a claim like this one, confirm it with `git status` rather than
-  trusting it.
-- [verified] `docs/09-sync.md` is byte-identical to what was written, despite
-  riding into another agent's commit (`git diff HEAD` empty for that path). Line
-  counts are deliberately not quoted here - the file grew twice after they were
-  written down, which is its own small lesson about facts with a shelf life.
-- [verified] FR83 is reachable from every documentation door: `docs/README.md`,
-  `docs/STATUS.md`, `docs/07-field-requests.md`, `docs/history.md` and this
-  file.
-- [verified] The deployed daemon is `728b537a939e` and answers `make deployed`,
-  serving the current embedded manual.
-- [verified] The custom panel works both ways on the live desktop, not only in
-  tests: it loads already holding its values, a click inside it reaches SQLite
-  and moves the typed knob, a panel-only key survives a knob turn, and an
-  agent's `update_assignment` moves an open panel with nobody touching the
-  window. What was exercised and what was not is itemised in
-  [docs/history.md](docs/history.md), session 38.
-- [assumed] The bar note a panel gets for emitting the wrong event name. The
-  routing is unit-tested; the sentence has never been on screen.
-- [verified] Another agent held the desktop at write time, and the strip named
-  its holder `timeout` rather than an agent name - the identity defect FR83's
-  session key fixes.
-- [verified] The design took an adversarial review; the three findings that
-  forced design changes are recorded in `docs/history.md` session 39.
+- [verified] A fresh `agentbox mcp` child registers `announce` and `list_agents`,
+  announces itself, and gets the other session's row back with its purpose and
+  activity (`alone: false`, plus the note telling it to coordinate). Its row is
+  gone within the grace when the child dies. Run through stdio JSON-RPC against
+  the live daemon.
+- [verified] `agentbox sync announce/activity/agents` all work against the
+  deployed daemon, and the state chip moves `quiet` to `working` when an activity
+  line lands.
+- [verified] The whole suite passes `make check` (gofmt, vet, race) with the
+  roster tests in it, and the two bug-fix tests fail on the old code - checked by
+  reverting each and re-running, not by assuming.
 - [verified] No em-dashes, curly quotes or filler vocabulary in any file this
-  session touched (checked by grep over each file).
-- [assumed] That the document opened for Boris with `show_document` is actually
-  on his screen. The call returned `shown:true`, but the app window was already
-  open, so it may have landed in that window's Viewer surface rather than a new
-  window; another agent held the desktop, so nothing was raised or
-  screenshotted to confirm.
-- [assumed] That no third agent has committed since this file was written.
-  Re-run `git log --oneline -6` before trusting the shas above.
-- [assumed] Everything in 09-sync.md about how the primitives will behave. It is
-  a design; nothing in it has been built or measured. The claims about the
-  client's tool-call idle cap and the need for progress notifications came from
-  review, not from an experiment - probe them before relying on them, and the
-  doc's "Mock it before building it" section says how.
-- [verified] A cold-start resumability test was run on this handoff by a session
-  with no memory of the work, reading only this file and its links. It found
-  five real defects (this file uncommitted while claiming clean, a wrong commit
-  order, a stale line count, a demo command named as if it existed, and a queue
-  that disagreed with STATUS). All five are fixed above. What it could not
-  resolve read-only, and neither can you: whether a `driving` lock belongs to a
-  live process. That is FR83's orphan case, met in the wild before it was built.
-
-## Declutter ledger
-
-| Removed / condensed | Where its knowledge now lives |
-|---|---|
-| Nothing removed this session | The session added docs only: `docs/09-sync.md` (new), FR83 in `docs/07-field-requests.md`, two `docs/README.md` index rows (08 was never listed), a STATUS queue pointer and a history entry |
-| The previous handoff's "both streams landed, nothing in flight" framing | Corrected in place: three agents, and this file's Live-state section names what was still live at write time |
-| FR83's pointer to the volatile `/tmp` ledger as "still on disk" | Rewritten to quote the ledger's substance, since the file will not survive a reboot |
+  session touched.
+- [assumed] **That the Agents surface looks right with real data.** Nobody has
+  seen it. This is the top item above.
+- [assumed] That the hook recipes in `docs/recipes.md` work as written. They are
+  the right shape and the CLI underneath them is exercised, but the hooks
+  themselves have never been installed in a real `settings.json`.
+- [assumed] That the child's attach survives a daemon restart and replays its
+  announce. The replay path is written and unit-tested at the roster end; the
+  child's redial loop has not been watched through an actual restart.
+- [verified] `set_activity` writes the roster whether or not the caller holds the
+  desktop, and re-sending an unchanged line does not reset its age.
 
 ## Map
 
-1. [docs/09-sync.md](docs/09-sync.md) - FR83, the design Boris asked for. Read before any sync work.
+1. [docs/09-sync.md](docs/09-sync.md) - FR83, the design. Slice 1 built; read before any sync work.
 2. [docs/STATUS.md](docs/STATUS.md) - current state, what works, known gaps, the queue.
-3. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in commits; FR83 is the newest, "Mechanics discovered" is at the foot.
-4. [docs/history.md](docs/history.md) - session-by-session record; this session is "Thirty-ninth".
-5. [docs/08-assignments.md](docs/08-assignments.md) - the M12 design. Read before touching assignments.
-6. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions; read before touching the build or the daemon.
-7. [docs/README.md](docs/README.md) - the full docs index in reading order.
+3. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers; FR83, FR84, FR85 are the newest.
+4. [docs/history.md](docs/history.md) - session-by-session; this session is "Fortieth".
+5. [docs/agent-manual.md](docs/agent-manual.md) - the tool reference, mirrored from `internal/manual/agent.md`.
+6. [docs/recipes.md](docs/recipes.md) - the hooks that keep the roster honest for nothing.
+7. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions; read before touching the build or the daemon.

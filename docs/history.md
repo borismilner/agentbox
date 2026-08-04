@@ -9,6 +9,88 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fortieth session (2026-08-04): FR83 slice 1, and two shipped bugs it uncovered
+
+Boris triaged the three open questions (all three answered in the design's
+favour, recorded at the foot of [09-sync.md](09-sync.md)), then asked for the
+feature implemented "perfectly", with a weekly usage cap to work inside.
+
+**What shipped, in order.** The surface mock over canned rows
+(`agentbox webui-demo agents`), walked and clicked on the real desktop. The
+session key on `proto.Identity`, with FR74's ownership check moved onto it. The
+`Conn.Serve` defer-order fix. Then the roster itself: attach, announce,
+generalized `set_activity`, `list_agents`, area derivation, the CLI, the Agents
+rail surface, and the teaching in the same commit as the tools.
+
+**Two shipped bugs, both found by building on top of the code rather than by
+reading it.**
+
+*A blocking handler never learned its caller hung up.* `Conn.Serve` registered
+`cancel()` before `wg.Wait()`, and deferred calls run last-registered-first, so
+`wg.Wait()` ran first and waited for a handler that was waiting for the cancel.
+The peer closing its socket was never noticed. **FR45's caller-gone indicator has
+therefore never fired in the field**, and the reason it survived is worth
+keeping: its test cancels the context by hand rather than closing a socket, so
+the mechanism was verified by simulating the very thing that was broken. FR83's
+presence design rests entirely on this, since an attach is a call whose context
+IS the session's liveness. The new test closes a real socket and fails on the old
+order.
+
+*Two identity hues for one agent* (recorded as FR85, deferred). Go hashes
+`agent + " " + project`; the frontend hashes `agent + "\0" + project`. Four of
+five sampled identities get different colours between a card's pill and an inbox
+row. The literal NUL in the JS source is also why `grep` and `rg` classify
+`tokens.js` as binary and skip it silently, which is how a second implementation
+stayed invisible. The Agents surface uses the Go value, joining the majority
+rather than widening the split. While writing that entry the same NUL byte got
+written into the docs file describing it, which took a byte-level fix.
+
+**A measured number replaced a guessed one.** The design assumed a CLI hold could
+run to `wait_max_s` (1500s). Measured: a foreground shell call from a Claude Code
+session is killed at **exactly 120s** (SIGTERM, exit 143), and an explicit
+timeout caps at 600s. `make deploy` on this repo runs longer than that, so
+`--ttl` is the normal path for a wrapped command rather than the corner case the
+Locks section implied, and a wrapped hold must release on SIGTERM or every long
+command leaves an orphan.
+
+**A defect the mock could not have shown, found by using the feature.** A CLI or
+hook `announce` creates a row for a session whose own child has not attached, and
+nothing ever removed it: an attached row goes when its attach ends, a provisional
+one had no such event. The SessionStart hook in recipes.md announces on every
+session start, so Boris's board would have filled with sessions that ended days
+ago. Rows now record whether anything holds them open, read as `detached` rather
+than `working` when nothing does, and are reaped after ten idle minutes - while
+an attached row is never reaped, however long its agent thinks.
+
+**Five defects the mock caught before Boris saw it**, which is the working rule
+earning its keep: the activity age had drifted to the far edge away from the
+activity it belongs to, the unannounced row said "no purpose given" twice, a
+blocked row claimed "nothing reported" beside a named wait, four rows in one area
+were indistinguishable until the session key went on the row, and the orphaned
+lock (the only thing on the surface asking the human to act) was last instead of
+first.
+
+**Verified live, not read.** A fresh `agentbox mcp` child registers `announce`
+and `list_agents`, announces itself, gets the other session's row back with its
+purpose and activity (`alone: false`, and the teaching note about coordinating),
+and its row is gone within the grace when the child dies. `partial: true` then
+fired in the wild for the honest reason: this session's own mcp child predates
+the deploy, so its items arrive without a key.
+
+**Not verified.** The Agents surface rendering *real* roster data. Boris's screen
+was black by the time the daemon was deployed (the whole root captured as solid
+black), and waking it was not mine to do. The canned mock was walked and clicked;
+the live surface has only been proved as far as the data path and the push.
+
+**Tooling.** `xdotool` was missing on this machine, which is why the mock's click
+paths nearly went unexercised; `python3-xlib` served instead (the same XTEST path
+`drive_desktop` uses). Boris installed xdotool, and the desktop-verification set
+is now written down in `~/me/laptop-setup/playbooks/03-packages.md` with the
+reason. The global `~/.claude/CLAUDE.md` also turned out never to have been
+versioned: `snapshot.sh` copies it deliberately, but a blanket `CLAUDE.md` rule in
+the global gitignore meant git had always skipped it. Fixed with a repo-local
+negation.
+
 ## Thirty-ninth session (2026-08-04): the sync design, proved by writing it
 
 Boris asked for multi-agent coordination and, across four follow-ups, for the
