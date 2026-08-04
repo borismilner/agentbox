@@ -180,6 +180,12 @@ type Config struct {
 	// correctness.
 	SignalKeep     int
 	SignalKeepDays int
+	// SharedMaxBytes caps one shared value (FR83 slice 4). A knob where the signal
+	// cap is a constant, because a value is state a workflow shapes while a signal is
+	// an event agentbox shapes - but it is a cap either way: a blackboard with no
+	// size limit is a memory leak with a JSON schema, and the idiom for anything
+	// bigger is a file path.
+	SharedMaxBytes int
 }
 
 func (c *Config) fill() {
@@ -316,6 +322,11 @@ type Daemon struct {
 	// isolation once more, and it is the most parked of the three: await is the
 	// design's one sanctioned way for an agent to spend a turn doing nothing.
 	signals *signals
+	// shared is the blackboard (FR83 slice 4). The only one of the four that never
+	// parks: get, set and delete are all one statement against the store, so it needs
+	// no isolation from d.mu for latency - it has its own mutex for the same reason
+	// the others do, which is that its observers point back into the roster.
+	shared *shared
 
 	closing atomic.Bool // FR45: set at shutdown so a teardown disconnect is not shown as "caller gone"
 }
@@ -537,6 +548,14 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	// one - see the note on postLockSignal.
 	d.roster.SetPost(d.postSignal)
 	d.locks.SetPost(d.postSignal)
+	// Shared values (FR83 slice 4), the last primitive. It reads the roster for two
+	// different questions - has this session announced (the write gate) and does this
+	// session still exist (whether a claim is orphaned) - and writes back only through
+	// the signal hub, which is the design's one wake mechanism.
+	d.shared = newShared(log)
+	d.shared.SetStore(st)
+	d.shared.SetMaxBytes(cfg.SharedMaxBytes)
+	d.shared.SetObservers(d.roster.announced, d.roster.present, d.postSignal)
 	// The scheduler is built here but not STARTED here: it wants a Runner, and
 	// the surface that can carry an assignment out is wired after the daemon
 	// exists (SetRunner, then StartAssignments). A daemon that never gets one
@@ -908,6 +927,16 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			return nil, rpcErr
 		}
 		return d.signals.Await(ctx, p, d.cfg.SyncWaitMax)
+	// Shared values (FR83 slice 4, shared.go). One method for all three operations,
+	// and no ctx: none of them blocks, so there is nothing for a caller going away to
+	// cancel. A write that landed has landed - that is the difference between a
+	// blackboard and a hand-off.
+	case proto.MethodSyncShared:
+		p, rpcErr := sharedParams(params)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return d.shared.Handle(p)
 	case proto.MethodProgress:
 		var u proto.ProgressUpdate
 		if err := json.Unmarshal(params, &u); err != nil {

@@ -145,6 +145,7 @@ func daemonConfig(cfg config.Config) daemon.Config {
 		SyncHolderGoneGrace: time.Duration(cfg.Sync.HolderGoneGraceS) * time.Second,
 		SignalKeep:          cfg.Sync.SignalKeep,
 		SignalKeepDays:      cfg.Sync.SignalKeepDays,
+		SharedMaxBytes:      cfg.Sync.SharedMaxBytes,
 	}
 }
 

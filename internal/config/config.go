@@ -66,6 +66,11 @@ type Config struct {
 		// be a leak with no ceiling.
 		SignalKeep     int `toml:"signal_keep"`
 		SignalKeepDays int `toml:"signal_keep_days"`
+		// SharedMaxBytes caps one shared value. A knob where the signal payload cap is
+		// a constant, because a value is state a workflow shapes while a signal is an
+		// event agentbox shapes - but small either way: a shared value is a claim, a
+		// counter or a pointer, and the idiom for anything bigger is a file path.
+		SharedMaxBytes int `toml:"shared_max_bytes"`
 	} `toml:"sync"`
 	// Panel is the drop-down session panel (M10). Hotkey is grabbed by the
 	// daemon on X11, so it works with no desktop configuration; an empty string
@@ -217,6 +222,7 @@ func Default() Config {
 	c.Sync.HolderGoneGraceS = 5
 	c.Sync.SignalKeep = 1000
 	c.Sync.SignalKeepDays = 7
+	c.Sync.SharedMaxBytes = 16384
 	c.Panel.Hotkey = "Ctrl+Alt+grave"
 	c.Panel.HeightFrac = 0.5 // half the monitor, never more: see the clamp below
 	c.Panel.WidthFrac = 0.74

@@ -238,6 +238,21 @@ func (r *roster) announced(key string) bool {
 	return row != nil && row.announced
 }
 
+// present answers whether a session still exists at all, announced or not. It is
+// what a shared value's ownership is checked against (FR83 slice 4): the row
+// remembers who claimed a key, and only the roster can say whether they are still
+// here to finish it.
+//
+// Deliberately not the same question as announced. A session that attached and
+// never announced is present - its claim is live work by somebody rude, not
+// abandoned work - and reporting it as orphaned would invite a peer to take over a
+// chunk that is being actively written.
+func (r *roster) present(key string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.rows[key] != nil
+}
+
 // agentOf is one row as a caller outside this file sees it, so a lock refusal can
 // name the holder in the same terms the human's board does. The state is derived
 // the same way, which is why it is worth going through here rather than reading
