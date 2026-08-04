@@ -20,6 +20,11 @@ and it sends the `notifications/initialized` the SDK waits for.
 The last argument to `call` is the seconds to wait, since a blocking tool waits
 for a human. Identity: the daemon sees `agent` as this script's own process name
 (the MCP server stamps its parent), which is what `held_by` will show.
+
+Each invocation is a whole new session, which makes this the wrong tool for
+anything about two agents seeing each other: use `tools/sync-probe.py`, which
+keeps several children open at once and reads the text blocks a structured-output
+reader misses.
 """
 import json
 import subprocess
