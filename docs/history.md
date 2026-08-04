@@ -67,6 +67,23 @@ Three smaller things the build settled:
   a hung one" case. The row beside it in the same photograph had decayed, which is
   what makes the difference visible.
 
+**A slice-1 defect fell out of verifying slice 3, and reading it as noise was the
+tempting mistake.** The rider probe - slice 1's, passing all day - started failing
+intermittently once signals shipped, and the honest first guess was interference
+from another live agent on the same roster. Two consecutive runs failing
+*differently* said otherwise. An area is derived from where a session stands and
+only the attach carried a cwd; the attach is lazy, so an `announce` arrives first,
+always for a hook announcing on a session's behalf. The row then had no area, and
+three things followed that nothing on the board showed: it was invisible to every
+area-filtered read (so another session's `announce` could answer `alone: true` with
+a peer sitting in the same repo - the one claim the design says must be true when
+made), its rider cursor was never initialized (so its next call repeated the whole
+area as news), and `peersOf` with an empty area filtered nothing and could return
+every agent on the machine. FR90, fixed: the announce carries its cwd, the daemon
+derives the area there too, and an unknown area now answers "cannot say" rather
+than "everybody". Slice 3 did not cause it - it made the attach fractionally slower
+and turned a latent race into a flake often enough to chase.
+
 Verified live against the deployed daemon (`tools/sync-probe.py signals`, PASS):
 a parked wait woken by a post, two waiters on one topic both woken by one, a
 signal fired with nobody listening picked up afterwards by cursor, a timeout

@@ -757,6 +757,17 @@ ceilings are unrelated and the manual must not let them read as one number.
    (it would cost a store read per row on every snapshot, and the chip already
    answers what the row is waiting for), and a listening row shows no age of its
    own beyond its activity line's. Both are additions, not corrections.
+
+   **And one correction to slice 1 that verifying this found** (FR90): the area is
+   derived from where a session stands, and only the attach carried a cwd. The
+   attach is lazy, so an announce arrives first - always, for a hook announcing on a
+   session's behalf - and the row then had no area. An area-filtered read cannot see
+   such a row, so `announce` could answer `alone: true` with a peer in the same
+   repo; its rider cursor was never initialized, so its next call repeated the whole
+   area as news; and `peersOf` with an empty area filtered nothing and could return
+   every agent on the machine. The announce carries `Cwd` now and the daemon derives
+   the area there too. Any future verb that needs an area must take the cwd with
+   it: the attach is not the only door a session's first call comes through.
 4. **Shared values.** The `shared` tool, CAS, owners, change signals.
    Accept: three sessions drain a ten-chunk claim table (one key per chunk)
    with zero double-claims; restart the daemon mid-drain - claims survive,

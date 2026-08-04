@@ -118,6 +118,14 @@ replaces a poll loop that spent a model turn per look. Three things worth knowin
   is for whoever is watching that lock and would rather be told it freed than park
   in `acquire_lock` again.
 
+**A slice-1 defect surfaced while verifying slice 3** (FR90, fixed): only the
+attach carried a cwd, and the attach is lazy, so an `announce` arriving first left
+a row with **no area** - invisible to every area-filtered read, so another
+session's `announce` could answer `alone: true` with a peer sitting in the same
+repo. Its rider cursor was never initialized either, and `peersOf` with an empty
+area returned every agent on the machine. The announce carries its cwd now, and an
+unknown area answers "cannot say" rather than "everybody".
+
 **What remains of FR83:** shared values - slice 4 in [09-sync.md](09-sync.md).
 
 What else remains is the showcase re-record (decided, not yet scheduled) and the
