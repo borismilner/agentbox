@@ -223,8 +223,12 @@ placeholder nothing fills is left verbatim rather than dropped. Declare a knob
 for each in `spec` - `[{key, type, label?, help?, default?, min?, max?, unit?,
 values?, body?}]`, type `text|number|slider|toggle|enum|path|markdown` - and AgentBox
 renders the form. `panel_html` is the escape hatch (React/Tailwind in the
-artifact sandbox, values out through `window.agentbox.emit`); declare a spec as well,
-because a panel that fails to load must never make an assignment uneditable.
+artifact sandbox, no network) and its channel is two-way: values out with
+`window.agentbox.emit("params", {key: value})`, merged over what is stored;
+values in from `window.agentbox.params`, refreshed by an `agentbox:params`
+window event on every change. What the human sets there is what
+`read_assignment` returns. Declare a spec as well, because a panel that fails
+to load must never make an assignment uneditable.
 
 Write for an agent nobody is watching: say what to do, what is worth
 interrupting for, and how to report.

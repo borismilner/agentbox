@@ -45,9 +45,15 @@ and markdown is probably more uniform and will allow a more professional look,
    descriptor-driven machinery the Settings surface uses. Validated, themed,
    editable by hand, and uniform across every assignment.
 2. **A custom HTML panel (the escape hatch).** The agent writes a React/Tailwind
-   panel that runs in AgentBox's existing artifact sandbox (ADR-0010, no network) and
-   reports values back through `window.agentbox.emit`. For the assignment whose
-   controls the knobs cannot express.
+   panel that runs in AgentBox's existing artifact sandbox (ADR-0010, no network),
+   for the assignment whose controls the knobs cannot express. Its channel is
+   two-way (built 2026-08-04, Boris's requirement): `emit("params", {...})`
+   writes values out, merged over what is stored; `window.agentbox.params` plus the
+   `agentbox:params` window event carry every change back in, whether a typed
+   knob moved or an agent called `update_assignment` while the panel was open.
+   The values a panel writes are what `read_assignment` returns and what the
+   next run substitutes - a panel is how a run takes input from the human
+   without asking.
 
 **The values live in the database either way.** That is the rule that keeps the
 escape hatch from being a trapdoor: a custom panel that throws on load, or an
@@ -130,11 +136,6 @@ never runs again.
 
 ## Open
 
-- The custom HTML panel stores, edits and round-trips, but the surface shows a
-  note instead of running it. Running it needs a channel of its own: the
-  artifact machinery routes `window.agentbox.emit` to whichever agent is awaiting the
-  artifact, and a parameter panel's values have to reach `SetAssignmentParams`
-  instead. The typed knobs stay the way in that always works.
 - Whether a run should be able to answer its own cards (drive the desktop) or
   whether that stays a human decision per assignment.
 - Concurrency: today one run per assignment at a time, and a second launch is

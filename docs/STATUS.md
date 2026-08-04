@@ -1,19 +1,23 @@
 # STATUS
 
-Updated: 2026-08-03, thirty-sixth session (the AgentBox rename).
+Updated: 2026-08-04, thirty-seventh session (the custom panel runs).
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config
 `~/.config/agentbox/`, state `~/.local/state/agentbox/`, unit `agentbox.service` (enabled,
 active, systemd owns the daemon), MCP server `agentbox` (user scope, tools
 `mcp__agentbox__*`), artifact API `window.agentbox.emit`, wire methods `agentbox.v1.*`.
-Milestones M0 through M12 are done. **M12 (assignments) runs end to end** -
-scheduler, MCP tools, runner and surface, all exercised on the live desktop; the
-one piece left is the custom HTML panel, which stores and round-trips but does
-not yet run in the artifact sandbox. See [08-assignments.md](08-assignments.md).
-What else remains is FR81's visual pass over the surfaces that are not Home, the
-showcase re-record (decided, not yet scheduled) and the verification and
-refinement queue.
+Milestones M0 through M12 are done, **M12 (assignments) including its last
+piece**: the custom HTML panel runs in the artifact sandbox with a two-way
+channel - values out through `emit("params", ...)` into `SetAssignmentParams`,
+values in through `window.agentbox.params` and the `agentbox:params` event, and
+the daemon pokes open surfaces (`agentbox:assignments`) on every mutation so an
+agent's edit lands in a panel somebody is looking at. See
+[08-assignments.md](08-assignments.md).
+FR81's visual pass over the remaining surfaces shipped in session 37, so the
+rail speaks one language end to end. What else remains is the showcase
+re-record (decided, not yet scheduled) and the verification and refinement
+queue.
 
 This file is the current state. The session-by-session narrative - what each
 session shipped, broke, learned and verified - is in [history.md](history.md).
@@ -240,8 +244,16 @@ still on disk as a fallback; delete them once a few quiet days pass.
     same entry point the MCP tools use, so an editor cannot have its own idea of
     a valid schedule. Every field is optional on an update - what you do not
     send, you do not change.
-  - Open: the custom HTML panel stores and round-trips but does not yet run in
-    the artifact sandbox (the typed knobs are the way in that always works).
+  - The custom HTML panel (session 37) runs in the artifact sandbox, marked
+    `data-panel` so its emits route to `SetAssignmentParams` rather than to a
+    waiting agent. Two-way: `emit("params", {...})` merges out (keys not sent
+    survive, and turning a typed knob no longer erases panel-only keys);
+    `window.agentbox.params` + the `agentbox:params` event carry changes in. The
+    daemon's `AssignmentsChanged` poke (every save, param write, enable, delete,
+    run start/finish/skip, any caller) replaced the surface's 3s poll. A no-spec
+    assignment keeps its saved values at run time (launch uses `mergeParams`,
+    not `assign.Merge`, which erased them). The typed knobs stay the way in
+    that always works.
   See docs/08-assignments.md.
 - Session surface (FR49): `internal/webui/sessions.go` runs Claude Code
   inside AgentBox. It drives a headless `claude` child over stream-json
@@ -477,8 +489,8 @@ agentbox webui-demo panel                  # the drop-down console with a canned
 
 `make check` = gofmt + vet + `go test ./... -race`; **21 packages** (incl.
 `internal/hand`, `internal/session`, `internal/webui`, `internal/speech` and
-`frontend`), **564 tests**, all green as of the rename (session 36;
-the count is `grep -c "^func Test"` top-level tests, 2026-08-03). There is no
+`frontend`), **568 tests**, all green as of the custom panel (session 37;
+the count is `grep -c "^func Test"` top-level tests, 2026-08-04). There is no
 automated *visual* check (see "Known gaps"); what a surface is *allowed to
 do* is tested, and so is the HTML Go hands it.
 
@@ -761,15 +773,6 @@ recurring AI assignments (FR81/FR82) come first. M12 finished in session 35
 (slices 3, 4 and 5, all exercised live). The FR74 fullscreen marker is built but
 still unexercised; the rest of the old queue is behind these.
 
-0. **M12's last piece - the custom HTML panel.** An assignment's `panel_html` is
-   stored, editable and round-trips through both the MCP tools and the editor,
-   but the surface shows a note instead of running it. Running it needs a
-   channel of its own: the existing artifact machinery routes `window.agentbox.emit`
-   to `bridge.artifactEvent` and on to whichever agent is awaiting it, which is
-   the wrong destination for a parameter panel. The values have to land in
-   `SetAssignmentParams` instead. Everything else about the sandbox (no network,
-   opaque origin, `mod.buildDocument`) is reusable as it stands.
-0d. **FR81's remaining half:** the visual pass over the other surfaces.
 1. **FR74's last open piece: the fullscreen marker.** A fullscreen window may
    cover the strip, but a small always-visible marker must stay on top of it;
    needs FR29's `_NET_WM_STATE_FULLSCREEN` read, a second tiny window shape, and

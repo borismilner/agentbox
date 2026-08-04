@@ -489,10 +489,28 @@ one in `spec`:
 `markdown`. AgentBox renders them as a form. A `markdown` block carries `body`
 instead of a key and sits between the controls, which is what makes a
 generated panel read as something somebody designed. `panel_html` is the
-escape hatch - a React/Tailwind panel in the artifact sandbox, reporting
-values through `window.agentbox.emit` - and it does not replace the spec: the
-values live in the database either way, so a panel that fails to load can
-never make an assignment uneditable.
+escape hatch - a React/Tailwind panel run in the artifact sandbox (no
+network) - and it does not replace the spec: the values live in the database
+either way, so a panel that fails to load can never make an assignment
+uneditable, and only a `{{key}}` with a knob behind it substitutes into the
+prompt.
+
+The panel's channel is two-way:
+
+- **Values out:** `window.agentbox.emit("params", {key: value, ...})`. The keys
+  you send merge over the stored values - one key changes one key, the same
+  rule `update_assignment` follows. `"params"` is the only event a panel can
+  send; any other name is shown in the panel's bar as undelivered.
+- **Values in:** `window.agentbox.params` holds the current values (`{}` until
+  the surface's first push, moments after load), and every change - a typed
+  knob turned, an agent's `update_assignment` - fires an `agentbox:params`
+  CustomEvent on `window` whose `detail` is the fresh map. A React panel
+  typically does `useState(window.agentbox.params)` plus a listener that calls
+  the setter with `e.detail`.
+
+What the human sets in the panel is what `read_assignment` returns and what
+the next run's `{{key}}` substitution uses, so a panel is also how a run gets
+input from the human without asking: leave a control, read the value.
 
 Write the prompt for an agent nobody is watching. Say what to do, what counts
 as worth interrupting for, and how to report - `notify_user` for something
