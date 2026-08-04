@@ -315,6 +315,9 @@ func runDaemon() {
 	// throttled on the daemon's side. One line, because the conversion into the
 	// surface's own vocabulary lives with the surface.
 	d.SetRosterSurface(u.ShowRoster)
+	// The lock table, which the rows alone cannot show (a hold from a CLI caller
+	// has no row) and which carries the human's one verb here: break a lock.
+	u.SetRoster(rosterBridge{d})
 	// And the pull, so a window opened between two pushes does not start blank.
 	u.ShowRoster(d.RosterSnapshot())
 	// The tick, started after the surface is wired. Without it the board is only

@@ -174,8 +174,10 @@ func (u *UI) ShowAgents(r wireRoster) { u.agents.set(r) }
 func (u *UI) ShowRoster(agents []proto.SyncAgent, partial bool) {
 	dark := u.themeMode() == "dark"
 	rows := make([]wireAgent, 0, len(agents))
+	haveRow := make(map[string]bool, len(agents))
 	for _, a := range agents {
-		rows = append(rows, wireAgent{
+		haveRow[a.Key] = true
+		row := wireAgent{
 			Key: a.Key, Agent: a.Agent, Project: a.Project, Session: a.Session,
 			Hue: IdentityHue(a.Agent, a.Project, dark),
 			Cwd: a.Cwd, PID: a.PID,
@@ -183,10 +185,64 @@ func (u *UI) ShowRoster(agents []proto.SyncAgent, partial bool) {
 			Purpose: a.Purpose, Activity: a.Activity,
 			State: a.State, Detail: a.Detail,
 			ActivitySinceMS: a.ActivitySinceMS, AgeMS: a.AgeMS,
+			Holds: holdRows(a.Holds),
+		}
+		if w := a.Waiting; w != nil {
+			row.Wait = &wireWait{
+				Lock: w.Name, HolderKey: w.HolderKey, Holder: w.HolderAgent,
+				SinceMS: w.SinceMS,
+				// Place is 1-based because it is read by a human ("place 2 of 3"),
+				// while the daemon counts how many are ahead.
+				Place: w.Ahead + 1, Queue: w.Queue,
+			}
+		}
+		rows = append(rows, row)
+	}
+	u.agents.set(wireRoster{Agents: rows, Orphans: orphanRows(u.rosterSrc(), haveRow), Partial: partial})
+}
+
+// holdRows converts the holds on a row.
+func holdRows(in []proto.SyncHold) []wireHold {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]wireHold, 0, len(in))
+	for _, h := range in {
+		out = append(out, wireHold{
+			Name: h.Name, SinceMS: h.SinceMS, Note: h.Note, Waiters: h.Waiters,
+			Orphaned: h.Orphaned, PID: h.PID, PIDLive: h.PIDLive,
 		})
 	}
-	u.agents.set(wireRoster{Agents: rows, Partial: partial})
+	return out
 }
+
+// orphanRows are the holds with nobody to hang them on: a lock taken by a CLI
+// caller, or one whose session is gone. They get their own block at the top of
+// the surface, because a resource that is taken with no visible holder is the
+// case where the human most needs to see it - it is also the only case where
+// Break lock is the right button.
+func orphanRows(src Roster, haveRow map[string]bool) []wireHold {
+	if src == nil {
+		return nil
+	}
+	var out []wireHold
+	for _, l := range src.Locks() {
+		if haveRow[l.HolderKey] {
+			continue
+		}
+		out = append(out, wireHold{
+			Name: l.Name, SinceMS: l.HeldMS, Note: l.Note, Waiters: l.Waiters,
+			Orphaned: true, PID: l.PID, PIDLive: pidStillThere(l),
+			Holder: l.HolderAgent,
+		})
+	}
+	return out
+}
+
+// pidStillThere reads the daemon's own answer rather than probing again: the lock
+// table checks liveness on its tick, and a second opinion from the surface could
+// disagree with the row beside it.
+func pidStillThere(l proto.SyncLockState) bool { return !l.Orphaned || l.PID > 0 }
 
 // areaLabel is the heading a group of agents gets. An area key is machine-shaped
 // (`repo:agentbox`); the heading is what the human already calls the thing.
@@ -197,15 +253,17 @@ func areaLabel(area string) string {
 	return area
 }
 
-// Roster is the daemon's sync subsystem as this surface needs it: the one thing
-// the human can do to an agent from here. Its own keyhole, like Handover and
-// Voice, so the surface cannot reach anything else on the way.
+// Roster is the daemon's sync subsystem as this surface needs it: the lock table
+// to read, and the one thing the human can do to it. Its own keyhole, like
+// Handover and Voice, so the surface cannot reach anything else on the way.
 //
-// Nil is valid and means the mock: the break then edits the canned roster in
-// place so the confirm and the row's disappearance can be judged, and says so
-// in the log.
+// Nil is valid and means the demo fixture: canned rows, no daemon, and a break
+// that says so rather than pretending.
 type Roster interface {
 	BreakLock(name string) error
+	// Locks is the whole table, which the roster rows alone cannot show: a hold
+	// taken by a CLI caller or left by a dead session has no row to sit on.
+	Locks() []proto.SyncLockState
 }
 
 // SetRoster wires it.
@@ -237,49 +295,15 @@ func (b *Bridge) BreakLock(name string) string {
 		if err := r.BreakLock(name); err != nil {
 			return err.Error()
 		}
+		// No local edit of the payload: the daemon breaks the lock, hands it to
+		// whoever was queued, and pushes the roster that results. A surface that
+		// also patched its own copy would show a state nothing had confirmed.
 		return ""
 	}
-	b.ui.log.Info("webui.agents_break_mock", "component", "webui", "lock", name)
-	b.ui.agents.mockBreak(name)
-	return ""
-}
-
-// mockBreak is the gate-2 affordance and nothing more: with no daemon behind
-// the surface, breaking a lock has to change something or the confirm cannot be
-// judged. Slice 1 deletes this along with the canned roster.
-func (a *agents) mockBreak(name string) {
-	a.mu.Lock()
-	r := a.seen
-	kept := make([]wireHold, 0, len(r.Orphans))
-	for _, h := range r.Orphans {
-		if h.Name != name {
-			kept = append(kept, h)
-		}
-	}
-	r.Orphans = kept
-
-	rows := make([]wireAgent, 0, len(r.Agents))
-	for _, ag := range r.Agents {
-		held := make([]wireHold, 0, len(ag.Holds))
-		for _, h := range ag.Holds {
-			if h.Name != name {
-				held = append(held, h)
-			}
-		}
-		ag.Holds = held
-		// The waiter wins the moment the hold goes, and its row has to say so
-		// rather than sitting on a wait for a lock that no longer has a holder.
-		if ag.Wait != nil && ag.Wait.Lock == name {
-			ag.Wait = nil
-			ag.State, ag.Detail = agentWorking, ""
-			ag.Activity, ag.ActivitySinceMS = "granted "+name+" after the break", 0
-			ag.Holds = append(ag.Holds, wireHold{Name: name, Note: "granted by a break"})
-		}
-		rows = append(rows, ag)
-	}
-	r.Agents = rows
-	a.seen = r
-	a.mu.Unlock()
-
-	a.ui.emit("agentbox:agents", r)
+	// The demo fixture (`agentbox webui-demo agents`), which has no daemon behind
+	// it. Faking the break here used to be how the confirm was judged before the
+	// lock table existed; now that real rows render, a fake would be the only
+	// untrue thing on the surface.
+	b.ui.log.Info("webui.agents_break_no_daemon", "component", "webui", "lock", name)
+	return "This surface is the demo fixture: there is no daemon behind it, so nothing was broken."
 }

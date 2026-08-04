@@ -321,9 +321,15 @@ type SyncHold struct {
 	// Orphaned says the holder's session is gone while the process it recorded
 	// lives on, so the lock is neither safely free nor actively held. It is the
 	// state that makes a half-finished deploy visible instead of invisible.
-	Orphaned bool   `json:"orphaned,omitempty"`
-	PID      int    `json:"pid,omitempty"`
-	Note     string `json:"note,omitempty"`
+	Orphaned bool `json:"orphaned,omitempty"`
+	PID      int  `json:"pid,omitempty"`
+	// PIDLive is whether that process is still there. It is the difference
+	// between an orphan the next waiter is about to be granted and one that is
+	// protecting work still in flight, which is the only thing the human needs to
+	// know before reaching for Break lock.
+	PIDLive bool   `json:"pid_live,omitempty"`
+	Waiters int    `json:"waiters,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // SyncWait is the lock a session is parked on. HolderKey lets the surface make
@@ -333,6 +339,7 @@ type SyncWait struct {
 	Name        string `json:"name"`
 	SinceMS     int64  `json:"since_ms"`
 	Ahead       int    `json:"ahead,omitempty"` // how many are in front in the queue
+	Queue       int    `json:"queue,omitempty"` // how many wait in total, this row included
 	HolderKey   string `json:"holder_key,omitempty"`
 	HolderAgent string `json:"holder_agent,omitempty"`
 }

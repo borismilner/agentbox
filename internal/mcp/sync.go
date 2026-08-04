@@ -239,6 +239,104 @@ func (s *server) listAgents(ctx context.Context, _ *sdk.CallToolRequest, in list
 	return &sdk.CallToolResult{}, out, nil
 }
 
+// The lock half (FR83 slice 2). Three tools, and the split is the house rule
+// rather than taste: a blocking verb and a non-blocking verb never share one
+// tool, because an agent reading a schema must be able to tell whether calling
+// it will park its turn.
+type lockIn struct {
+	Name     string `json:"name" jsonschema:"the lock's name, in the kind:scope idiom the rest of agentbox uses - deploy:agentbox, repo:agentbox, vm:boris-vm. A name is a convention, not a registry: pick the one another agent reaching for the same resource would pick"`
+	TimeoutS int    `json:"timeout_s,omitempty" jsonschema:"how long to wait for it, in seconds. 0 waits as long as the daemon allows a parked call. A timeout is a result, not an error: it comes back with the holder named, and re-arming is one call"`
+	Note     string `json:"note,omitempty" jsonschema:"optional: what you are about to do with the resource, shown to the human and to whoever waits behind you"`
+	// ReleaseOnDetach is offered to the model because only the model knows which
+	// case it is in: a critical section that IS this session, or work it starts
+	// that outlives it.
+	ReleaseOnDetach bool `json:"release_on_detach,omitempty" jsonschema:"true if the hold should end the moment this session does. Leave false when you start work that outlives your session (a deploy, a long build): the hold then goes orphaned instead, and nobody else is given the resource until that work's process is gone"`
+}
+
+type unlockIn struct {
+	Name string `json:"name" jsonschema:"the lock to release. Only the holder can release it"`
+}
+
+type lockOut struct {
+	OK       bool   `json:"ok"`
+	Name     string `json:"name"`
+	Granted  bool   `json:"granted"`
+	TimedOut bool   `json:"timed_out,omitempty"`
+	Refused  bool   `json:"refused,omitempty"`
+	Released bool   `json:"released,omitempty"`
+
+	// The picture, so a refusal never needs a follow-up question.
+	Holder     string `json:"holder,omitempty"`
+	HolderKey  string `json:"holder_key,omitempty"`
+	Purpose    string `json:"holder_purpose,omitempty"`
+	Activity   string `json:"holder_activity,omitempty"`
+	HolderNote string `json:"holder_note,omitempty"`
+	HeldS      int    `json:"held_s,omitempty"`
+	Queue      int    `json:"queue,omitempty"`
+	Orphaned   bool   `json:"orphaned,omitempty"`
+	WaitedS    int    `json:"waited_s,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	Deadlock   string `json:"deadlock,omitempty"`
+	Note       string `json:"note,omitempty"`
+}
+
+func lockResult(res proto.SyncLockResult) lockOut {
+	out := lockOut{
+		OK: res.OK, Name: res.Name, Granted: res.Granted, TimedOut: res.TimedOut,
+		Refused: res.Refused, Released: res.Released, HolderNote: res.HolderNote,
+		HeldS: int(res.HeldMS / 1000), Queue: res.Queue, Orphaned: res.Orphaned,
+		WaitedS: int(res.WaitedMS / 1000), Reason: res.Reason,
+		Deadlock: res.Deadlock, Note: res.Note,
+	}
+	if h := res.Holder; h != nil {
+		out.Holder, out.HolderKey = h.Agent, h.Key
+		out.Purpose, out.Activity = h.Purpose, h.Activity
+	}
+	return out
+}
+
+func (s *server) acquireLock(ctx context.Context, _ *sdk.CallToolRequest, in lockIn) (*sdk.CallToolResult, lockOut, error) {
+	s.ensureAttached()
+	req := proto.SyncLockParams{
+		Identity: s.id, Name: in.Name, TimeoutS: in.TimeoutS, Note: in.Note,
+		ReleaseOnDetach: in.ReleaseOnDetach,
+		// The AGENT's pid, matching the attach: if this session dies holding the
+		// lock, what decides whether the resource is really free is whether the
+		// process that was using it is still there.
+		PID: os.Getppid(),
+	}
+	var res proto.SyncLockResult
+	// No dial deadline of its own: this call parks for as long as the caller is
+	// patient, and the middleware keeps the client from giving up on it.
+	if err := s.syncCall(ctx, proto.MethodSyncLock, &req, &res); err != nil {
+		return errResult[lockOut](err)
+	}
+	return &sdk.CallToolResult{}, lockResult(res), nil
+}
+
+func (s *server) tryLock(ctx context.Context, _ *sdk.CallToolRequest, in lockIn) (*sdk.CallToolResult, lockOut, error) {
+	s.ensureAttached()
+	req := proto.SyncLockParams{
+		Identity: s.id, Name: in.Name, Note: in.Note,
+		ReleaseOnDetach: in.ReleaseOnDetach, PID: os.Getppid(),
+	}
+	var res proto.SyncLockResult
+	if err := s.syncCall(ctx, proto.MethodSyncTryLock, &req, &res); err != nil {
+		return errResult[lockOut](err)
+	}
+	return &sdk.CallToolResult{}, lockResult(res), nil
+}
+
+func (s *server) releaseLock(ctx context.Context, _ *sdk.CallToolRequest, in unlockIn) (*sdk.CallToolResult, lockOut, error) {
+	s.ensureAttached()
+	req := proto.SyncLockParams{Identity: s.id, Name: in.Name}
+	var res proto.SyncLockResult
+	if err := s.syncCall(ctx, proto.MethodSyncUnlock, &req, &res); err != nil {
+		return errResult[lockOut](err)
+	}
+	return &sdk.CallToolResult{}, lockResult(res), nil
+}
+
 // addSyncTools registers the roster family. Kept in one function beside the
 // others so the tool list has one obvious place per feature.
 func addSyncTools(srv *sdk.Server, s *server) {
@@ -256,4 +354,22 @@ func addSyncTools(srv *sdk.Server, s *server) {
 			"Use it to check for company before editing a shared tree, or to find the peer you want to coordinate with. " +
 			"This is the same roster the human's Agents surface renders, so you and they never see different answers.",
 	}, s.listAgents)
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "acquire_lock",
+		Description: "Take a named lock and BLOCK until it is yours, so two agents on this machine take turns over one resource instead of colliding. " +
+			"Take one before anything shared: the deploy, a repo other sessions edit, the VM, an external service. Names are a convention in the kind:scope idiom - deploy:agentbox, repo:agentbox, vm:boris-vm - so pick the name another agent would pick. " +
+			"Waiters queue in order and a grant says why it happened. A timeout is a RESULT, not an error: it comes back with the holder's purpose, what they are doing and how long they have held it, so you can decide whether to wait again, do something else, or go and coordinate with them. " +
+			"Release it as soon as the work is done. Never hold a lock across a question to the human - that stalls every agent behind you on something only he can end. " +
+			"You must announce before taking a lock: a lock the human cannot attribute to a purpose is one he cannot judge when it goes wrong.",
+	}, s.acquireLock)
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "try_lock",
+		Description: "Take a named lock if it is free RIGHT NOW, and never wait. Returns granted, or refused with the full picture of who holds it and why. " +
+			"Use it when you have something else useful to do; use acquire_lock when you cannot proceed without the resource.",
+	}, s.tryLock)
+	sdk.AddTool(srv, &sdk.Tool{
+		Name: "release_lock",
+		Description: "Release a lock you hold, handing it to whoever is queued behind you. Non-blocking. " +
+			"Release as soon as the protected work is finished rather than at the end of your session: everything behind you is stopped until you do.",
+	}, s.releaseLock)
 }

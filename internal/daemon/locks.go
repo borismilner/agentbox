@@ -490,7 +490,8 @@ func (l *locks) rows() (map[string][]proto.SyncHold, map[string]proto.SyncWait) 
 	for name, h := range l.held {
 		holds[h.key] = append(holds[h.key], proto.SyncHold{
 			Name: name, SinceMS: now.Sub(h.since).Milliseconds(),
-			Orphaned: h.orphaned, PID: h.pid, Note: h.note,
+			Orphaned: h.orphaned, PID: h.pid, PIDLive: l.alive(h.pid),
+			Waiters: len(l.queue[name]), Note: h.note,
 		})
 	}
 	for _, list := range holds {
@@ -510,7 +511,7 @@ func (l *locks) rows() (map[string][]proto.SyncHold, map[string]proto.SyncWait) 
 			}
 			waits[w.key] = proto.SyncWait{
 				Name: name, SinceMS: now.Sub(w.since).Milliseconds(),
-				Ahead: i, HolderKey: holderKey, HolderAgent: holderAgent,
+				Ahead: i, Queue: len(q), HolderKey: holderKey, HolderAgent: holderAgent,
 			}
 		}
 	}

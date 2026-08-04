@@ -32,11 +32,21 @@ func syncUsage() {
 	fmt.Fprintln(os.Stderr, "       agentbox sync agents [--area A] [--project P] [--json]")
 	fmt.Fprintln(os.Stderr, "       agentbox sync peers [--json]")
 	fmt.Fprintln(os.Stderr, "       agentbox sync attach [--area A]")
+	fmt.Fprintln(os.Stderr, "       agentbox sync lock NAME [--timeout N] -- CMD ...   # hold it for one command")
+	fmt.Fprintln(os.Stderr, "       agentbox sync lock NAME [--timeout N] --ttl N      # detached hold")
+	fmt.Fprintln(os.Stderr, "       agentbox sync unlock NAME")
+	fmt.Fprintln(os.Stderr, "       agentbox sync locks [--json]")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Who else is here, what they are for, and what they are doing right now.")
 	fmt.Fprintln(os.Stderr, "Every call acts on behalf of a session: --key, or AGENTBOX_SESSION_KEY.")
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "Exit codes: 0 done, 1 refused, 4 agentbox itself failed.")
+	fmt.Fprintln(os.Stderr, "A wrapped lock releases on ANY exit, signals included. If the shell that")
+	fmt.Fprintln(os.Stderr, "ran it is killed (an agent's foreground call dies at 120s), the hold is")
+	fmt.Fprintln(os.Stderr, "released rather than left behind. --ttl is the form for a command that")
+	fmt.Fprintln(os.Stderr, "outlives its shell: take the hold, run the work, unlock when it is done.")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Exit codes: 0 done, 1 refused or not granted, 4 agentbox itself failed.")
+	fmt.Fprintln(os.Stderr, "A wrap exits with the command's own code.")
 }
 
 func runSync(args []string) int {
@@ -46,12 +56,27 @@ func runSync(args []string) int {
 	}
 	verb, rest := args[0], args[1:]
 
+	// A wrapped command is split out before any flag parsing: everything after the
+	// first bare `--` belongs to the command, including its own flags, and letting
+	// the flag package near it would eat them.
+	var wrapped []string
+	for i, a := range rest {
+		if a == "--" {
+			wrapped = rest[i+1:]
+			rest = rest[:i]
+			break
+		}
+	}
+
 	fs := flag.NewFlagSet("sync "+verb, flag.ExitOnError)
 	area := fs.String("area", "", "kind:scope area tag")
 	project := fs.String("project", "", "filter by project")
 	activity := fs.String("activity", "", "current activity (announce only)")
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	key := fs.String("key", os.Getenv("AGENTBOX_SESSION_KEY"), "session key to act on behalf of")
+	timeout := fs.Int("timeout", 0, "seconds to wait for a lock; 0 waits as long as the daemon allows")
+	ttl := fs.Int("ttl", 0, "seconds a detached hold lives without a wrapped command")
+	note := fs.String("note", "", "what the lock is being held for")
 	fs.Usage = syncUsage
 
 	// Same trap the control verb documents: Go's flag package stops at the first
@@ -145,6 +170,21 @@ func runSync(args []string) int {
 			fmt.Println("(partial: at least one session predates sync and has no row)")
 		}
 		return exitOK
+
+	case "lock":
+		// The lock's CLI door (synclock.go). It mints its own session key rather
+		// than borrowing --key: a wrap announces "holding deploy:agentbox" and that
+		// must not overwrite the purpose of the session that started it.
+		return runSyncLock(lockCLI{
+			name: text, timeout: *timeout, ttl: *ttl, note: *note,
+			wrapped: wrapped, asJSON: *asJSON, area: *area,
+		})
+
+	case "unlock":
+		return runSyncUnlock(text, id.Key, *asJSON)
+
+	case "locks":
+		return runSyncLocks(*asJSON)
 
 	case "attach":
 		// Holds presence open for as long as this process runs, which is the door

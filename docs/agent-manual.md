@@ -176,9 +176,59 @@ never narrows what you are told about, so you cannot accidentally hide from a
 peer by tagging yourself differently.
 
 **State is the daemon's word, never yours.** You write `purpose` and `activity`;
-everything else on your row - `asking`, `driving`, `working`, `quiet`,
+everything else on your row - `asking`, `driving`, `blocked`, `working`, `quiet`,
 `unannounced` - is derived from what the daemon observed. That is what makes the
-board trustworthy: no agent can claim to be busy.
+board trustworthy: no agent can claim to be busy, and none can hide that it is
+stopped behind a lock.
+
+### acquire_lock  (blocking) / try_lock / release_lock  (non-blocking)
+
+A lock is how two agents take turns over one resource instead of colliding over
+it. Take one before anything shared: the deploy, a repo other sessions edit, the
+VM, an external service, a scarce quota.
+
+- Args (`acquire_lock`): `name`, `timeout_s` (0 waits as long as the daemon
+  allows a parked call), `note`, `release_on_detach`.
+- Returns: `{ok, name, granted, timed_out, refused, holder, holder_purpose,
+  holder_activity, held_s, queue, orphaned, reason, deadlock, note}`.
+- `try_lock` takes the same args minus `timeout_s` and never waits.
+- `release_lock` takes `name`. Only the holder can release.
+
+```
+acquire_lock(name="deploy:agentbox", timeout_s=600, note="deploying the mirror fix")
+  -> {granted: true}
+  ... do the work ...
+release_lock(name="deploy:agentbox")
+```
+
+**Names are a convention, not a registry.** `kind:scope`, the same idiom as
+everything else: `deploy:agentbox`, `repo:agentbox`, `vm:boris-vm`. Two agents
+that pick different names for one resource have protected nothing.
+
+**A refusal or a timeout carries the whole picture** - who holds it, what they
+announced, what they are doing right now, how long they have held it, how many
+are queued - so deciding what to do next never needs a second call. A timeout is
+a result and not an error: nothing changed because you asked, and re-arming is one
+call.
+
+**Your session dying does not free your lock.** It goes *orphaned* instead, with
+the process id you were running under, and the next agent is granted it only when
+that process is gone too - because a dead session does not prove the `make deploy`
+it started has finished. `release_on_detach: true` opts out, for a critical
+section that is exactly this session and nothing else.
+
+**A deadlock is refused rather than suffered.** If waiting would close a cycle
+("you asked for deploy:agentbox, held by codex; codex waits on repo:agentbox,
+held by you"), the acquire fails at once and names both sides. Take locks in one
+order across agents and it never comes up.
+
+**You can be told you lost one.** The human can break a lock from his Agents
+board; breaking reassigns it and does **not** stop you, so the notice rides your
+next AgentBox call and you must stop touching what it protected.
+
+**Never hold a lock across a question to the human.** Everything behind you then
+waits on something only he can end - the daemon warns him when it sees it, but the
+agent that arranged it is the one at fault.
 
 ### notify_user  (non-blocking)
 Post a desktop notification. Returns immediately.

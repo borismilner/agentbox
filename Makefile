@@ -215,7 +215,29 @@ logs: ## tail the daemon event log
 # whose file is replaced underneath it keeps serving the old code from an unlinked
 # inode - the binary would be new and the behaviour would not. The build that was
 # replaced is kept as $(BIN).prev so `make rollback` is one command.
-deploy: check build ## replace the deployed binary in $(BINDIR) and restart the daemon on it
+#
+# Two agents deploying at once is the CLAUDE.md trap this serializes, and it is
+# flock rather than `agentbox sync lock` on purpose: FR83's locks live in the
+# daemon's memory, and this recipe STOPS the daemon halfway through. A sync hold
+# would vanish with it and hand the second agent a green light in the middle of
+# the first one's install. The one resource the daemon cannot arbitrate is the
+# daemon. The kernel can, so the kernel does; the wait says who holds it, because
+# a deploy that looks hung is how an agent starts a second one.
+DEPLOY_LOCK ?= $(BINDIR)/.$(BIN).deploy.lock
+deploy: ## replace the deployed binary in $(BINDIR) and restart the daemon on it
+	@install -d $(BINDIR)
+	@if command -v flock >/dev/null 2>&1; then \
+		flock -n $(DEPLOY_LOCK) true 2>/dev/null \
+			|| echo "another deploy holds $(DEPLOY_LOCK) ($$(cat $(DEPLOY_LOCK).who 2>/dev/null || echo 'holder unknown')); waiting up to 15m"; \
+		flock -w 900 $(DEPLOY_LOCK) $(MAKE) --no-print-directory deploy-locked \
+			|| { echo "deploy: gave up waiting for the deploy lock"; exit 1; }; \
+	else \
+		echo "warning: no flock here, so nothing stops a second agent deploying at the same time"; \
+		$(MAKE) --no-print-directory deploy-locked; \
+	fi
+
+deploy-locked: check build ## the deploy itself; take the lock through `make deploy` instead
+	@echo "pid $$$$ started $$(date -Is)" > $(DEPLOY_LOCK).who
 	@if ./$(BIN) version | grep -q dirty; then \
 		echo "warning: deploying a dirty build (NFR14: commit first for a clean stamp)"; fi
 	install -d $(BINDIR)

@@ -102,6 +102,10 @@ Claude Code) can call these tools. Run `agentbox docs setup` for a paste-ready
   working where you are (non-blocking). **Your first AgentBox call.** See "Working
   beside other agents" below
 - `list_agents` -> the live roster: identity, purpose, current activity, state
+- `acquire_lock` -> take a named lock, BLOCKING in a queue until it is yours.
+  See "Taking turns over a shared resource"
+- `try_lock` -> take it only if it is free right now; never waits
+- `release_lock` -> hand it to whoever is queued behind you
 - `notify_user` -> notify (non-blocking)
 - `ask_user` -> ask; pass `options` for a single choice, omit them for free text
 - `confirm_action` -> confirm; returns `confirmed` true/false
@@ -206,6 +210,76 @@ Anti-patterns, each of which has cost somebody real work:
   activity line from an hour ago is indistinguishable from a hung session.
 - **Assuming the tree is yours.** It is shared until the roster says otherwise,
   and the roster is one call away.
+
+## Taking turns over a shared resource
+
+Finding a peer tells you to coordinate. A lock is how you actually do it, and it
+is the difference between two agents agreeing to take turns and two agents both
+running the deploy.
+
+**Take one before anything shared** - the deploy, a repo other sessions are
+editing, the VM, an external service, a scarce API quota. Names are a convention
+in the `kind:scope` idiom, not a registry: `deploy:agentbox`, `repo:agentbox`,
+`vm:boris-vm`. Pick the name the other agent reaching for the same thing would
+pick, or you will each hold a different name for one resource.
+
+```
+acquire_lock(name="deploy:agentbox", timeout_s=600, note="deploying the mirror fix")
+  -> granted:true                        # yours until you release it
+  ... do the work ...
+release_lock(name="deploy:agentbox")
+```
+
+**A timeout is a result, not an error.** It comes back with the holder's purpose,
+what they are doing right now, how long they have held it and how many agents are
+queued - everything you need to decide whether to wait again, do something else,
+or go and talk to them. Nothing about the lock changed because you asked, and
+re-arming is one more call. `timeout_s: 0` waits as long as the daemon allows a
+parked call (25 minutes), which is the right choice when you genuinely cannot
+proceed.
+
+**`try_lock` when you have something else useful to do**, `acquire_lock` when you
+are stuck without the resource. They are two tools rather than one flag so that
+reading the name tells you whether your turn is about to park.
+
+**Release the moment the protected work is done**, not at the end of your
+session: everything behind you is stopped until you do. If your session dies
+holding a lock, it is not silently freed - the hold goes *orphaned*, and the next
+agent waits until the process you recorded is gone too, because a dead session
+does not prove the `make deploy` it started has finished. Pass
+`release_on_detach: true` when your session IS the critical section and nothing
+outlives it.
+
+**Two things you may be told without asking.** If the human breaks your lock from
+his Agents board, the next AgentBox call you make carries a line saying so - and
+breaking reassigns the lock without stopping *you*, so stop touching what it
+protected. The same happens when an orphan of yours is reclaimed.
+
+Anti-patterns here have cost more than the roster ones:
+
+- **Holding a lock across a question to the human.** Every agent behind you is
+  then waiting on something only he can end. Ask first, then take the lock.
+- **Taking a lock and forgetting to release it.** Set the note, do the work,
+  release. If you cannot guarantee the release, prefer `try_lock` plus short
+  critical sections.
+- **Two locks in the wrong order.** Two agents taking `repo:` and `deploy:` in
+  opposite orders is a deadlock; the daemon refuses the second one by name rather
+  than letting you both sit there, but the fix is to take them in one order.
+- **Inventing a private name for a shared thing.** A lock nobody else takes
+  protects nothing.
+
+From a shell (a Makefile, a hook, a non-Claude agent), the same table:
+
+```
+agentbox sync lock deploy:agentbox --timeout 600 -- make deploy   # released on ANY exit
+agentbox sync lock deploy:agentbox --ttl 900 --note "…"           # detached hold
+agentbox sync unlock deploy:agentbox --key KEY
+agentbox sync locks                                               # who holds what
+```
+
+The wrapped form releases on any exit, signals included, which matters because a
+foreground shell call from a Claude session is killed at 120s: for anything
+longer, take the hold with `--ttl` and release it yourself.
 
 ## Artifacts
 
