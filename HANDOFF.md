@@ -141,10 +141,24 @@ limit, not a defect).
   `CLAUDE.md` rule in the global gitignore meant git had always skipped it. A
   repo-local negation fixes that. `~/.claude/CLAUDE.md` itself is edited in place
   and is not in any repo.
-- **A row of mine may still be on the roster.** Session 40 announced itself with
-  key `fr83session` and left a `setsid agentbox sync attach` running. If you see
-  it and it is stale, kill it by pid - **never `pkill agentbox` or `pkill -f`**,
-  which killed this session's own shell once today when used on `webui-demo`.
+- **The roster is empty and that is correct.** Session 40's own row and three
+  test fixtures were all cleared before pausing, so nothing fake is on Boris's
+  board. To put rows back for the visual check, one line per session:
+
+  ```bash
+  ( AGENTBOX_SESSION_KEY=peer1 setsid agentbox sync attach --area repo:agentbox >/dev/null 2>&1 & )
+  AGENTBOX_SESSION_KEY=peer1 agentbox sync announce "FR73: the inbox reader" --area repo:agentbox
+  AGENTBOX_SESSION_KEY=peer1 agentbox sync activity "editing internal/webui/inbox.go"
+  ```
+
+  Kill them by pid when done - **never `pkill agentbox` or `pkill -f`**, which
+  killed this session's own shell today when used on `webui-demo`. Iterate
+  `pgrep -x agentbox`, read `/proc/PID/cmdline`, and kill only what matches
+  `sync attach`.
+- **`agentbox app --tab agents` could not be looked at.** The window reports
+  `IsViewable` at a real rect, but a root capture of that rect returns the
+  wallpaper and `_NET_ACTIVE_WINDOW` fails, which is a locked GNOME session
+  rather than a broken window. Nothing was concluded about the surface from it.
 - **`partial: true` is expected and correct** while any session's mcp child
   predates the deploy. This session's own child did, so its items arrived without
   a key, which is exactly the case the design predicted.
