@@ -329,3 +329,38 @@ func svelteAndJS() ([]string, error) {
 	})
 	return out, err
 }
+
+// The other way the committed bundle can lie. `dist` is checked in on purpose
+// (go:embed; a machine without npm must still build), so editing a source file
+// and running `go build` embeds the OLD surfaces with no warning - the trap at the
+// top of CLAUDE.md, which has cost sessions.
+//
+// Bridge methods are where that failure is silent AND fatal: the surface resolves
+// one by name at runtime (Call.ByName over a Wails FQN), so a bundle predating a
+// new method does not fail to compile, it fails when the human clicks. Every name
+// bridge.js names has to be in the bytes go:embed ships.
+func TestEveryBridgeMethodTheSurfacesCallReachesTheBundle(t *testing.T) {
+	src, err := os.ReadFile("src/lib/bridge.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := regexp.MustCompile(`svc\("([A-Za-z]+)"\)`).FindAllStringSubmatch(string(src), -1)
+	if len(names) < 20 {
+		t.Fatalf("found %d bridge methods in bridge.js; the pattern is not matching them", len(names))
+	}
+
+	chunks := distJS(t)
+	for _, m := range names {
+		found := false
+		for _, js := range chunks {
+			if strings.Contains(js, m[1]) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("bridge.js calls Bridge.%s and no shipped chunk mentions it: "+
+				"the committed dist predates the surface that calls it, so run `make build`", m[1])
+		}
+	}
+}
