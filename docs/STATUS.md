@@ -848,14 +848,17 @@ disagreed) were fixed together in session 46, which is also where a third
 divergence turned up inside FR85: the frontend hashed UTF-16 where Go hashes
 UTF-8. FR87 (a daemon restart replaying a stale activity line) was fixed in session
 42. All three are in [07-field-requests.md](07-field-requests.md). FR84 (a form
-clipping sentence-length options) is the one field defect still open, and it waits
-on a visual approach rather than on a build.
+clipping sentence-length options) closed the same day: Boris picked a shape from a
+live mock of three, and the chosen option is now spelled out under the control.
+Half of FR84 is deliberately still open - a long body still pushes a form's fields
+down a scrolling card, which is what the mock's third approach addressed and he did
+not pick.
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (FR84, then the older FR73/FR65/FR74-marker
-queue); the numbered list below is the long tail behind it, kept for the items
-nothing else records.
+carries the current short order (FR73, FR65, FR74's fullscreen marker); the
+numbered list below is the long tail behind it, kept for the items nothing else
+records.
 
 1. **FR74's last open piece: the fullscreen marker.** A fullscreen window may
    cover the strip, but a small always-visible marker must stay on top of it;

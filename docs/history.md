@@ -62,15 +62,47 @@ does something. The row is a real `<button>` when it can expand and a plain div
 when it cannot, so Enter and Space come from the element rather than a keydown
 handler.
 
-**What this session did not verify:** the two board fixes were built, deployed and
-committed, and never seen. Boris locked the screen at 13:42, which the first
-capture found by photographing the lock screen - an all-grey window with a clock
-where the board should have been. Worth writing down twice: `LockedHint` was `no`
-at 13:30 and `yes` at 13:42, so checking it once at the start of a session is not
-checking it. An earlier capture in the same session also hit a recycled window id
-and photographed an unrelated window, which is why every capture after it verified
-the window's NAME immediately before the shutter rather than trusting the id from
-a listing a second earlier.
+**Then Boris unlocked the screen, and the looking began.** Every claim above about
+the board was checked on it, and the two board fixes cost three more commits before
+they were true. Opening a shared value widened the whole window and pushed the
+Break lock buttons off the right edge; `min-width: 0` on the block did not fix it,
+`word-break: break-all` did not fix it, and the actual cause was two files away -
+the shell's grid gives main a `1fr` track, whose automatic minimum is its content's
+min-content width, so ONE unbreakable token in ANY surface could widen the window.
+Latent for every surface since the webview port; found by a JSON value with no
+spaces in it.
+
+With that fixed, all four things were seen: the blocked chip reads "blocked" with
+the wait line under it carrying lock, age and holder; the opened value wraps inside
+its row; a short unowned row does not highlight under the pointer (sampled at
+`#161920` against the hovered row's `#1c2028`); and the identity colours agree.
+
+**FR84 was answered by him, not decided for him.** A live artifact showed today's
+card and three approaches - radio list, select with the choice spelled out under
+it, radio list with the controls above the prose - and he picked the second,
+including its stated cost (you read the option you already picked, not the ones you
+did not). Shipped and watched: a three-field form opened with every control above
+the fold, and Tab-then-Down onto a longer option grew the window from 470x274 to
+470x309 with the line wrapped to three. Its other half is deliberately unbuilt: a
+long body still pushes fields down a scrolling card, which is what the approach he
+did not pick addressed.
+
+**The usage assignment was already retried** - session 45's handoff was stale about
+that, its ok run predates the note - but the run had found a real defect nobody had
+acted on: the prompt asked for a `qq-data` block, which is a tag AgentBox has never
+parsed (rename fallout), and it had read a 14-hour-stale cache because it believed
+`claude -p /usage` could not answer headless. It can, and this session had already
+used it. Both fixed in the prompt, and one run proves it: live figures, `source:
+"claude -p /usage"`, and a captured data block.
+
+**Two things about looking, both paid for here.** The screen was locked for the
+middle of this session, and the first capture found that out by photographing the
+lock screen - an all-grey window with a clock where the board should have been.
+`LockedHint` was `no` at 13:30 and `yes` at 13:42, so checking it once at the start
+of a session is not checking it. And an earlier capture hit a recycled window id and
+photographed an unrelated window of Boris's, which is why every capture after it
+verified the window's NAME immediately before the shutter instead of trusting an id
+from a listing a second earlier. The stray file was deleted and he was told.
 
 ## Forty-fifth session (2026-08-04): FR83's last slice was documentation until it wasn't
 

@@ -2045,7 +2045,7 @@ design assumed.
 
 ---
 
-## FR84 [field] A form's choice options are cut off mid-word
+## FR84 [fixed 2026-08-05, session 46] A form's choice options are cut off mid-word
 
 **Session.** 2026-08-04, FR83 triage. The three design questions went to Boris
 as one `ask_user_form` card, each a choice field whose options were
@@ -2071,7 +2071,36 @@ also puts every option on screen at once; at minimum carry the full text in a
 with the screenshot: *"we'll have to think of a better visual approach"*.
 
 **Deferred by Boris the same day**, explicitly until FR83 is finished. Recorded
-now so it survives the session that found it.
+then so it survived the session that found it.
+
+**Fixed 2026-08-05 after he picked the shape**, from a live mock of today's card
+plus three approaches (radio list; select with the choice spelled out; radio list
+with the controls above the prose). He chose the middle one, seeing its cost
+written on the mock: you read the option you already picked, not the ones you did
+not, so comparing three still means opening the menu. His call, and the compact
+form is what keeps a whole form on screen.
+
+What shipped: the select stays, and the chosen option is spelled out under it in
+the value column, wrapped, whenever it is longer than 34 characters. The control
+also carries the full text as a `title`, so hovering answers before clicking does.
+The card's ResizeObserver regrows the window when the selection changes, and
+`cardHeight` leaves room for the extra line in the height the card OPENS at, so it
+does not open short and jump. The threshold is one number in two files with a test
+that fails if they drift - FR85's lesson, applied the same day it was learnt.
+
+**Watched on screen, both halves.** A three-field form with sentence-length
+options opened at 470x437 with every control and the Submit button above the fold,
+each spelled line reading its option in full, one of them wrapped to two lines.
+Then, by keyboard: Tab to a choice and Down to a longer option grew the window
+from 470x274 to 470x309 and wrapped the line to three, which is the resize claim
+rather than an assumption about it.
+
+**What this does NOT fix**, because the shape Boris chose does not address it: a
+long body still pushes the fields down a scrolling card. The card that found FR84
+had three paragraphs of prose above its controls, and it would still open on the
+prose. Approach C in the mock (controls first, reasoning one click away) is what
+addressed that half; it is unbuilt, and it needs his word rather than a session's
+initiative.
 
 ---
 
