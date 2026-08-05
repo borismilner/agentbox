@@ -9,6 +9,45 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Forty-seventh session (2026-08-05): the last of Boris's own field requests, and the store could not keep two of its promises
+
+Resumed from session 46's handoff with instructions to skip the queue triage and
+go straight to FR73 - the one where he missed a card, went to the inbox to find
+what it said, and could not. Its research was all in the handoff, and every line
+of it held: `wireItem` carried a 140-character `Snippet` and nothing else of the
+body, `StoredItem` already held the rest, `inbox.rows` was the lookup, and the two
+`{@html}` allowlists both had to learn a new field before it would ship. Nothing
+in the live state had drifted.
+
+**What shipped.** Clicking any row opens a detail under it: the body through
+`RenderMarkdown`, the same renderer the card used; both timestamps to the minute
+plus how long the item stood; what it offered, with the default and the taken
+option marked separately; a form's answers in the order its fields were asked
+rather than its map's; the identity, its hue, the session key and the id. Nothing
+is clamped or ellipsised. `Bridge.ItemDetail(id)` is a call per opened row, not a
+field on the snapshot - a hundred rendered bodies in every push is what the
+snippet exists to avoid.
+
+**The FR said "everything needed is already stored", and it was nearly right.**
+`speak` and `diff` were written into the wire type, and then taken back out: the
+store's items table is `id, kind, level, title, body, options, fields, actions,
+cwd, timeout_s, dflt, agent, project, session, state, created_at`, and neither is
+a column. `RecentItems` reads that table, so both fields would have been empty in
+every real read - a reader promising two things the read behind it cannot deliver.
+Found by checking the insert statement rather than the struct: `proto.Item` has
+`Speak` and `Diff`, so the code compiled, the tests passed, and only the schema
+said otherwise. A resolved review's diff is still unrecoverable, and that is now a
+named gap in STATUS instead of a field that looks implemented.
+
+**Two things the change itself broke, both found before shipping.** A row used to
+be inert unless it was pending, so nobody had reason to click into the list and
+then type; with every row opening, reading one row and pressing `d` would have
+dismissed whichever row `j/k` was last left on, so a click now moves the triage
+selection too. And a row can change under an open detail - answered on its card,
+or triaged from the keyboard - which left the detail saying "waiting" and offering
+a card for something already answered; one effect now owns both that and the row
+leaving the list entirely.
+
 ## Forty-sixth session (2026-08-05): the identity colour was two colours, and each fix found a second one
 
 Resumed from session 45's handoff with FR83 finished and its deferred queue in
