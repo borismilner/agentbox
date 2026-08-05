@@ -78,7 +78,7 @@ func runSyncLock(in lockCLI) int {
 	// the human is reading on the board with "holding a lock".
 	id := proto.Identity{
 		Agent:   lockAgentName(in.wrapped),
-		Project: filepath.Base(mustGetwd()),
+		Project: projectName(),
 		Key:     newSessionKey(),
 		Via:     proto.ViaCLI,
 	}
@@ -241,7 +241,7 @@ func runSyncUnlock(name, key string, asJSON bool) int {
 		return exitNo
 	}
 	req := proto.SyncLockParams{
-		Identity: proto.Identity{Agent: agentName(), Project: filepath.Base(mustGetwd()),
+		Identity: proto.Identity{Agent: agentName(), Project: projectName(),
 			Key: key, Via: proto.ViaCLI},
 		Name: name,
 	}

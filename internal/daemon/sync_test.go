@@ -343,6 +343,22 @@ func TestDeriveAreaPutsOneRepoInOneArea(t *testing.T) {
 	if got := DeriveArea(""); got != "" {
 		t.Errorf("an empty cwd derived %q, want empty", got)
 	}
+
+	// The project rides the same walk (FR86), so a row cannot name a directory the
+	// heading above it does not. It used to: an agent in internal/daemon reported
+	// the project `daemon` under an area group called after the repo.
+	if got := DeriveProject(root); got != baseName(root) {
+		t.Errorf("the repo root is project %q, want %q", got, baseName(root))
+	}
+	if got := DeriveProject(deep); got != baseName(root) {
+		t.Errorf("a subdirectory is project %q, want %q - a directory is not a project", got, baseName(root))
+	}
+	if got := DeriveProject(plain); got != baseName(plain) {
+		t.Errorf("a non-repo directory is project %q, want %q", got, baseName(plain))
+	}
+	if got := DeriveProject(""); got != "" {
+		t.Errorf("an empty cwd is project %q, want empty", got)
+	}
 }
 
 func TestTheRiderTellsASessionWhatItHasNotBeenTold(t *testing.T) {

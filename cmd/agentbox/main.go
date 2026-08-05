@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/borismilner/agentbox/internal/client"
+	"github.com/borismilner/agentbox/internal/daemon"
 	"github.com/borismilner/agentbox/internal/hand"
 	"github.com/borismilner/agentbox/internal/manual"
 	agentboxmcp "github.com/borismilner/agentbox/internal/mcp"
@@ -197,7 +198,7 @@ func runtimeDir() string {
 func identityFlags(fs *flag.FlagSet) *proto.Identity {
 	id := &proto.Identity{Via: proto.ViaCLI}
 	fs.StringVar(&id.Agent, "agent", agentName(), "calling agent name")
-	fs.StringVar(&id.Project, "project", filepath.Base(mustGetwd()), "project the agent works on")
+	fs.StringVar(&id.Project, "project", projectName(), "project the agent works on")
 	fs.StringVar(&id.Session, "session", "", "agent session id")
 	// A CLI call is not a session and has no key of its own (FR83). It can act
 	// on behalf of one, which is what a hook script wrapping an agent's work
@@ -276,6 +277,11 @@ func mustGetwd() string {
 	}
 	return wd
 }
+
+// projectName is what to say the caller works on: the repo it is in, not the
+// subdirectory it stands in (FR86). Deliberately the daemon's own derivation, so
+// a row and the area heading above it cannot name two different places.
+func projectName() string { return daemon.DeriveProject(mustGetwd()) }
 
 // agentName is who to say is calling. The parent process alone is not an answer:
 // a hook runs as claude -> sh -> agentbox and would be called "sh", and the
@@ -1284,7 +1290,7 @@ func runControl(args []string) int {
 	req := proto.ControlRequestParams{
 		Action: action,
 		Identity: proto.Identity{
-			Agent: agentName(), Project: filepath.Base(mustGetwd()),
+			Agent: agentName(), Project: projectName(),
 			Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: os.Getenv("AGENTBOX_SESSION_KEY"),
 			Via: proto.ViaCLI,
 		},
@@ -1854,7 +1860,7 @@ func runMCP(args []string) int {
 	// the rest of the session (FR83). One child is one session, so this is the
 	// only place in the system with the standing to say what that session is.
 	id := proto.Identity{
-		Agent: agentName(), Project: filepath.Base(mustGetwd()),
+		Agent: agentName(), Project: projectName(),
 		Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: sessionKey(),
 		// This child is a model's hands, so it is the one caller a discovery
 		// rider can be spent on (FR83).

@@ -3,12 +3,14 @@ package webui
 import (
 	"encoding/json"
 	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/borismilner/agentbox/frontend"
+	"github.com/borismilner/agentbox/internal/daemon"
 )
 
 // The identity colour, which is one hash with two implementations - Go here and
@@ -126,5 +128,37 @@ func TestTheShippedBundleCarriesNoNULSeparator(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walk dist: %v", err)
+	}
+}
+
+// FR86: one repo is one project, so one agent in a repo is one colour wherever in
+// it that agent stands. This is the pair the board actually showed - `aider · src`
+// beside a peer at the root, two rows for two directories of one checkout.
+func TestOneRepoIsOneIdentityColour(t *testing.T) {
+	root := t.TempDir()
+	deep := filepath.Join(root, "frontend", "src", "lib")
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatalf("mkdir deep: %v", err)
+	}
+	atRoot, inDeep := daemon.DeriveProject(root), daemon.DeriveProject(deep)
+	if atRoot != filepath.Base(root) {
+		t.Errorf("project at the root = %q, want %q", atRoot, filepath.Base(root))
+	}
+	if inDeep != atRoot {
+		t.Errorf("project in %s = %q, want %q - a subdirectory is not a project", deep, inDeep, atRoot)
+	}
+	if a, b := IdentityHue("aider", atRoot, true), IdentityHue("aider", inDeep, true); a != b {
+		t.Errorf("one agent, two colours: %s at the root, %s in a subdirectory", a, b)
+	}
+	// Outside a repo the directory is the only honest name, and no cwd has none.
+	plain := t.TempDir()
+	if got := daemon.DeriveProject(plain); got != filepath.Base(plain) {
+		t.Errorf("DeriveProject(%q) = %q, want %q", plain, got, filepath.Base(plain))
+	}
+	if got := daemon.DeriveProject(""); got != "" {
+		t.Errorf("DeriveProject(\"\") = %q, want empty", got)
 	}
 }

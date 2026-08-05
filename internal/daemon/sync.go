@@ -1184,6 +1184,24 @@ func DeriveArea(cwd string) string {
 	return area
 }
 
+// DeriveProject is what an agent's project is CALLED, and it is the repo it works
+// in rather than the directory it happens to stand in (FR86). `filepath.Base(cwd)`
+// named an agent in `agentbox/frontend/src` the project `src`, so its row read
+// `aider · src` under an area heading that said `repo:agentbox` - the row
+// disagreeing with the heading above it. Worse than the label: IdentityHue hashes
+// the project, so one agent in two subdirectories of one repo wore two colours,
+// which is FR85 arriving by a second route.
+//
+// Same walk as the area, so the two answers cannot come apart. Outside a repo the
+// directory is the honest name, and an empty cwd has no name at all.
+func DeriveProject(cwd string) string {
+	_, dir := deriveArea(cwd)
+	if dir == "" {
+		return ""
+	}
+	return baseName(dir)
+}
+
 // deriveArea also answers WHERE the area is, which is a different question from
 // where the agent is: two agents in one repo stand in different subdirectories,
 // and the area they share is the root above both.

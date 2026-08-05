@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -118,7 +117,7 @@ func runSync(args []string) int {
 	text := strings.TrimSpace(strings.Join(words, " "))
 
 	id := proto.Identity{
-		Agent: agentName(), Project: filepath.Base(mustGetwd()),
+		Agent: agentName(), Project: projectName(),
 		Session: os.Getenv("AGENTBOX_SESSION_ID"), Key: *key,
 		// A shell, even when it acts for a session: a rider spent here would be
 		// read by nobody, and a session's hooks call this several times a minute.
