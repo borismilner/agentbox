@@ -333,9 +333,16 @@ func systemPrefersDark() bool {
 	return !strings.Contains(string(out), "prefer-light")
 }
 
-// IdentityHue mirrors frontend/src/lib/tokens.js exactly, so an agent is the
-// same colour in a card, in a session turn and in the tray. Reds are excluded
-// so no agent can dress itself up as an error.
+// IdentityHue is the identity colour, and this is the definition of it:
+// frontend/src/lib/tokens.js mirrors these bytes so an agent is the same colour
+// in a card, in a session turn and in the tray. Reds are excluded so no agent
+// can dress itself up as an error.
+//
+// "Mirrors" was a claim rather than a fact until FR85 - the two sides used
+// different separators and different string encodings, and four of five sampled
+// identities came out different colours. TestTheTwoIdentityHuesAgree runs both
+// implementations over one table so the claim cannot quietly stop being true;
+// the table itself is pinned, so neither side can be "fixed" by moving both.
 func IdentityHue(agent, project string, dark bool) string {
 	h := fnv.New32a()
 	fmt.Fprintf(h, "%s %s", agent, project)
