@@ -1,0 +1,558 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>FR84 - a form card you can read</title>
+<style>
+  :root {
+    --ground: #0f1116;
+    --surface: #161920;
+    --surface2: #1c2028;
+    --surface3: #22262f;
+    --edge: #272c36;
+    --edge-soft: #1f242c;
+    --ink: #e5e8ee;
+    --ink2: #98a0ad;
+    --ink3: #69717e;
+    --accent: #7c8cf8;
+    --success: #6fbf8b;
+    --warning: #d9a441;
+    --r: 10px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    padding: 18px 20px 40px;
+    background: var(--ground);
+    color: var(--ink);
+    font-size: 14px;
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  .lede {
+    margin: 0 0 18px;
+    color: var(--ink2);
+    max-width: 78ch;
+    line-height: 1.5;
+  }
+  .lede b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .panel {
+    width: 520px;
+    flex: none;
+  }
+  .cap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0 0 6px;
+  }
+  .cap .tag {
+    font: 600 0.7rem/1.6 ui-monospace, monospace;
+    letter-spacing: 0.04em;
+    padding: 0 6px;
+    border-radius: 5px;
+    background: var(--surface3);
+    color: var(--ink2);
+  }
+  .cap .tag.now {
+    color: var(--warning);
+  }
+  .cap .tag.pick {
+    color: var(--accent);
+  }
+  .cap h2 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .cost {
+    margin: 6px 0 0;
+    color: var(--ink3);
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+
+  /* The card, at the shape a form card actually opens at. */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--edge);
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+  .card .head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 13px;
+    border-bottom: 1px solid var(--edge-soft);
+  }
+  .card .head .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .card .head .t {
+    font-weight: 600;
+    font-size: 0.92rem;
+  }
+  .card .head .pill {
+    margin-left: auto;
+    font: 0.7rem/1.7 ui-monospace, monospace;
+    padding: 0 7px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
+    color: color-mix(in srgb, var(--accent) 74%, var(--ink));
+  }
+  .body {
+    padding: 11px 13px;
+    max-height: 210px;
+    overflow-y: auto;
+  }
+  .body p {
+    margin: 0 0 9px;
+    color: var(--ink2);
+    line-height: 1.5;
+    font-size: 0.86rem;
+  }
+  .fold {
+    border-top: 1px dashed color-mix(in srgb, var(--warning) 55%, transparent);
+    margin: 10px -13px 6px;
+    padding: 4px 13px 0;
+    color: var(--warning);
+    font-size: 0.72rem;
+  }
+
+  /* Today: the native select in a 120px/1fr grid. */
+  .fieldrow {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 9px;
+  }
+  .fieldrow .name {
+    font-size: 0.8rem;
+    color: var(--ink2);
+  }
+  select,
+  input.text {
+    width: 100%;
+    font: inherit;
+    font-size: 0.86rem;
+    color: var(--ink);
+    background: var(--surface2);
+    border: 1px solid var(--edge);
+    border-radius: 7px;
+    padding: 7px 10px;
+  }
+  .clip {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+
+  /* A: options as a radio list. */
+  .flabel {
+    font-size: 0.8rem;
+    color: var(--ink2);
+    margin: 2px 0 6px;
+  }
+  .opts {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .opt {
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
+    gap: 9px;
+    align-items: start;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.86rem;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  .opt:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--edge));
+  }
+  .opt[aria-checked="true"] {
+    border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+    background: color-mix(in srgb, var(--accent) 11%, var(--surface2));
+  }
+  .opt .mark {
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    border-radius: 50%;
+    border: 1px solid var(--ink3);
+  }
+  .opt[aria-checked="true"] .mark {
+    border-color: var(--accent);
+    background:
+      radial-gradient(circle at center, var(--accent) 0 4px, transparent 4px);
+  }
+  .opt .key {
+    font: 0.68rem/1.6 ui-monospace, monospace;
+    color: var(--ink3);
+    padding: 0 5px;
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+  }
+  .opt .rec {
+    font-size: 0.7rem;
+    color: var(--success);
+  }
+
+  /* B: select, with the chosen option spelled out under it. */
+  .spelled {
+    grid-column: 2;
+    margin-top: -3px;
+    font-size: 0.78rem;
+    color: var(--ink3);
+    line-height: 1.4;
+  }
+
+  /* C: controls first, prose folded. */
+  .more {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+  }
+  .folded {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .foot {
+    display: flex;
+    gap: 8px;
+    padding: 10px 13px;
+    border-top: 1px solid var(--edge-soft);
+    background: var(--surface);
+  }
+  .go {
+    margin-left: auto;
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .verdict {
+    margin-top: 26px;
+    padding-top: 16px;
+    border-top: 1px solid var(--edge-soft);
+  }
+  .verdict p {
+    margin: 0 0 10px;
+    color: var(--ink2);
+  }
+  .picks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pickbtn {
+    font: inherit;
+    font-size: 0.86rem;
+    padding: 8px 13px;
+    border-radius: 8px;
+    border: 1px solid var(--edge);
+    background: var(--surface2);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .pickbtn:hover {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--edge));
+  }
+  .pickbtn.strong {
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .said {
+    margin-top: 12px;
+    color: var(--success);
+    font-size: 0.86rem;
+    min-height: 1.2em;
+  }
+</style>
+
+<h1>FR84 - a form card whose options you could not read</h1>
+<p class="lede">
+  Three design questions went out as one <b>ask_user_form</b>. Every choice field clipped its
+  options mid-word at about 38 characters, and the fields sat below the fold, so the card
+  opened on prose with no controls in sight. It was answerable only because the body spelled
+  the options out and the recommended one arrived preselected. Your words: <b>"we'll have to
+  think of a better visual approach"</b>. Below is today, then three approaches - the mock
+  cards are live, so click them.
+</p>
+
+<div class="grid">
+  <!-- TODAY -->
+  <div class="panel">
+    <div class="cap"><span class="tag now">today</span><h2>Native select, prose first</h2></div>
+    <div class="card">
+      <div class="head">
+        <span class="dot"></span><span class="t">Three FR83 design questions</span>
+        <span class="pill">claude · agentbox</span>
+      </div>
+      <div class="body">
+        <p>
+          Slice 2 is about to build locks. Three decisions want your word before the shape is
+          set, and each of them is cheap now and expensive later.
+        </p>
+        <p>
+          The first is what a sync verb does when the daemon is down. The second is whether a
+          lock survives the session that took it. The third is who may break one.
+        </p>
+        <div class="fold">the fold - everything below needs a scroll</div>
+        <div class="fieldrow">
+          <span class="name">Daemon down</span>
+          <select><option class="clip">As designed: sync verbs refuse, reads and presence nev</option></select>
+        </div>
+        <div class="fieldrow">
+          <span class="name">Lock lifetime</span>
+          <select><option class="clip">Released when the session detaches, unless a ttl was g</option></select>
+        </div>
+        <div class="fieldrow">
+          <span class="name">Who may break</span>
+          <select><option class="clip">Only you, from the board, behind a two-step confirm th</option></select>
+        </div>
+      </div>
+      <div class="foot"><button class="go">Submit</button></div>
+    </div>
+    <p class="cost">
+      Three options per field, all clipped at the same width, so they are indistinguishable
+      from each other by anything the card shows.
+    </p>
+  </div>
+
+  <!-- A -->
+  <div class="panel">
+    <div class="cap"><span class="tag pick">A</span><h2>Options as a radio list once one is long</h2></div>
+    <div class="card">
+      <div class="head">
+        <span class="dot"></span><span class="t">Three FR83 design questions</span>
+        <span class="pill">claude · agentbox</span>
+      </div>
+      <div class="body">
+        <p>
+          Slice 2 is about to build locks. Three decisions want your word before the shape is
+          set, and each of them is cheap now and expensive later.
+        </p>
+        <div class="flabel">Daemon down</div>
+        <div class="opts" data-group="a1">
+          <div class="opt" role="radio" aria-checked="true" tabindex="0">
+            <span class="mark"></span>
+            <span>As designed: sync verbs refuse, reads and presence never<br /><span class="rec">recommended</span></span>
+            <span class="key">1</span>
+          </div>
+          <div class="opt" role="radio" aria-checked="false" tabindex="0">
+            <span class="mark"></span>
+            <span>Everything refuses, so no call can quietly mean nothing</span>
+            <span class="key">2</span>
+          </div>
+          <div class="opt" role="radio" aria-checked="false" tabindex="0">
+            <span class="mark"></span>
+            <span>Queue the write and apply it when the daemon comes back</span>
+            <span class="key">3</span>
+          </div>
+        </div>
+        <div class="flabel">Lock lifetime</div>
+        <div class="opts" data-group="a2">
+          <div class="opt" role="radio" aria-checked="true" tabindex="0">
+            <span class="mark"></span>
+            <span>Released when the session detaches, unless a ttl was given<br /><span class="rec">recommended</span></span>
+            <span class="key">1</span>
+          </div>
+          <div class="opt" role="radio" aria-checked="false" tabindex="0">
+            <span class="mark"></span>
+            <span>Held until released, and orphaned rows say who left it</span>
+            <span class="key">2</span>
+          </div>
+        </div>
+      </div>
+      <div class="foot"><button class="go">Submit</button></div>
+    </div>
+    <p class="cost">
+      Every option readable and on screen at once; the digit keys the choice card already binds
+      still work. Costs height: a three-option field is three rows, so a five-field form
+      scrolls - which is what C is about.
+    </p>
+  </div>
+
+  <!-- B -->
+  <div class="panel">
+    <div class="cap"><span class="tag pick">B</span><h2>Select, with the choice spelled out under it</h2></div>
+    <div class="card">
+      <div class="head">
+        <span class="dot"></span><span class="t">Three FR83 design questions</span>
+        <span class="pill">claude · agentbox</span>
+      </div>
+      <div class="body">
+        <p>
+          Slice 2 is about to build locks. Three decisions want your word before the shape is
+          set, and each of them is cheap now and expensive later.
+        </p>
+        <div class="fieldrow">
+          <span class="name">Daemon down</span>
+          <select data-spell="b1">
+            <option>As designed: sync verbs refuse, reads and presence never</option>
+            <option>Everything refuses, so no call can quietly mean nothing</option>
+            <option>Queue the write and apply it when the daemon comes back</option>
+          </select>
+          <span class="spelled" id="b1">As designed: sync verbs refuse, reads and presence never</span>
+        </div>
+        <div class="fieldrow">
+          <span class="name">Lock lifetime</span>
+          <select data-spell="b2">
+            <option>Released when the session detaches, unless a ttl was given</option>
+            <option>Held until released, and orphaned rows say who left it</option>
+          </select>
+          <span class="spelled" id="b2">Released when the session detaches, unless a ttl was given</span>
+        </div>
+        <div class="fieldrow">
+          <span class="name">Who may break</span>
+          <select data-spell="b3">
+            <option>Only you, from the board, behind a two-step confirm</option>
+            <option>Any agent may break a lock whose holder is gone</option>
+          </select>
+          <span class="spelled" id="b3">Only you, from the board, behind a two-step confirm</span>
+        </div>
+      </div>
+      <div class="foot"><button class="go">Submit</button></div>
+    </div>
+    <p class="cost">
+      Compact, and the whole form stays one screen. But you read the option you already picked,
+      not the ones you did not - so comparing three still means opening the menu.
+    </p>
+  </div>
+
+  <!-- C -->
+  <div class="panel">
+    <div class="cap"><span class="tag pick">C</span><h2>A, plus the controls above the prose</h2></div>
+    <div class="card">
+      <div class="head">
+        <span class="dot"></span><span class="t">Three FR83 design questions</span>
+        <span class="pill">claude · agentbox</span>
+      </div>
+      <div class="body">
+        <div class="flabel">Daemon down</div>
+        <div class="opts" data-group="c1">
+          <div class="opt" role="radio" aria-checked="true" tabindex="0">
+            <span class="mark"></span>
+            <span>As designed: sync verbs refuse, reads and presence never<br /><span class="rec">recommended</span></span>
+            <span class="key">1</span>
+          </div>
+          <div class="opt" role="radio" aria-checked="false" tabindex="0">
+            <span class="mark"></span>
+            <span>Everything refuses, so no call can quietly mean nothing</span>
+            <span class="key">2</span>
+          </div>
+        </div>
+        <div class="flabel">Lock lifetime</div>
+        <div class="opts" data-group="c2">
+          <div class="opt" role="radio" aria-checked="true" tabindex="0">
+            <span class="mark"></span>
+            <span>Released when the session detaches, unless a ttl was given</span>
+            <span class="key">1</span>
+          </div>
+          <div class="opt" role="radio" aria-checked="false" tabindex="0">
+            <span class="mark"></span>
+            <span>Held until released, and orphaned rows say who left it</span>
+            <span class="key">2</span>
+          </div>
+        </div>
+        <p class="folded" id="cprose">
+          Slice 2 is about to build locks. Three decisions want your word before the shape is
+          set, and each of them is cheap now and expensive later. The first is what a sync verb
+          does when the daemon is down; the second is whether a lock survives the session that
+          took it; the third is who may break one.
+        </p>
+        <button class="more" id="cmore">why this is being asked</button>
+      </div>
+      <div class="foot"><button class="go">Submit</button></div>
+    </div>
+    <p class="cost">
+      The card opens on what it wants from you, and the reasoning is one click away rather than
+      three paragraphs in the way. Costs the assumption that the prose is optional, which is
+      true for a form and false for a diff.
+    </p>
+  </div>
+</div>
+
+<div class="verdict">
+  <p>Which shape should a choice field take? Clicking here answers me directly.</p>
+  <div class="picks">
+    <button class="pickbtn strong" data-pick="C">C - radio list, controls first</button>
+    <button class="pickbtn" data-pick="A">A - radio list, prose stays first</button>
+    <button class="pickbtn" data-pick="B">B - select plus spelled-out choice</button>
+    <button class="pickbtn" data-pick="A+B">A for long options, B for short ones</button>
+    <button class="pickbtn" data-pick="none">None of these - I will say what I want</button>
+  </div>
+  <div class="said" id="said"></div>
+</div>
+
+<script>
+  // The mock cards are live so the shapes can be judged by using them, not by
+  // looking at them. Nothing here leaves the sandbox except the pick.
+  for (const group of document.querySelectorAll(".opts")) {
+    group.addEventListener("click", (e) => {
+      const opt = e.target.closest(".opt");
+      if (!opt) return;
+      for (const o of group.querySelectorAll(".opt")) o.setAttribute("aria-checked", String(o === opt));
+    });
+  }
+  for (const sel of document.querySelectorAll("select[data-spell]")) {
+    sel.addEventListener("change", () => {
+      document.getElementById(sel.dataset.spell).textContent = sel.value;
+    });
+  }
+  const prose = document.getElementById("cprose");
+  const more = document.getElementById("cmore");
+  more.addEventListener("click", () => {
+    const folded = prose.classList.toggle("folded");
+    more.textContent = folded ? "why this is being asked" : "hide the reasoning";
+  });
+  for (const b of document.querySelectorAll(".pickbtn")) {
+    b.addEventListener("click", () => {
+      document.getElementById("said").textContent =
+        "sent: " + b.textContent + " - you can close this window.";
+      window.agentbox?.emit("pick", { choice: b.dataset.pick, label: b.textContent });
+    });
+  }
+</script>
