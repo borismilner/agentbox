@@ -461,6 +461,12 @@
     grid-column: 3 / 4;
     grid-row: 2 / 3;
     min-height: 0;
+    /* And min-width, for the same reason in the other axis: a `1fr` track's
+     * automatic minimum is its content's min-content width, so one unbreakable
+     * token anywhere in a surface widened the whole window and pushed the right
+     * edge of every row off screen. Found by opening a shared value whose JSON
+     * had no spaces in it; nothing inside a surface can fix this from below. */
+    min-width: 0;
     background: var(--k-surface);
     border-left: 1px solid var(--k-edge-soft);
     display: flex;
