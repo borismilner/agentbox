@@ -339,3 +339,198 @@ func TestClipTextOnlyServesRowsOnScreen(t *testing.T) {
 		t.Error("an unknown id must copy nothing")
 	}
 }
+
+// --- reading a row back (FR73) ----------------------------------------------
+
+// The defect in one test: a card that resolved must still give up its whole body.
+// The row's snippet stops at 140 characters, so a body longer than that is the
+// case that used to be unrecoverable.
+func TestDetailReadsAResolvedItemBackWhole(t *testing.T) {
+	long := strings.Repeat("The migration rewrites every row in the audit table. ", 8)
+	it := item("r1", proto.KindVeto, store.StateExpired)
+	it.Title = "Rewriting the audit table"
+	it.Body = "**Heads up.** " + long
+	it.CreatedAt = time.Date(2026, 8, 5, 14, 32, 0, 0, time.Local)
+	it.ResolvedAt = it.CreatedAt.Add(3*time.Minute + 20*time.Second)
+
+	u := testUI(&fakeResolver{}, &fakeSource{items: []store.StoredItem{it}})
+	u.inbox.snapshot()
+
+	d := u.inbox.detail("r1")
+	if !d.Found {
+		t.Fatal("the row is on screen, so its detail has to be found")
+	}
+	if !strings.Contains(d.BodyHTML, "<strong>") {
+		t.Errorf("the body should arrive rendered: %q", d.BodyHTML)
+	}
+	// The whole body, not the row's preview of it: the last sentence has to be there.
+	if !strings.Contains(d.BodyHTML, strings.TrimSpace(long[len(long)-52:])) {
+		t.Errorf("the body was shortened on its way out:\n%s", d.BodyHTML)
+	}
+	if n := len(snippet(it.Body, 140)); len(d.BodyHTML) <= n {
+		t.Errorf("the detail (%d bytes) is no longer than the row's snippet (%d)", len(d.BodyHTML), n)
+	}
+	if d.CreatedAt != "Aug 5 14:32" || d.ResolvedAt != "Aug 5 14:35" {
+		t.Errorf("timestamps = %q and %q", d.CreatedAt, d.ResolvedAt)
+	}
+	if d.Took != "3m" {
+		t.Errorf("took = %q, want 3m", d.Took)
+	}
+	if d.Outcome != "proceeded" {
+		t.Errorf("outcome = %q; a veto that expired proceeded", d.Outcome)
+	}
+	if d.Pending {
+		t.Error("a resolved item must not offer its card")
+	}
+	if d.Hue == "" || d.Agent != "claude-code" {
+		t.Errorf("identity = %q / %q", d.Agent, d.Hue)
+	}
+}
+
+// An id nobody has heard of says so, rather than answering with an empty body
+// that reads on screen as "the agent said nothing".
+func TestDetailSaysWhenAnItemIsGone(t *testing.T) {
+	u := testUI(&fakeResolver{}, &fakeSource{items: []store.StoredItem{item("r1", proto.KindNotify, store.StateExpired)}})
+	u.inbox.snapshot()
+
+	d := u.inbox.detail("nope")
+	if d.Found || d.BodyHTML != "" {
+		t.Errorf("an unknown id must answer not-found: %+v", d)
+	}
+	if d.ID != "nope" {
+		t.Errorf("the answer should name the id it was asked about, got %q", d.ID)
+	}
+}
+
+// The snapshot is the lookup, but it is not the only one: an id asked for before
+// the surface ever painted still resolves, because the source is read again.
+func TestDetailFallsBackToTheSourceOnAMiss(t *testing.T) {
+	it := item("r1", proto.KindNotify, store.StateAnswered)
+	it.Body = "it finished"
+	u := testUI(&fakeResolver{}, &fakeSource{items: []store.StoredItem{it}})
+
+	// No snapshot() call, so ib.rows is empty and the only path left is the re-read.
+	if d := u.inbox.detail("r1"); !d.Found || !strings.Contains(d.BodyHTML, "it finished") {
+		t.Fatalf("the re-read should have found it: %+v", d)
+	}
+	// A broken source is not a crash and not a body of nothing.
+	u = testUI(&fakeResolver{}, &fakeSource{err: io.ErrUnexpectedEOF})
+	if d := u.inbox.detail("r1"); d.Found {
+		t.Error("a failed re-read must answer not-found")
+	}
+}
+
+// A choice read back has to carry what it offered as well as what was taken; the
+// answer on its own is a word with nothing to read it against.
+func TestDetailCarriesTheOptionsAndWhichOneWent(t *testing.T) {
+	it := item("r1", proto.KindChoice, store.StateAnswered)
+	it.Options = []proto.Option{{Label: "Run now", Desc: "no dry run first"}, {Label: "Dry run"}, {Label: "Skip"}}
+	it.Default = "Dry run"
+	it.Answer = "Skip"
+
+	u := testUI(&fakeResolver{}, &fakeSource{items: []store.StoredItem{it}})
+	u.inbox.snapshot()
+	d := u.inbox.detail("r1")
+
+	if len(d.Options) != 3 {
+		t.Fatalf("options = %+v", d.Options)
+	}
+	if d.Options[0].Desc != "no dry run first" {
+		t.Errorf("an option's description was dropped: %+v", d.Options[0])
+	}
+	if !d.Options[1].Default || d.Options[1].Chosen {
+		t.Errorf("Dry run was the default and was not taken: %+v", d.Options[1])
+	}
+	if !d.Options[2].Chosen || d.Options[2].Default {
+		t.Errorf("Skip was taken and was not the default: %+v", d.Options[2])
+	}
+	if d.Answer != "Skip" {
+		t.Errorf("answer = %q", d.Answer)
+	}
+
+	// An item that expired onto its default delivered that default, and the read
+	// back marks the option that went rather than pretending nothing did.
+	it.State, it.Answer = store.StateExpired, "Dry run"
+	u = testUI(&fakeResolver{}, &fakeSource{items: []store.StoredItem{it}})
+	u.inbox.snapshot()
+	d = u.inbox.detail("r1")
+	if !d.Options[1].Chosen {
+		t.Errorf("the applied default should be marked as taken: %+v", d.Options[1])
+	}
+	if d.Outcome != "expired" {
+		t.Errorf("outcome = %q; the chip is what says the clock decided", d.Outcome)
+	}
+}
+
+// A form's answer is a map, and a map has no order. The fields do, and a value
+// under a key no field declares is still shown - dropping it silently would be
+// this field request's own defect in miniature.
+func TestAnsweredValuesReadInTheFormsOwnOrder(t *testing.T) {
+	it := item("r1", proto.KindForm, store.StateAnswered)
+	it.Fields = []proto.Field{
+		{Key: "env", Label: "Environment"},
+		{Key: "notes"},
+		{Key: "unanswered", Label: "Never filled"},
+	}
+	it.Values = map[string]string{"notes": "second", "env": "staging", "zz": "9", "aa": "1"}
+
+	got := answeredValues(it)
+	want := []wireFieldValue{
+		{Label: "Environment", Value: "staging"},
+		{Label: "notes", Value: "second"}, // no label: the key is what it was called
+		{Label: "aa", Value: "1"},         // undeclared keys follow, sorted
+		{Label: "zz", Value: "9"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("values = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("value %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	if answeredValues(item("r2", proto.KindForm, store.StateExpired)) != nil {
+		t.Error("an unanswered form has no values")
+	}
+}
+
+// A pending row's detail is what makes promoting one click from the reader, so
+// the flag the button hangs on is worth pinning.
+func TestDetailOffersTheCardOnlyWhilePending(t *testing.T) {
+	pending := item("p1", proto.KindText, store.StatePending)
+	pending.Body = "which branch?"
+	done := item("r1", proto.KindNotify, store.StateAnswered)
+
+	u := testUI(&fakeResolver{}, &fakeSource{items: []store.StoredItem{pending, done}, muted: []string{"claude-code"}})
+	u.inbox.snapshot()
+
+	if d := u.inbox.detail("p1"); !d.Pending || d.ResolvedAt != "" || d.Took != "" {
+		t.Errorf("a pending item is unresolved and offers its card: %+v", d)
+	}
+	if d := u.inbox.detail("r1"); d.Pending {
+		t.Error("a resolved item must not offer a card there is nothing to show")
+	}
+	// Muting is the row's badge and the detail says it too, so a reader who opened
+	// the row rather than scanning the list still learns the agent is muted.
+	if d := u.inbox.detail("p1"); !d.Muted {
+		t.Error("the detail should carry the muted badge")
+	}
+}
+
+func TestStoodReadsInTheUnitsAPersonThinksIn(t *testing.T) {
+	for _, tc := range []struct {
+		d    time.Duration
+		want string
+	}{
+		{300 * time.Millisecond, ""},
+		{9 * time.Second, "9s"},
+		{95 * time.Second, "2m"},
+		{42 * time.Minute, "42m"},
+		{3*time.Hour + 7*time.Minute, "3h07m"},
+		{50 * time.Hour, "2d2h"},
+	} {
+		if got := stood(tc.d); got != tc.want {
+			t.Errorf("stood(%s) = %q, want %q", tc.d, got, tc.want)
+		}
+	}
+}

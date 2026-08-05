@@ -223,6 +223,7 @@ func TestEveryHTMLInjectionComesFromGo(t *testing.T) {
 	//   seg.toolHtml   encodeSegments   (a tool call's argument, highlighted)
 	//   view.bodyHtml  encode           (a card body, and the same field in a toast)
 	//   ask.bodyHtml   encodeAsk        (a question in the inline panel)
+	//   det.bodyHtml   encodeDetail     (an inbox row read back in full, FR73)
 	//   doc.html       the viewer       (a document, or an artifact block)
 	//   l.html/dl.html boardrender      (one code line's chroma spans on the
 	//                                    review board; dl is a removed line)
@@ -236,6 +237,7 @@ func TestEveryHTMLInjectionComesFromGo(t *testing.T) {
 		"open.panelBlock": true,
 		"k.bodyHtml":      true,
 		"ask.bodyHtml":    true,
+		"det.bodyHtml":    true,
 		"doc.html":        true,
 		"l.html":          true,
 		"dl.html":         true,

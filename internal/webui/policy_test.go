@@ -10,6 +10,7 @@ import (
 	"github.com/borismilner/agentbox/internal/daemon"
 	"github.com/borismilner/agentbox/internal/proto"
 	"github.com/borismilner/agentbox/internal/session"
+	"github.com/borismilner/agentbox/internal/store"
 )
 
 // One invariant, stated over every surface at once: nothing agentbox hands a webview
@@ -175,6 +176,13 @@ func TestNoSurfaceHTMLEverAutoFetches(t *testing.T) {
 		"a tool argument (HighlightInline)": HighlightInline(src, "bash"),
 		// AskPanel.svelte: ask.bodyHtml
 		"an inline question (RenderMarkdown)": RenderMarkdown(src),
+		// Inbox.svelte: det.bodyHtml - a row read back in full (FR73). Through
+		// encodeDetail rather than the renderer directly, because the detail is the
+		// one payload that is not allowed to shorten anything on its way out.
+		"a row read back (encodeDetail)": encodeDetail(store.StoredItem{
+			Item:  proto.Item{ID: "d", Kind: proto.KindNotify, Body: src},
+			State: store.StateAnswered,
+		}, false, true).BodyHTML,
 		// Viewer.svelte: doc.html, both ways it is produced
 		"a document with a base": RenderMarkdownIn(src, t.TempDir()),
 		"an artifact document":   RenderArtifact("<script src=\"https://cdn.evil.example/x.js\"></script><img src=\"https://evil.example/a.gif\">", "t", "id1"),

@@ -241,6 +241,16 @@ func (b *Bridge) Home() string { return homeDir() }
 // every queue change.
 func (b *Bridge) Inbox() wireInbox { return b.ui.inbox.snapshot() }
 
+// ItemDetail reads one row back in full (FR73): the whole body rendered, the
+// identity, both timestamps, how it ended and whatever was given back. Asked for
+// per opened row rather than pushed with the snapshot, which would put a hundred
+// rendered bodies in every repaint.
+//
+// A row whose item has aged out answers with Found false, so the surface says the
+// message is gone instead of painting an empty detail that looks like a body of
+// nothing.
+func (b *Bridge) ItemDetail(id string) wireDetail { return b.ui.inbox.detail(id) }
+
 // Promote summons a pending item's card (a row click, FR10).
 func (b *Bridge) Promote(id string) {
 	if src := b.ui.source(); src != nil {

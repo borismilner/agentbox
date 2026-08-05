@@ -1,6 +1,7 @@
 <script>
   import { bridge } from "../lib/bridge.js";
   import { ticker } from "../lib/clock.svelte.js";
+  import { markdown } from "../lib/markdown.svelte.js";
 
   // The inbox (FR10): everything still waiting, then everything recent. Its
   // real job is triage (FR34) - after a meeting the backlog has to clear in
@@ -10,6 +11,11 @@
   //
   // Which key does what to which item is decided in Go (Bridge.Triage), so this
   // surface and the card cannot drift apart about what "d" means.
+  //
+  // Its second job is reading (FR73). A row is a summary and truncates; opening
+  // one asks Go for the whole item and shows it unabridged, because a card that
+  // closed on its timer used to take its body with it. Nothing on this surface
+  // may be the only copy of something an agent said.
 
   let { inbox } = $props();
 
@@ -18,6 +24,13 @@
   let typing = $state(false);
   let box = $state(null);
   let listEl = $state(null);
+
+  // The opened row (FR73) and what Go said about it. `det` is kept beside `open`
+  // rather than derived, because it arrives from a call: while it is in flight the
+  // detail is open with nothing in it yet, and that is a state to paint.
+  let open = $state(null);
+  let det = $state(null);
+  let detFor = $state(null); // the id `det` describes, so a stale reply is dropped
 
   const clock = ticker();
 
@@ -35,6 +48,53 @@
     if (!chosen || !listEl) return;
     listEl.querySelector(`[data-id="${chosen.id}"]`)?.scrollIntoView({ block: "nearest" });
   });
+
+  // The one place a detail is fetched, so opening a row and the queue moving under
+  // an already-open one take the same path. Both cases are real: a row that LEFT
+  // the list must not keep its detail open under whatever row now sits in that
+  // place (the rule the Agents board learned the hard way), and a row that only
+  // CHANGED - answered on its card, or triaged from the keyboard while open - has
+  // to be re-read, or the detail goes on saying "waiting" and offering a card for
+  // something already answered.
+  $effect(() => {
+    const rows = inbox?.items ?? [];
+    if (!open) return;
+    if (!rows.some((i) => i.id === open)) closeDetail();
+    else load(open);
+  });
+
+  function closeDetail() {
+    open = null;
+    det = null;
+    detFor = null;
+  }
+
+  async function load(id) {
+    const got = await bridge.itemDetail(id);
+    // The reply is only wanted if the row it describes is still the open one: two
+    // fast clicks would otherwise paint the first answer under the second row.
+    if (open !== id) return;
+    det = got;
+    detFor = id;
+  }
+
+  function toggleDetail(id) {
+    if (open === id) {
+      closeDetail();
+      return;
+    }
+    open = id;
+    det = null;
+    detFor = null;
+    // Clicking a pending row selects it too. Without this the keys still act on
+    // wherever j/k was left, so reading one row and pressing d would dismiss
+    // another - and a resolved row was inert before this, so nobody had reason to
+    // click into the list and then type.
+    const at = pending.findIndex((p) => p.id === id);
+    if (at >= 0) sel = at;
+    // The fetch is left to the effect above: `open` changing is what asks for it,
+    // whether it changed from a click here or the row was refreshed under one.
+  }
 
   function filter(list, q) {
     const needle = q.trim().toLowerCase();
@@ -56,10 +116,20 @@
         e.preventDefault();
         typing = false;
         box?.blur();
+      } else if (open) {
+        e.preventDefault();
+        closeDetail();
       }
       return;
     }
     if (inField) return;
+
+    // A row is a real button, so Tab reaches it and Enter or Space opens its
+    // detail - the only keyboard path to a resolved row, since triage's selection
+    // only ever walks the pending run. Those two keys belong to the focused
+    // button, not to the selected row: firing triage as well would answer one row
+    // while opening another.
+    if ((e.key === "Enter" || e.key === " ") && e.target instanceof HTMLButtonElement) return;
 
     if (e.key === "/") {
       e.preventDefault();
@@ -146,14 +216,15 @@
           <span class="section">{it.pending ? "Pending" : "Recent"}</span>
         {/if}
 
-        <div class="rowwrap" data-id={it.id}>
+        <div class="rowwrap" data-id={it.id} class:opened={open === it.id}>
           <button
             type="button"
             class="row {it.level}"
             class:pending={it.pending}
             class:on={!typing && chosen?.id === it.id}
-            onclick={() => it.pending && bridge.promote(it.id)}
-            title={it.pending ? "Click to show the card" : it.snippet}
+            aria-expanded={open === it.id}
+            onclick={() => toggleDetail(it.id)}
+            title="Click to read it in full"
           >
             <span class="sev"></span>
             <span class="body">
@@ -171,6 +242,96 @@
                box focused, "s stop" would type an s. -->
           {#if !typing && chosen?.id === it.id && it.hint}
             <span class="hint">{it.hint}</span>
+          {/if}
+
+          <!-- The detail (FR73). Nothing here is clamped, shortened or ellipsised:
+               it exists because a card that closed on its timer used to be the
+               only copy of what an agent said. -->
+          {#if open === it.id}
+            <div class="detail">
+              {#if !det || detFor !== it.id}
+                <p class="none">Reading it back…</p>
+              {:else if !det.found}
+                <p class="none">
+                  This one has dropped out of the recent hundred, so there is nothing left here to
+                  read back.
+                </p>
+              {:else}
+                <div class="when">
+                  <span>arrived <b>{det.createdAt}</b>, {rel(det.createdMs, clock.now)}</span>
+                  {#if det.resolvedAt}
+                    <span>
+                      ended <b>{det.resolvedAt}</b>{det.took ? `, stood ${det.took}` : ""}
+                    </span>
+                  {/if}
+                  <span class="grow"></span>
+                  {#if det.pending}
+                    <!-- Promoting stays one click from here: this is the row's own
+                         detail, so the card is a button away rather than a
+                         re-collapse and a second click on the row. -->
+                    <button type="button" class="show" onclick={() => bridge.promote(det.id)}>
+                      Show the card
+                    </button>
+                  {/if}
+                </div>
+
+                {#if det.bodyHtml}
+                  <div class="mdbody k-md selectable" use:markdown={det.bodyHtml}>{@html det.bodyHtml}</div>
+                {:else}
+                  <p class="none">This one was a title on its own; there was no body.</p>
+                {/if}
+
+                {#if det.options?.length}
+                  <div class="block">
+                    <span class="label">It offered</span>
+                    <ul class="opts">
+                      {#each det.options as o}
+                        <li class:chosen={o.chosen}>
+                          <span class="lbl">{o.label}</span>
+                          {#if o.default}<em class="flag">default</em>{/if}
+                          {#if o.chosen}<em class="flag took">taken</em>{/if}
+                          {#if o.desc}<span class="desc">{o.desc}</span>{/if}
+                        </li>
+                      {/each}
+                    </ul>
+                  </div>
+                {/if}
+
+                {#if det.answer || det.reply || det.values?.length}
+                  <div class="block">
+                    <span class="label">What went back</span>
+                    {#if det.answer}<p class="gave selectable">{det.answer}</p>{/if}
+                    {#if det.reply}<p class="gave typed selectable">{det.reply}</p>{/if}
+                    {#if det.values?.length}
+                      <dl class="vals selectable">
+                        {#each det.values as v}
+                          <dt>{v.label}</dt>
+                          <dd>{v.value}</dd>
+                        {/each}
+                      </dl>
+                    {/if}
+                  </div>
+                {/if}
+
+                <dl class="meta selectable">
+                  <dt>kind</dt>
+                  <dd>{det.kind}</dd>
+                  <dt>level</dt>
+                  <dd>{det.level}</dd>
+                  <dt>from</dt>
+                  <dd>
+                    <span class="idot" style="background: {det.hue}"></span>
+                    {det.agent}{det.project ? ` · ${det.project}` : ""}{det.muted ? " (muted)" : ""}
+                  </dd>
+                  {#if det.session}
+                    <dt>session</dt>
+                    <dd class="mono">{det.session}</dd>
+                  {/if}
+                  <dt>id</dt>
+                  <dd class="mono">{det.id}</dd>
+                </dl>
+              {/if}
+            </div>
           {/if}
         </div>
       {/each}
@@ -299,15 +460,25 @@
     border-radius: 9px;
     border: 1px solid transparent;
   }
-  .row.pending:hover {
+  /* Every row opens now (FR73), so every row answers the pointer. Before this
+   * a resolved row was inert and said so with the default cursor, which is
+   * exactly the dead end the field request was about. */
+  .row:hover {
     background: var(--k-surface-2);
-  }
-  .row:not(.pending) {
-    cursor: default;
   }
   .row.on {
     background: var(--k-surface-2);
     border-color: var(--k-edge);
+  }
+  .rowwrap.opened {
+    margin: 4px 0 8px;
+    border: 1px solid var(--k-edge);
+    border-radius: 10px;
+    background: var(--k-surface);
+  }
+  .rowwrap.opened .row {
+    border-color: transparent;
+    border-radius: 9px 9px 0 0;
   }
 
   /* The severity stripe, same device as the card's rail: level is a property of
@@ -408,6 +579,166 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* The detail (FR73). min-width: 0 is not decoration: this block holds a
+   * rendered body, and a `1fr` grid track's automatic minimum is its content's
+   * min-content width, so one unbreakable token in here would widen the whole
+   * window. The shell pins its own track; this pins the block. */
+  .detail {
+    min-width: 0;
+    padding: 4px 14px 14px 27px;
+    border-top: 1px solid var(--k-edge-soft);
+  }
+  .none {
+    margin: 10px 0 2px;
+    font-family: var(--k-font-read);
+    font-size: 0.84rem;
+    color: var(--k-ink-3);
+  }
+
+  .when {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 14px;
+    padding: 10px 0;
+    font-family: var(--k-font-mono);
+    font-size: 0.66rem;
+    color: var(--k-ink-3);
+  }
+  .when b {
+    font-weight: 500;
+    color: var(--k-ink-2);
+  }
+  .grow {
+    flex: 1;
+  }
+  .show {
+    padding: 5px 11px;
+    border: 1px solid color-mix(in srgb, var(--k-accent) 55%, var(--k-edge));
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--k-accent) 16%, transparent);
+    color: var(--k-ink);
+    font-family: var(--k-font-ui);
+    font-size: 0.74rem;
+  }
+  .show:hover {
+    background: color-mix(in srgb, var(--k-accent) 28%, transparent);
+  }
+
+  /* The body, and the one rule this whole surface exists for: no max-height, no
+   * line clamp, no ellipsis. The list scrolls instead. */
+  .mdbody {
+    min-width: 0;
+    margin: 4px 0 2px;
+    font-family: var(--k-font-read);
+    font-size: 0.88rem;
+    line-height: 1.62;
+    color: var(--k-ink);
+  }
+
+  .block {
+    margin-top: 14px;
+    min-width: 0;
+  }
+  .label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--k-ink-3);
+  }
+  .gave {
+    margin: 0;
+    font-family: var(--k-font-read);
+    font-size: 0.86rem;
+    color: var(--k-ink);
+    overflow-wrap: anywhere;
+  }
+  .gave.typed {
+    padding-left: 10px;
+    border-left: 2px solid var(--k-edge);
+    white-space: pre-wrap;
+    color: var(--k-ink-2);
+  }
+
+  .opts {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .opts li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 7px;
+    font-size: 0.82rem;
+    color: var(--k-ink-3);
+  }
+  .opts li.chosen .lbl {
+    color: var(--k-ink);
+    font-weight: 600;
+  }
+  .flag {
+    font-style: normal;
+    font-family: var(--k-font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--k-ink-3);
+  }
+  .flag.took {
+    color: var(--k-success);
+  }
+  .opts .desc {
+    font-size: 0.76rem;
+  }
+
+  .vals,
+  .meta {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 3px 14px;
+    margin: 0;
+    font-size: 0.78rem;
+  }
+  .vals dt,
+  .meta dt {
+    font-family: var(--k-font-mono);
+    font-size: 0.66rem;
+    color: var(--k-ink-3);
+    align-self: baseline;
+  }
+  .vals dd,
+  .meta dd {
+    margin: 0;
+    min-width: 0;
+    color: var(--k-ink-2);
+    overflow-wrap: anywhere;
+  }
+  .vals dd {
+    color: var(--k-ink);
+    white-space: pre-wrap;
+  }
+  .meta {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--k-edge-soft);
+  }
+  .meta .mono {
+    font-family: var(--k-font-mono);
+    font-size: 0.7rem;
+  }
+  .meta .idot {
+    display: inline-block;
+    margin-right: 5px;
+    vertical-align: baseline;
   }
 
   footer {

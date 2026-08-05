@@ -54,6 +54,10 @@ export const bridge = {
   // inbox + history surfaces. triage sends the keystroke, not a decision: which
   // key answers what is decided in Go so the card and the inbox cannot drift.
   inbox: () => Call.ByName(svc("Inbox")),
+  // One row read back in full (FR73). Asked for when a row opens, never shipped
+  // with the snapshot: the rows carry a snippet precisely so a hundred rendered
+  // bodies do not ride every repaint. `found: false` means the item has aged out.
+  itemDetail: (id) => Call.ByName(svc("ItemDetail"), id),
   promote: (id) => Call.ByName(svc("Promote"), id),
   triage: (id, key) => Call.ByName(svc("Triage"), id, key),
   copyItem: (id) => Call.ByName(svc("CopyItem"), id),

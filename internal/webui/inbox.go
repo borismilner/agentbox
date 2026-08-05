@@ -2,6 +2,7 @@ package webui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,85 @@ type wireItem struct {
 	Hint    string `json:"hint,omitempty"`
 
 	CreatedMS int64 `json:"createdMs"`
+}
+
+// wireDetail is one item read back in full (FR73). The row above is a summary and
+// truncates on purpose; this is the one payload that never does, because it exists
+// for the case Boris hit - a card closed on its timer and took its body with it.
+//
+// It is asked for per opened row rather than shipped in the snapshot: a hundred
+// rendered bodies in every push is exactly what Snippet was introduced to avoid.
+type wireDetail struct {
+	// Found says the id is gone rather than empty, so the surface can say which.
+	Found bool `json:"found"`
+
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Level string `json:"level"`
+	Title string `json:"title"`
+	// BodyHTML goes through the same renderer the card used, so a body reads the
+	// same way after it closed as it did while it was on screen.
+	BodyHTML string `json:"bodyHtml,omitempty"`
+
+	Agent   string `json:"agent"`
+	Project string `json:"project"`
+	Session string `json:"session,omitempty"`
+	Hue     string `json:"hue"`
+	Muted   bool   `json:"muted"`
+
+	Pending bool   `json:"pending"`
+	Outcome string `json:"outcome"`
+	Tone    string `json:"tone"`
+
+	// Both timestamps, formatted here for the reason every other decision on this
+	// surface is made here: the calendar day an item arrived is agentbox's answer,
+	// not the webview's. The millis ride along so the same rel() the rows use can
+	// put an age beside the clock time.
+	CreatedAt  string `json:"createdAt"`
+	CreatedMS  int64  `json:"createdMs"`
+	ResolvedAt string `json:"resolvedAt,omitempty"`
+	ResolvedMS int64  `json:"resolvedMs,omitempty"`
+	// Took is how long the item stood before it ended - the number a reader who
+	// missed it actually wants, and one neither timestamp states on its own.
+	Took string `json:"took,omitempty"`
+
+	// What was given back, in the item's own terms. At most one of the three is
+	// set; a form's values arrive as pairs in the form's own field order, because
+	// a map has none and the order the fields were asked in is the order they read.
+	Answer string           `json:"answer,omitempty"`
+	Reply  string           `json:"reply,omitempty"`
+	Values []wireFieldValue `json:"values,omitempty"`
+
+	// Options are the choices the card offered, and they are here for the same
+	// reason the body is: they were on screen, they went with it, and an answer
+	// read back with nothing to read it against is half a record. Which one was
+	// taken is marked rather than left to a string comparison in the surface.
+	Options []wireDetailOption `json:"options,omitempty"`
+
+	// Two things an agent said are deliberately NOT here, because they are not
+	// there to read: the store's items table carries id, kind, level, title, body,
+	// options, fields, actions, cwd, timeout_s, dflt, identity, state and
+	// created_at, and neither `speak` nor `diff` is a column. A resolved review's
+	// diff and a spoken line are gone with the card, and adding fields for them
+	// here would only promise something the read behind them cannot deliver. FR73
+	// is a reader; persisting them is a schema change and its own field request
+	// (docs/STATUS.md, known gaps).
+}
+
+// wireFieldValue is one answered form field: the label it was asked under, not
+// its key.
+type wireFieldValue struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// wireDetailOption is one choice the card offered, and whether it was the offered
+// default or the one actually taken.
+type wireDetailOption struct {
+	Label   string `json:"label"`
+	Desc    string `json:"desc,omitempty"`
+	Default bool   `json:"default,omitempty"`
+	Chosen  bool   `json:"chosen,omitempty"`
 }
 
 // wireInbox is the whole surface in one payload: the rows plus the two numbers
@@ -150,6 +230,152 @@ func encodeItem(it store.StoredItem, muted, dark bool) wireItem {
 		w.Hint = triageHint(it)
 	}
 	return w
+}
+
+// detail reads one item back in full (FR73). The rows snapshot is the lookup, so
+// an opened row normally costs no store read at all; a miss re-reads the source,
+// because a surface can hold an id from a repaint the snapshot has since moved
+// past and "gone" has to mean gone rather than "not in the last payload".
+func (ib *inbox) detail(id string) wireDetail {
+	src := ib.ui.source()
+
+	ib.mu.Lock()
+	it, found := findItem(ib.rows, id)
+	ib.mu.Unlock()
+
+	if !found && src != nil {
+		// RecentItems(limit) is the whole of Source's read side, so the fallback is
+		// that same read rather than a wider interface bought for one lookup.
+		if items, err := src.RecentItems(100); err == nil {
+			it, found = findItem(items, id)
+		} else {
+			ib.ui.log.Error("webui.inbox_detail_reload_failed", "component", "webui", "err", err.Error())
+		}
+	}
+	if !found {
+		return wireDetail{ID: id}
+	}
+
+	muted := src != nil && slices.Contains(src.MutedAgents(), it.Identity.Agent)
+	return encodeDetail(it, muted, ib.ui.themeMode() == "dark")
+}
+
+func findItem(rows []store.StoredItem, id string) (store.StoredItem, bool) {
+	for i := range rows {
+		if rows[i].ID == id {
+			return rows[i], true
+		}
+	}
+	return store.StoredItem{}, false
+}
+
+func encodeDetail(it store.StoredItem, muted, dark bool) wireDetail {
+	outcome, tone := outcomeOf(it)
+	d := wireDetail{
+		Found:     true,
+		ID:        it.ID,
+		Kind:      string(it.Kind),
+		Level:     string(it.EffectiveLevel()),
+		Title:     it.Title,
+		BodyHTML:  RenderMarkdown(it.Body),
+		Agent:     it.Identity.Agent,
+		Project:   it.Identity.Project,
+		Session:   it.Identity.Session,
+		Hue:       IdentityHue(it.Identity.Agent, it.Identity.Project, dark),
+		Muted:     muted,
+		Pending:   it.State == store.StatePending,
+		Outcome:   outcome,
+		Tone:      tone,
+		CreatedAt: clockText(it.CreatedAt),
+		CreatedMS: ms(it.CreatedAt),
+		Answer:    it.Answer,
+		Reply:     it.Reply,
+	}
+	if !it.ResolvedAt.IsZero() {
+		d.ResolvedAt = clockText(it.ResolvedAt)
+		d.ResolvedMS = ms(it.ResolvedAt)
+		d.Took = stood(it.ResolvedAt.Sub(it.CreatedAt))
+	}
+	d.Values = answeredValues(it)
+	for _, o := range it.Options {
+		d.Options = append(d.Options, wireDetailOption{
+			Label:   o.Label,
+			Desc:    o.Desc,
+			Default: o.Label == it.Default,
+			// Taken, not "clicked": an item that expired onto its default records
+			// that default as its answer (daemon.go, StateExpired with an Outcome),
+			// and the option that went back to the caller is the fact worth marking.
+			// Which of the two happened is what the outcome chip beside it says.
+			Chosen: it.Answer != "" && o.Label == it.Answer,
+		})
+	}
+	return d
+}
+
+// answeredValues pairs a form's answer with the labels it was asked under. The
+// map has no order and the fields do, so the fields decide: what is read back is
+// what was on the card, top to bottom.
+//
+// A value under a key no field declares is still listed, sorted, rather than
+// dropped - silently losing something the human typed is this FR's own defect in
+// miniature.
+func answeredValues(it store.StoredItem) []wireFieldValue {
+	if len(it.Values) == 0 {
+		return nil
+	}
+	out := make([]wireFieldValue, 0, len(it.Values))
+	seen := make(map[string]bool, len(it.Values))
+	for _, f := range it.Fields {
+		v, ok := it.Values[f.Key]
+		if !ok || seen[f.Key] {
+			continue
+		}
+		seen[f.Key] = true
+		label := f.Label
+		if label == "" {
+			label = f.Key
+		}
+		out = append(out, wireFieldValue{Label: label, Value: v})
+	}
+	extra := make([]string, 0, len(it.Values))
+	for k := range it.Values {
+		if !seen[k] {
+			extra = append(extra, k)
+		}
+	}
+	slices.Sort(extra)
+	for _, k := range extra {
+		out = append(out, wireFieldValue{Label: k, Value: it.Values[k]})
+	}
+	return out
+}
+
+// clockText is when something happened, to the minute. The exact second an item
+// arrived has never mattered; the day and the time of day are what a reader who
+// missed it is asking about.
+func clockText(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format("Jan 2 15:04")
+}
+
+// stood is how long an item was up before it ended, coarse on purpose and in the
+// units a reader thinks in. Under a second reads as nothing at all: an item
+// dismissed the instant it arrived did not stand for any length of time.
+func stood(d time.Duration) string {
+	switch {
+	case d < time.Second:
+		return ""
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Round(time.Second).Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Round(time.Minute).Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	default:
+		return fmt.Sprintf("%dd%dh", int(d.Hours())/24, int(d.Hours())%24)
+	}
 }
 
 // pendingFirst puts the unanswered items on top, each group keeping the store's
@@ -345,14 +571,7 @@ func triageHint(it store.StoredItem) string {
 // fresh snapshot, so the row updates without the surface asking.
 func (ib *inbox) act(id, key string) bool {
 	ib.mu.Lock()
-	var it store.StoredItem
-	found := false
-	for _, row := range ib.rows {
-		if row.ID == id {
-			it, found = row, true
-			break
-		}
-	}
+	it, found := findItem(ib.rows, id)
 	ib.mu.Unlock()
 	if !found || it.State != store.StatePending {
 		return false
@@ -382,10 +601,8 @@ func (ib *inbox) act(id, key string) bool {
 func (ib *inbox) clipText(id string) string {
 	ib.mu.Lock()
 	defer ib.mu.Unlock()
-	for i := range ib.rows {
-		if ib.rows[i].ID == id {
-			return ib.rows[i].ClipboardText()
-		}
+	if it, ok := findItem(ib.rows, id); ok {
+		return it.ClipboardText()
 	}
 	return ""
 }
