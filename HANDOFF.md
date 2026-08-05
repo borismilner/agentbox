@@ -153,7 +153,9 @@ headless. It can. Both fixed in the prompt, and one run proves it: live figures,
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `0b268bf6b14c`, clean stamp, `make deployed` agrees with HEAD.
+- **Deployed:** `0b268bf6b14c`, clean stamp. Every commit after it is docs only (this
+  handoff and the FR84 mock), so a deployed build older than HEAD is correct here
+  rather than a missed deploy - the binary and the embedded manual are current.
 - **Git:** clean, `main` pushed to `origin` (GitLab, push-mirrors to GitHub). This
   session, oldest first: `faabd55` (FR85), `22f9965` (FR86), `b365bd3` (the two board
   dead ends), `042c51d` (docs for FR85/FR86), `e68bfba` (the value's wrap, which turned
