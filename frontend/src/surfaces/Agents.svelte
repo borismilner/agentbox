@@ -913,13 +913,22 @@
     color: var(--k-ink-3);
   }
 
-  /* A shared value in full: the line clips at 40ch, this wraps and scrolls. */
+  /* A shared value in full: the line clips at 40ch, this wraps and scrolls.
+     min-width and word-break are both load-bearing, and looking at it is how that
+     was found: a JSON value is one enormous token, its min-content width became
+     the whole board's width, and the first capture had the Break lock buttons
+     pushed off the right of the window. `overflow-wrap: anywhere` alone did not
+     save it - the box has to be allowed to be narrower than its longest token
+     before anything can break inside it. */
   .full {
     margin: 0;
+    min-width: 0;
+    max-width: 100%;
     max-height: 40vh;
     overflow: auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    word-break: break-all;
     font-size: 0.78rem;
     color: var(--k-ink-2);
     background: var(--k-surface-3);
@@ -933,6 +942,8 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    /* So a long value inside cannot widen the row, and through it the board. */
+    min-width: 0;
   }
   .pending {
     margin: 0;
