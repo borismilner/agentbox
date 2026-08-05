@@ -869,20 +869,22 @@ carries the current short order (FR65, FR74's fullscreen marker); the
 numbered list below is the long tail behind it, kept for the items nothing else
 records.
 
-1. **FR74's last open piece: the fullscreen marker.** A fullscreen window may
-   cover the strip, but a small always-visible marker must stay on top of it;
-   needs FR29's `_NET_WM_STATE_FULLSCREEN` read, a second tiny window shape, and
-   `keepOnTop` has to stop restacking the full strip once the marker exists. Do
-   not skip the marker: a fully covered strip reads as "the desktop is yours"
-   while an agent drives, which is the one wrong answer this feature can give.
-   (The MCP control tools landed in session 32 - `request_control`,
-   `set_activity`, `release_control` - and both manuals now route an agent to
-   them before it invents a card of its own.)
-1. **FR65 - open a citation in the editor**, the next board gap: an open
+1. **FR74's fullscreen marker is built and has never been seen.** This entry said
+   it still needed writing until session 47 checked: `internal/webui/control.go`
+   has the marker, its placement rule is unit-tested in `controlmark_test.go`, the
+   `_NET_WM_STATE_FULLSCREEN` read is in `x11.go`, and `keepOnTop` already makes
+   the marker its one exception to top-most. Session 34 built all of it. What is
+   missing is the only thing that counts here - nobody has watched a real
+   fullscreen window cover the strip and checked that the marker stayed on top of
+   it, which needs consent to drive the desktop and a fullscreen app to test
+   against. A fully covered strip reads as "the desktop is yours" while an agent
+   drives, and that is the one wrong answer this feature can give, so an untested
+   marker is worth no more than no marker.
+2. **FR65 - open a citation in the editor**, the next board gap: an open
    button per code block, next to copy, running a configured editor command
    template. The JetBrains invocation is under "Mechanics discovered" in
    [07-field-requests.md](07-field-requests.md).
-2. **The re-record.** Boris has said go on a from-scratch re-record and
+3. **The re-record.** Boris has said go on a from-scratch re-record and
    re-upload (the uploaded take is missing the slide-11 progress bar AND
    wears the old brand end to end); scheduling is his call, ~21 minutes of
    his screen. The blocker is gone: the top-most fix was seen working over a
@@ -897,40 +899,40 @@ records.
    the narration names it. Before the camera rolls, refresh the tool count in
    `tools/showcase/deck.py` and the one-page argument in `docs/showcase.md`:
    both still say "fourteen tools" and the binary serves thirty.
-3. **Resize affordance for frameless surfaces** (owner, 2026-07-28, from the
+4. **Resize affordance for frameless surfaces** (owner, 2026-07-28, from the
    FR58 mock round): a maximized artifact window can only be resized through
    WM chords (Alt+F8, Super+middle-drag), which is undiscoverable. Wanted:
    edge grips on AgentBox's frameless windows or double-click-to-restore on AgentBox's
    own title bar, with "any size I want, full screen the default" as the
    acceptance line. Artifact windows already open maximized (d656eeb).
-4. **The earcons.** Boris: "they are mechanical, I would rather have
+5. **The earcons.** Boris: "they are mechanical, I would rather have
    something pleasant to the ear." `tools/genearcons/main.go` synthesises
    them (sine plus one harmonic, exponential decay); the WAVs are committed.
    He has to hear each attempt, so do it with him in the room.
-5. **Two cosmetic defects at slide 17**: the OnlyOffice presenter strip
+6. **Two cosmetic defects at slide 17**: the OnlyOffice presenter strip
    flashes, and the app window is caught mid-transition as a grey rectangle.
-6. **A JS test runner** (vitest + jsdom, two devDependencies and an
+7. **A JS test runner** (vitest + jsdom, two devDependencies and an
    `npm test` the Makefile can call). First candidates: `buildDocument`
    producing a document whose CSP and injected runtimes are what the source
    says, `compile` handling JSX and a TypeScript annotation, and
    `markdown.svelte.js` leaving a block Go produced alone.
-7. **Live-verify the rest of M4 on a desktop session**: ask a question
+8. **Live-verify the rest of M4 on a desktop session**: ask a question
    through MCP from a project session and confirm the click result
    returns; confirm a Stop hook chimes (recipes.md). Smoke-tested so far:
    handshake + tools/list, and the deployed server answers `notify`.
-8. **Live-verify the M5 calm FRs** (daemon-tested; FR44's marker is seen
+9. **Live-verify the M5 calm FRs** (daemon-tested; FR44's marker is seen
    live): FR45 - run a blocking `agentbox ask`, kill the caller, check the card
    flips to "caller disconnected" then auto-dismisses; restart the daemon
    with a pending ask and check "awaiting reconnect". FR47 - `agentbox mute
    claude-code`, confirm its cards stop surfacing while the tray and inbox
    badge it, `agentbox unmute` reveals them.
-9. **Live-verify the rest of the FR29 presence gate**: one summary chime
+10. **Live-verify the rest of the FR29 presence gate**: one summary chime
    on return rather than a backlog, a fullscreen app (or GNOME's DND
    switch) holding a card and revealing it on leaving, urgent piercing.
-10. **Packaging leftovers**: autostart on a real login (needs a logout),
+11. **Packaging leftovers**: autostart on a real login (needs a logout),
    `make uninstall` reversing cleanly, and no tray menu item has been
    clicked by hand since the cutover.
-11. **Remaining direction**: session-surface follow-ups (inline approval
+12. **Remaining direction**: session-surface follow-ups (inline approval
    via the stream-json control protocol so the agent can act under a
    prompting mode; session keep-alive across an app-window close; a
    working-directory picker for new sessions); M6 refinements (per-token
@@ -938,7 +940,7 @@ records.
    Wayland (DEFERRED by owner - validate activation/raise, color-scheme
    portal, fractional scaling, and add the Wayland fullscreen signal;
    FR29 fullscreen + card placement are X11-only today).
-12. **Watch items**: (user-reported) if an undo strip ever visibly exceeds
+13. **Watch items**: (user-reported) if an undo strip ever visibly exceeds
     its countdown again, `agentbox logs` has item.grace_started with grace_ms;
     diff that against the item.answered timestamp. (session 25) one
     `make deploy` run failed its `-race` test gate and the identical re-run
