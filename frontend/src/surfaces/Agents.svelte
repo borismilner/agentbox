@@ -20,6 +20,7 @@
 
   let roster = $state(null); // null until the first payload: empty is a real answer
   let open = $state(null); // the expanded row's key
+  let openVal = $state(null); // the expanded shared value's key
   let breaking = $state(null); // the lock name awaiting a break confirmation
   let flash = $state(null); // a row jumped to from a wait, briefly lit
   let err = $state("");
@@ -37,6 +38,7 @@
     base = Date.now();
     // A row that went away must not keep the detail open under a different agent.
     if (open && !(roster.agents ?? []).some((a) => a.key === open)) open = null;
+    if (openVal && !(roster.shared ?? []).some((v) => v.key === openVal)) openVal = null;
   }
 
   bridge
@@ -101,8 +103,14 @@
         return { label: "asking you", cls: "ask" };
       case "driving":
         return { label: "driving desktop", cls: "drive" };
+      // The wait line under the row already carries the lock, the holder, the age
+      // and the queue place, so the detail here said the same fact twice on one
+      // row: "blocked: lock X, held by Y" above "waiting on X for 20s, held by Y".
+      // The daemon keeps sending it, because the CLI has no second line to put it
+      // on - and a blocked row with no wait line would be a puzzle, so it keeps
+      // the detail then.
       case "blocked":
-        return { label: `blocked: ${a.detail}`, cls: "block" };
+        return { label: a.wait ? "blocked" : `blocked: ${a.detail}`, cls: "block" };
       case "listening":
         return { label: `listening: ${a.detail}`, cls: "listen" };
       case "reporting":
@@ -139,6 +147,19 @@
   function toggle(key) {
     breaking = null;
     open = open === key ? null : key;
+  }
+
+  // A shared value is worth opening when its line cannot hold the whole story: a
+  // value wider than the 40ch the line clips it to, or an owner whose row is
+  // elsewhere on this board. When there is nothing more, the row stays plain and
+  // says so by not lighting up - a hover highlight over a row that does nothing on
+  // click is a dead end every human tries exactly once.
+  function moreToSee(v) {
+    return (v.value ?? "").length > 40 || Boolean(v.owner);
+  }
+
+  function toggleVal(key) {
+    openVal = openVal === key ? null : key;
   }
 
   async function breakLock(name) {
@@ -251,8 +272,23 @@
                gone. -->
           <div class="rows">
             {#each shared as v (v.key)}
-              <div class="row" class:orphan={v.owner_gone}>
-                <div class="main plain">
+              {@const more = moreToSee(v)}
+              <div class="row" class:orphan={v.owner_gone} class:open={openVal === v.key} class:still={!more}>
+                <!-- A real button when there is something to open, a plain div when
+                     there is not: Enter and Space then come from the element rather
+                     than from a keydown handler, and a row that cannot expand is not
+                     announced as a control that can. The ignore is because the
+                     compiler cannot see which tag this is - the click handler only
+                     ever lands on the button, which needs no role of its own. -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <svelte:element
+                  this={more ? "button" : "div"}
+                  class="main"
+                  class:plain={!more}
+                  type={more ? "button" : undefined}
+                  aria-expanded={more ? openVal === v.key : undefined}
+                  onclick={more ? () => toggleVal(v.key) : undefined}
+                >
                   <span class="hue" class:warn={v.owner_gone}></span>
                   <span class="body">
                     <span class="l1">
@@ -275,7 +311,35 @@
                   <span class="chips">
                     {#if v.owner_gone}<span class="chip block">owner gone</span>{/if}
                   </span>
-                </div>
+                </svelte:element>
+
+                {#if openVal === v.key}
+                  <div class="detail">
+                    <!-- The whole value, which the line can only ever show the front
+                         of. Wrapped and scrolled rather than clipped: 16 KB is the
+                         cap, so the row must not become the page. -->
+                    {#if (v.value ?? "").length > 40}
+                      <pre class="full mono">{v.value}</pre>
+                    {/if}
+                    {#if v.owner}
+                      <dl class="meta">
+                        <dt>owner</dt>
+                        <dd>
+                          {#if v.owner_gone}
+                            {v.owner_name || "an agent that is gone"}
+                            <span class="mono">{v.owner}</span>
+                            · its session and its process are both gone, so this claim is nobody's
+                          {:else}
+                            <button class="holder" onclick={() => jump(v.owner)} title="Go to the owner's row">
+                              {v.owner_name || v.owner}
+                            </button>
+                            <span class="mono">{v.owner}</span>
+                          {/if}
+                        </dd>
+                      </dl>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
@@ -613,6 +677,11 @@
   .row:hover {
     background: var(--k-surface-2);
   }
+  /* The highlight is this surface's promise that a click will do something, so a
+     row with nothing more to show must not make it. */
+  .row.still:hover {
+    background: transparent;
+  }
   .row.open {
     background: var(--k-surface-2);
   }
@@ -638,6 +707,15 @@
   }
   .main.plain {
     cursor: default;
+  }
+  /* A shared row that can expand is a real button, so its own chrome has to go:
+     the same box as the div beside it, or two rows in one list stop lining up. */
+  button.main {
+    width: 100%;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
   }
   .hue {
     flex: none;
@@ -833,6 +911,21 @@
     font-family: var(--k-font-mono);
     font-size: 0.68rem;
     color: var(--k-ink-3);
+  }
+
+  /* A shared value in full: the line clips at 40ch, this wraps and scrolls. */
+  .full {
+    margin: 0;
+    max-height: 40vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.78rem;
+    color: var(--k-ink-2);
+    background: var(--k-surface-3);
+    border: 1px solid var(--k-edge-soft);
+    border-radius: 8px;
+    padding: 8px 10px;
   }
 
   .detail {
