@@ -89,7 +89,12 @@ type wireDetail struct {
 	Hue     string `json:"hue"`
 	Muted   bool   `json:"muted"`
 
-	Pending bool   `json:"pending"`
+	Pending bool `json:"pending"`
+	// Outcome and Tone are the row's chip, sent again here on purpose. The inbox
+	// paints the detail under the row that owns it and reads the chip from there,
+	// so these are currently unrendered - but this payload is the answer to "read
+	// this item back", and one that leaves out how the item ended is only complete
+	// while it is glued to a row that says so.
 	Outcome string `json:"outcome"`
 	Tone    string `json:"tone"`
 
