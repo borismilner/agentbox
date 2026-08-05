@@ -1421,7 +1421,7 @@ size was never the problem.
 
 ---
 
-## FR73 [field] A card body cannot be read back
+## FR73 [fixed 2026-08-05, session 47] A card body cannot be read back
 
 **Session.** 2026-07-31. Boris missed a `veto` card while it was up, went looking
 for it, and could not recover it: "I've missed what you said - so I tried to look
@@ -1439,6 +1439,41 @@ purpose is that a message is not lost, losing the message is the wrong failure.
 markdown, the identity, both timestamps, the outcome and any answer given. It is
 the one surface that must never truncate. Everything needed is already stored;
 this is a reader, not a schema change.
+
+**Fixed as proposed.** Clicking any row - pending or resolved - opens a detail
+under it: the body through `RenderMarkdown`, the same renderer the card used, so
+it reads the same way after it closed; both timestamps to the minute plus how
+long the item stood; what it offered and which option went back, the default and
+the taken one marked separately; a form's answers in the order its fields were
+asked, not its map's; the identity with its hue, session key and id. Nothing is
+clamped, shortened or ellipsised. `Bridge.ItemDetail(id)` is a call per opened
+row rather than a field on the snapshot, because a hundred rendered bodies in
+every push is exactly what the row's 140-character `Snippet` exists to avoid.
+
+**Three things building it turned up.**
+
+- **"Everything needed is already stored" is not quite true.** The store's items
+  table carries id, kind, level, title, body, options, fields, actions, cwd,
+  timeout_s, dflt, identity, state and created_at - and no `speak`, no `diff`. So
+  a spoken line and a review's diff DO go with the card. Both were written, both
+  were then taken out rather than shipped as fields that are always empty: the
+  detail promises nothing it cannot deliver. Persisting them is a schema change
+  and its own request (STATUS, known gaps).
+- **Clicking a row used to be inert unless it was pending**, so nobody had reason
+  to click into the list and then type. Now that every row opens, a click also
+  moves the triage selection when the row is pending - otherwise reading one row
+  and pressing `d` would dismiss whichever row `j/k` was last left on.
+- **A row can change under an open detail.** Answered on its card, or triaged from
+  the keyboard: the detail then went on saying "waiting" and offering a card for
+  something already answered. One effect owns both cases - a row that LEFT the
+  list closes its detail, a row that CHANGED is re-read.
+
+**The keyboard triage path is untouched**: `j/k` still walks the pending run and
+the same keys still act on the selection. A row is a real button, so Tab reaches
+every row and Enter or Space opens its detail - the only keyboard route to a
+resolved one, since the selection never leaves the pending rows. Those two keys
+are handed to the focused button rather than to triage, or reading one row would
+answer another.
 
 ---
 

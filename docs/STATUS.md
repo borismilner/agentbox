@@ -1,6 +1,12 @@
 # STATUS
 
-Updated: 2026-08-04, forty-fifth session (**FR83 is COMPLETE: all five slices**).
+Updated: 2026-08-05, forty-seventh session (**FR73 is closed: a card body can be
+read back**). Session 47 gave every inbox row a detail view that reads its item
+back whole - the last of Boris's own field requests still open, and the one that
+mattered most, because a tool whose purpose is that a message is not lost was
+losing messages. Session 46 fixed the identity hue's two implementations, the
+project name, two board dead ends and a form's clipped options, and found a shell
+layout bug any surface could trigger.
 Session 45 installed the hooks in Boris's real `~/.claude/settings.json` and found
 the recipe could not work as written, so the session key is now derived from the
 agent process instead of minted - every session on this machine announces itself
@@ -769,10 +775,13 @@ do* is tested, and so is the HTML Go hands it.
   file.** `wireCode.Pinned` travels on the wire and the surface ignores it. It
   matters the moment a margin note stops matching its code, because that is the
   first question to ask. Boris was offered this and has not decided.
-- The inbox surface has no per-item detail; a row shows title, identity,
-  age and outcome, with the body only as a tooltip on resolved rows.
-  Promote to the card to read a body. Queued as FR73 ("Do this next" 2) -
-  no longer considered acceptable since a missed card lost its message.
+- **A resolved review's diff, and any spoken line, still cannot be read back.**
+  FR73 gave every inbox row a detail view that reads its item back whole, and
+  building it found the limit of "everything needed is already stored": the
+  store's items table has no `speak` and no `diff` column, so those two go with
+  the card whatever the reader does. The detail deliberately carries no field
+  for either rather than promising what the read behind it cannot deliver. Both
+  are a schema change and their own field request.
 - The inline ask panel holds one question at a time (all the daemon
   presents), and a question already in the panel does not move when you
   switch sessions - it stays with the conversation that asked, and the
@@ -856,7 +865,7 @@ not pick.
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (FR73, FR65, FR74's fullscreen marker); the
+carries the current short order (FR65, FR74's fullscreen marker); the
 numbered list below is the long tail behind it, kept for the items nothing else
 records.
 
@@ -869,16 +878,11 @@ records.
    (The MCP control tools landed in session 32 - `request_control`,
    `set_activity`, `release_control` - and both manuals now route an agent to
    them before it invents a card of its own.)
-2. **FR73 - a card body must be readable after the card closes.** The inbox row
-   shows the body as a truncating tooltip and offers no detail view, so a card
-   that timed out takes its message with it. Boris hit this on 2026-07-31: he
-   missed a card, went to the inbox, and could not recover what it said.
-   Nothing new needs storing - it is a reader.
-3. **FR65 - open a citation in the editor**, the next board gap: an open
+1. **FR65 - open a citation in the editor**, the next board gap: an open
    button per code block, next to copy, running a configured editor command
    template. The JetBrains invocation is under "Mechanics discovered" in
    [07-field-requests.md](07-field-requests.md).
-4. **The re-record.** Boris has said go on a from-scratch re-record and
+2. **The re-record.** Boris has said go on a from-scratch re-record and
    re-upload (the uploaded take is missing the slide-11 progress bar AND
    wears the old brand end to end); scheduling is his call, ~21 minutes of
    his screen. The blocker is gone: the top-most fix was seen working over a
@@ -893,40 +897,40 @@ records.
    the narration names it. Before the camera rolls, refresh the tool count in
    `tools/showcase/deck.py` and the one-page argument in `docs/showcase.md`:
    both still say "fourteen tools" and the binary serves thirty.
-5. **Resize affordance for frameless surfaces** (owner, 2026-07-28, from the
+3. **Resize affordance for frameless surfaces** (owner, 2026-07-28, from the
    FR58 mock round): a maximized artifact window can only be resized through
    WM chords (Alt+F8, Super+middle-drag), which is undiscoverable. Wanted:
    edge grips on AgentBox's frameless windows or double-click-to-restore on AgentBox's
    own title bar, with "any size I want, full screen the default" as the
    acceptance line. Artifact windows already open maximized (d656eeb).
-6. **The earcons.** Boris: "they are mechanical, I would rather have
+4. **The earcons.** Boris: "they are mechanical, I would rather have
    something pleasant to the ear." `tools/genearcons/main.go` synthesises
    them (sine plus one harmonic, exponential decay); the WAVs are committed.
    He has to hear each attempt, so do it with him in the room.
-7. **Two cosmetic defects at slide 17**: the OnlyOffice presenter strip
+5. **Two cosmetic defects at slide 17**: the OnlyOffice presenter strip
    flashes, and the app window is caught mid-transition as a grey rectangle.
-8. **A JS test runner** (vitest + jsdom, two devDependencies and an
+6. **A JS test runner** (vitest + jsdom, two devDependencies and an
    `npm test` the Makefile can call). First candidates: `buildDocument`
    producing a document whose CSP and injected runtimes are what the source
    says, `compile` handling JSX and a TypeScript annotation, and
    `markdown.svelte.js` leaving a block Go produced alone.
-9. **Live-verify the rest of M4 on a desktop session**: ask a question
+7. **Live-verify the rest of M4 on a desktop session**: ask a question
    through MCP from a project session and confirm the click result
    returns; confirm a Stop hook chimes (recipes.md). Smoke-tested so far:
    handshake + tools/list, and the deployed server answers `notify`.
-10. **Live-verify the M5 calm FRs** (daemon-tested; FR44's marker is seen
+8. **Live-verify the M5 calm FRs** (daemon-tested; FR44's marker is seen
    live): FR45 - run a blocking `agentbox ask`, kill the caller, check the card
    flips to "caller disconnected" then auto-dismisses; restart the daemon
    with a pending ask and check "awaiting reconnect". FR47 - `agentbox mute
    claude-code`, confirm its cards stop surfacing while the tray and inbox
    badge it, `agentbox unmute` reveals them.
-11. **Live-verify the rest of the FR29 presence gate**: one summary chime
+9. **Live-verify the rest of the FR29 presence gate**: one summary chime
    on return rather than a backlog, a fullscreen app (or GNOME's DND
    switch) holding a card and revealing it on leaving, urgent piercing.
-12. **Packaging leftovers**: autostart on a real login (needs a logout),
+10. **Packaging leftovers**: autostart on a real login (needs a logout),
    `make uninstall` reversing cleanly, and no tray menu item has been
    clicked by hand since the cutover.
-13. **Remaining direction**: session-surface follow-ups (inline approval
+11. **Remaining direction**: session-surface follow-ups (inline approval
    via the stream-json control protocol so the agent can act under a
    prompting mode; session keep-alive across an app-window close; a
    working-directory picker for new sessions); M6 refinements (per-token
@@ -934,7 +938,7 @@ records.
    Wayland (DEFERRED by owner - validate activation/raise, color-scheme
    portal, fractional scaling, and add the Wayland fullscreen signal;
    FR29 fullscreen + card placement are X11-only today).
-14. **Watch items**: (user-reported) if an undo strip ever visibly exceeds
+12. **Watch items**: (user-reported) if an undo strip ever visibly exceeds
     its countdown again, `agentbox logs` has item.grace_started with grace_ms;
     diff that against the item.answered timestamp. (session 25) one
     `make deploy` run failed its `-race` test gate and the identical re-run
