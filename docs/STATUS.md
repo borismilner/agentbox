@@ -59,7 +59,8 @@ Two shipped bugs fell out of building it, both fixed: `Conn.Serve` never told a
 blocking handler its caller had hung up, so **FR45's caller-gone indicator had
 never fired in the field**, and every blocking card was on a 30-minute fuse
 (FR88), found while measuring the client's idle cap for the parked waits. The
-identity hue still has two disagreeing implementations - FR85 with FR86, open.
+identity hue's two implementations agreed for the first time in session 46
+(FR85 with FR86, fixed and seen on screen).
 
 **Each slice is worth reading about rather than summarised here**, because all five
 found something the design had wrong and every one was found by running the thing
@@ -841,17 +842,20 @@ sessions had missed by reading a recipe instead of installing it. That is the
 pattern worth carrying to the next feature, and slice 5 is its sharpest form: **a
 door nobody has walked through is not a door.**
 
-**One defect found in the field on 2026-08-04 and still open:** FR86 (a project is
-named after whatever directory the agent stood in, so an agent in `frontend/src`
-reports project `src` and gets a second identity colour - fix it with FR85, they
-are the same story). FR87 (a daemon restart replaying a stale activity line) was
-fixed in session 42. Both are in [07-field-requests.md](07-field-requests.md).
+**The field defects this feature turned up are all closed.** FR86 (a project named
+after whatever directory the agent stood in) and FR85 (two identity hues that
+disagreed) were fixed together in session 46, which is also where a third
+divergence turned up inside FR85: the frontend hashed UTF-16 where Go hashes
+UTF-8. FR87 (a daemon restart replaying a stale activity line) was fixed in session
+42. All three are in [07-field-requests.md](07-field-requests.md). FR84 (a form
+clipping sentence-length options) is the one field defect still open, and it waits
+on a visual approach rather than on a build.
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (FR85 with FR86, FR84, and the older
-FR73/FR65/FR74-marker queue); the numbered list below is the long
-tail behind it, kept for the items nothing else records.
+carries the current short order (FR84, then the older FR73/FR65/FR74-marker
+queue); the numbered list below is the long tail behind it, kept for the items
+nothing else records.
 
 1. **FR74's last open piece: the fullscreen marker.** A fullscreen window may
    cover the strip, but a small always-visible marker must stay on top of it;

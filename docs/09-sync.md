@@ -242,7 +242,7 @@ does. One row per roster entry:
 |---|---|
 | asking you | a blocking item of theirs is pending (the waiters map) |
 | driving desktop | they hold the control run |
-| blocked: lock NAME | they are parked in `acquire_lock`, with holder and age |
+| blocked (CLI: blocked: lock NAME) | they are parked in `acquire_lock`; the daemon always sends the lock, the holder and the queue place, and the surface drops them from the chip because its wait line below already carries all three (session 46). `sync agents` has no second line, so the CLI keeps them |
 | listening: TOPIC | they are parked in `await_signal` |
 | reporting: task 64% | they own a live FR21 progress report |
 | working | activity line fresher than a threshold |
@@ -256,6 +256,13 @@ does. One row per roster entry:
 - **Holds and waits** - chips for held locks; a wait names the holder, and
   clicking it goes to the holder's row. Two agents waiting on each other is
   a drawn edge, not a diagram the human assembles in his head.
+
+A shared value's row opens too (session 46): the full value when the line clipped
+it at 40ch, and the owner with a jump to its row, or why nobody is coming back for
+it when the owner is gone. A row with nothing more to show does not highlight
+under the pointer at all, because on this surface the highlight is the promise that
+a click will do something - and it used to be a promise the shared block did not
+keep.
 
 Clicking a row opens the detail: the full announce, the recent activity
 timeline (a small in-memory ring per session), held locks with ages, recent

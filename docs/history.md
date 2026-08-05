@@ -9,6 +9,69 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Forty-sixth session (2026-08-05): the identity colour was two colours, and each fix found a second one
+
+Resumed from session 45's handoff with FR83 finished and its deferred queue in
+order: FR85 with FR86 first, then the board's small dead ends. Nothing in the
+handoff's live state had drifted except a doc commit landing after it was written,
+and one line of its own solo list contradicting its own facts section (the
+hook-announced row was photographed twice in session 45; the list said it never
+was). The repo won.
+
+**FR85 and FR86 are one bug with two entrances, and both had a second defect
+behind them.** The identity hue had two implementations that had never agreed:
+Go hashing `agent + " " + project`, the frontend hashing the two around a literal
+NUL. Taking Go's separator fixed the split and made tokens.js text again - the NUL
+was why `grep -rn identityHue frontend/src` had come back empty, so the second
+implementation was invisible to every search for it, which is how a colour bug
+survived in a file nobody could find. Then pinning both sides against a table
+showed the divergence nobody had looked for: the frontend hashed UTF-16 code units
+where Go hashes UTF-8 bytes. Identical for every ASCII identity, and a different
+colour for the first project directory that is not one, which on this machine
+(Hebrew paths, accented names) is a matter of time rather than a hypothetical.
+
+FR86's second defect was smaller and the same shape. `filepath.Base(cwd)` named
+an agent in `frontend/src` the project `src`; `DeriveProject` now rides the walk
+`deriveArea` already did. The exotic cwd (`/`) then reports no project at all
+rather than the project `/` - which is correct only because `betterIdentity` reads
+an empty project as "say nothing" instead of writing it, and that was worth
+checking before shipping rather than after.
+
+**Both were demonstrated rather than argued.** From `frontend/src` against the
+running daemon, the old binary announced `sleep · src` and the new one
+`sleep · agentbox`. For the colour, a toast's pill and the inbox row for the same
+item were sampled off the screen at `hsl(225 62% 68%)` each, where the frontend
+would have painted stop 30 before this build. Pixels, not "looks right".
+
+**The tests are three-sided on purpose**, because each side alone would have
+missed this: a fixed table of eight identities pins Go, node runs the frontend's
+own function over the same table (skipped where there is no node), and the shipped
+`dist` bundle is checked for the NUL so a fix that was never rebuilt fails
+`make check` rather than on Boris's screen. The cross-check was itself verified by
+breaking the separator on purpose and watching it name both sides - a green test
+that cannot go red proves nothing.
+
+**Two board dead ends, from the handoff's list.** A blocked row said "blocked:
+lock X, held by Y" in its chip and "waiting on X for 20s, held by Y" on the line
+under it: the same fact twice, trimmed on the surface only, because `sync agents`
+has no second line and the CLI still needs the detail. And a shared value
+highlighted on hover and did nothing on click; it opens now to the full value and
+its owner, with a jump to the owner's row, while a row with nothing more to show
+stops highlighting at all - the highlight is the surface's promise that a click
+does something. The row is a real `<button>` when it can expand and a plain div
+when it cannot, so Enter and Space come from the element rather than a keydown
+handler.
+
+**What this session did not verify:** the two board fixes were built, deployed and
+committed, and never seen. Boris locked the screen at 13:42, which the first
+capture found by photographing the lock screen - an all-grey window with a clock
+where the board should have been. Worth writing down twice: `LockedHint` was `no`
+at 13:30 and `yes` at 13:42, so checking it once at the start of a session is not
+checking it. An earlier capture in the same session also hit a recycled window id
+and photographed an unrelated window, which is why every capture after it verified
+the window's NAME immediately before the shutter rather than trusting the id from
+a listing a second earlier.
+
 ## Forty-fifth session (2026-08-04): FR83's last slice was documentation until it wasn't
 
 Resumed from session 44's handoff, which said all four sync primitives were built

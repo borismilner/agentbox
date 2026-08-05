@@ -2075,7 +2075,7 @@ now so it survives the session that found it.
 
 ---
 
-## FR85 [field] One agent, two different identity colours
+## FR85 [fixed 2026-08-05, session 46] One agent, two different identity colours
 
 **Session.** 2026-08-04, while building FR83's Agents surface, which needs an
 agent to be recognisable by colour across surfaces.
@@ -2107,12 +2107,29 @@ text and stays greppable. Then pin both implementations to a fixed table of
 identities in a test, so they cannot drift apart again without something going
 red.
 
-**Not fixed.** FR83's Agents surface uses the Go-computed hue, so it joins the
-majority rather than widening the split.
+**Fixed** as proposed, with one thing the proposal had not seen. The frontend
+takes Go's separator (a space), which also makes tokens.js text again, so the
+search that used to come back empty now names the file. Pinning the two sides
+against a table then showed a SECOND divergence in the same function: the
+frontend hashed UTF-16 code units where Go hashes UTF-8 bytes. Identical for
+every ASCII identity, and a different colour for the first project directory that
+is not one, which on this machine is a matter of time. It hashes `TextEncoder`
+output now.
+
+Three tests, because each alone would have missed this: the table of eight
+identities (Go, always), both implementations run over that table through node
+(skipped where there is no node), and the shipped `dist` bundle checked for the
+NUL, so a fix that was never rebuilt fails `make check` rather than on screen. The
+cross-check was verified by breaking the separator on purpose and watching it name
+both sides.
+
+**Seen, not inferred.** A toast's pill and the inbox row for the same item, both
+sampled off the screen: `hsl(225 62% 68%)` on each. The frontend would have
+painted stop 30 for that identity before this build.
 
 ---
 
-## FR86 [field] A project is named after whatever directory the agent stood in
+## FR86 [fixed 2026-08-05, session 46] A project is named after whatever directory the agent stood in
 
 **Session.** 2026-08-04, session 41, putting real rows on the Agents board and
 looking at them.
@@ -2129,11 +2146,21 @@ agent in two subdirectories of one repo also gets two colours - the same failure
 as FR85 arriving by a second route, and one FR85's separator fix would not
 address.
 
-**Fix.** Name the project after the repo root when the cwd is inside a repo,
-which is what `deriveArea` already computes and throws away
-(`internal/daemon/sync.go`). Then pin it: an agent in a subdirectory and one at
-the root must produce the same project string and the same hue. Worth doing with
-FR85, since the two of them are the whole identity-colour story.
+**Fixed** as described: `DeriveProject` rides the walk `deriveArea` already did
+and used to throw away, and every identity the CLI and the mcp child build calls
+it instead of `filepath.Base`. Outside a repo the directory is still the honest
+name, and an empty cwd still has none - `betterIdentity` reads an empty project as
+"say nothing", not as a value, so the exotic cwd (`/`) loses a meaningless label
+rather than gaining a wrong one.
+
+Pinned in both packages: the daemon test walks a fixture repo (root and a
+subdirectory produce one project string), and the webui test carries the pair the
+board actually showed - one agent at the root and one in `frontend/src`, now one
+colour.
+
+**Watched against the running daemon** from `frontend/src`, which is the whole
+bug in one line: the old binary announced `sleep · src`, the new one announces
+`sleep · agentbox`.
 
 ---
 
