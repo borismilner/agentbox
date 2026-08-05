@@ -637,6 +637,15 @@ func (u *UI) cardHeight(v daemon.View) int {
 		}
 	case proto.KindForm:
 		h += 40*len(v.Item.Fields) + 44
+		// FR84: a choice field whose opening option is longer than the closed
+		// select can show carries a second line spelling it out, so the window has
+		// to open with room for it rather than opening short and jumping when the
+		// card's ResizeObserver corrects it.
+		for _, f := range v.Item.Fields {
+			if f.Type == proto.FieldChoice && len(openingOption(f)) > spelledAt {
+				h += 20
+			}
+		}
 	case proto.KindVeto:
 		h += 70
 	case proto.KindDiff:
@@ -654,6 +663,26 @@ func (u *UI) cardHeight(v daemon.View) int {
 		h = maxH
 	}
 	return h
+}
+
+// spelledAt is where a choice option stops fitting the closed select, and the
+// number is shared with SPELL_AT in frontend/src/surfaces/Card.svelte: the
+// surface decides whether to draw the extra line, this file decides whether to
+// leave room for it, and TestTheSpellThresholdIsOneNumber fails if the two drift.
+// FR85 is why that test exists rather than a comment asking nicely.
+const spelledAt = 34
+
+// openingOption is the option a choice field opens on, which is the frontend's
+// rule in initialValue: the declared default, else the first option. Anything
+// else would size the window for a value the card never shows.
+func openingOption(f proto.Field) string {
+	if f.Default != "" {
+		return f.Default
+	}
+	if len(f.Options) > 0 {
+		return f.Options[0]
+	}
+	return ""
 }
 
 // cardHeight2 is the card's whole opening rectangle: the item's width and the

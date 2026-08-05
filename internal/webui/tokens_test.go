@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -160,5 +162,27 @@ func TestOneRepoIsOneIdentityColour(t *testing.T) {
 	}
 	if got := daemon.DeriveProject(""); got != "" {
 		t.Errorf("DeriveProject(\"\") = %q, want empty", got)
+	}
+}
+
+// FR84's threshold is one number in two files: the surface draws the extra line,
+// webui.go leaves room for it in the window the card opens at. Same failure mode
+// as the identity hue above, so the same answer - a test rather than a comment
+// asking the next session nicely.
+func TestTheSpellThresholdIsOneNumber(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "frontend", "src", "surfaces", "Card.svelte"))
+	if err != nil {
+		t.Fatalf("read Card.svelte: %v", err)
+	}
+	m := regexp.MustCompile(`SPELL_AT\s*=\s*(\d+)`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("Card.svelte no longer declares SPELL_AT; the two sides can now drift silently")
+	}
+	want, err := strconv.Atoi(string(m[1]))
+	if err != nil {
+		t.Fatalf("SPELL_AT is not a number: %q", m[1])
+	}
+	if want != spelledAt {
+		t.Errorf("Card.svelte says SPELL_AT = %d, webui.go says spelledAt = %d", want, spelledAt)
 	}
 }

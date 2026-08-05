@@ -232,6 +232,12 @@
     if (opt) bridge.answer(item.id, opt.label);
   }
 
+  // SPELL_AT is where a choice option stops fitting the closed select (FR84).
+  // internal/webui.spelledAt carries the same number, because Go sizes the window
+  // the card opens at and has to leave room for the extra line; a test fails if
+  // the two drift, which is the lesson FR85 charged for on the identity hue.
+  const SPELL_AT = 34;
+
   // What a form field starts as. A choice with no default has to start on its
   // first option: bound to "", a <select> renders with nothing chosen, which reads
   // as a broken card and submits a value that was never on the menu.
@@ -402,9 +408,20 @@
                 {#if f.type === "bool"}
                   <input type="checkbox" bind:checked={formValues[f.key]} use:first={i === 0} />
                 {:else if f.type === "choice"}
-                  <select bind:value={formValues[f.key]}>
+                  <select bind:value={formValues[f.key]} title={formValues[f.key]}>
                     {#each f.options ?? [] as o}<option value={o}>{o}</option>{/each}
                   </select>
+                  <!-- FR84: a closed select clips its option at about 38 characters
+                       with no wrap and no tooltip, so three sentence-length options
+                       looked identical and the card was answerable only because the
+                       body spelled them out. Boris picked this shape over a radio
+                       list: the control stays compact and the chosen option is
+                       spelled out under it, wrapped, whenever the line cannot hold
+                       it. The ResizeObserver above regrows the window when the
+                       selection changes. -->
+                  {#if (formValues[f.key] ?? "").length > SPELL_AT}
+                    <span class="spelled">{formValues[f.key]}</span>
+                  {/if}
                 {:else}
                   <input class="text" type={f.type === "secret" ? "password" : "text"} bind:value={formValues[f.key]} use:first={i === 0} />
                 {/if}
@@ -871,6 +888,17 @@
   .fieldrow .name {
     font-size: 0.8rem;
     color: var(--k-ink-2);
+  }
+  /* The chosen option in full, under the control that clipped it (FR84). In the
+     value column, wrapped, and quiet enough to read as an echo of the select
+     rather than as a second field. */
+  .fieldrow .spelled {
+    grid-column: 2;
+    margin-top: -2px;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--k-ink-3);
+    overflow-wrap: anywhere;
   }
   input.text,
   textarea,
