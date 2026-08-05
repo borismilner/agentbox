@@ -48,6 +48,33 @@ or triaged from the keyboard - which left the detail saying "waiting" and offeri
 a card for something already answered; one effect now owns both that and the row
 leaving the list entirely.
 
+**The screen was locked for the whole build**, which is the first time that has
+been the binding constraint here. `LockedHint` was `yes` from the first check to
+roughly two hours later; `import -window` on a locked screen photographs the lock
+screen, and there is no Xvfb on this machine, so there was no off-screen path
+either. What the wait was spent on: the docs, and one guard worth having - every
+`svc("Name")` in bridge.js must appear in the shipped bundle, because a Bridge
+method is where the committed-`dist` trap is both silent and fatal (the surface
+resolves it by name at runtime, so a stale bundle compiles and fails when the human
+clicks). Verified by naming a method the bundle cannot have and watching it fail.
+The fixture was also built during the wait, which turned out to be the right shape
+rather than a workaround: a veto raised and expired while he was away IS the case
+he filed.
+
+**Everything was then exercised on the real screen** - the veto's whole body read
+back after it closed, a choice's options with the default and the taken one marked,
+a pending row's `Show the card` clicked through to the card, and the detail
+re-reading itself when that card was answered. The captures are in FR73's entry.
+
+**Session 46's layout trap came back wider.** Its version was "clicking a row you
+already opened closes it and the layout moves". The first click of this run went to
+the wrong row without any of that: two pending items were answered by Boris in the
+gap between the screenshot the coordinate came from and the click, the Pending
+section collapsed, and everything moved up. Any queue change does it, not just
+one's own click. Typing a term into the search box first - so the target is the
+only row on screen - is what made the rest of the run repeatable, and it is the
+better habit for driving this surface at all.
+
 ## Forty-sixth session (2026-08-05): the identity colour was two colours, and each fix found a second one
 
 Resumed from session 45's handoff with FR83 finished and its deferred queue in

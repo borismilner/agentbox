@@ -30,6 +30,13 @@ touching anything.
   Point it at a copy of the state (`XDG_STATE_HOME=/tmp/x`, plus
   `XDG_CONFIG_HOME` for a theme) so Boris's own reviews and settings are not
   what you are experimenting on.
+- **Never click a list row at a coordinate read off an earlier screenshot.**
+  Any queue change reflows the inbox - somebody answering a card two rows up
+  collapses the Pending section and everything moves - so the row you measured
+  is not the row you hit, and it is somebody else's item you just opened. Filter
+  first (type into the search box) so the target is the only row on screen, then
+  click. The same goes for the Agents board. There is no lock protecting this:
+  the queue is shared with every other session on the machine.
 
 ## Rituals
 

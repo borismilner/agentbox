@@ -1475,6 +1475,36 @@ resolved one, since the selection never leaves the pending rows. Those two keys
 are handed to the focused button rather than to triage, or reading one row would
 answer another.
 
+**Watched on the real screen**, on the case Boris filed. A veto card with a
+946-character body was raised while he was away and expired on its own; its row
+reads `proceeded` and shows 140 characters. Opening it gave the whole body back,
+rendered - bold, inline code, a numbered list - with `arrived Aug 5 15:02, ended
+Aug 5 15:02, stood 8s` above it and `kind veto / level warning / from claude ·
+db-migrations / id k33b0772f589bc668` below. The body ran past the window, and the
+rest of it plus the whole meta block scrolled into reach rather than being cut.
+
+Four more things were exercised rather than argued:
+
+- **A choice he had answered himself** read back its three options with
+  descriptions, `Beta` carrying both `DEFAULT` and `TAKEN`, `WHAT WENT BACK: Beta`,
+  and `stood 2h27m` between the two timestamps.
+- **A pending row's detail** showed `Show the card` beside `arrived ... now` and no
+  ended line. Clicking it raised the card - one click from the reader.
+- **The row changing under an open detail**, which is the case the extra effect
+  exists for: answering that card `n` on the card itself moved the row from
+  Pending to Recent, dropped the `Show the card` button, and grew `ended Aug 5
+  17:34, stood 1m` and `WHAT WENT BACK: no` in place, with nothing touching the
+  detail.
+- **A row leaving the list closes its detail**: filtering the search box to a term
+  the open row does not match shut it rather than leaving it under a different row.
+
+**One trap re-earned.** The first click landed on the wrong row: the list moved
+between the screenshot the coordinate came from and the click itself, because two
+pending items were answered in that gap and the Pending section collapsed. Session
+46 recorded this for a row that had been opened; it is true of any queue change.
+The fix that made the rest of the run repeatable was to type a term into the search
+box first, so the target is the only row on screen and no coordinate can go stale.
+
 ---
 
 ## FR74 [shipped 2026-07-31] A permanent sign that says hands off, and what is happening
