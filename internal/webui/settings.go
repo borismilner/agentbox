@@ -158,6 +158,9 @@ var settingsSpec = []knobSection{
 				{section: "control", key: "pause_hotkey", label: "Pause key", kind: knobText,
 					hint:    "pauses a run mid-drive and resumes it; empty = no grab, use `agentbox control pause`. Avoid Super: GNOME takes those combinations before AgentBox can see them",
 					suggest: []string{"Ctrl+Alt+Escape", "Ctrl+Alt+space", "Ctrl+Alt+P", "Ctrl+Shift+Escape"}},
+				{section: "control", key: "quiet_hotkey", label: "Recording key", kind: knobText,
+					hint:    "drops the strip to four pixels on the top edge for a screen recording, and holds the cards until you press it again; expires on its own after 30 minutes. Empty = no grab, use `agentbox control quiet`",
+					suggest: []string{"Ctrl+Alt+Q", "Ctrl+Alt+M", "Ctrl+Shift+Q"}},
 			}},
 			{title: "Cards and toasts", knobs: []knob{
 				{section: "window", key: "card_width", label: "Card width", kind: knobInt,
@@ -554,6 +557,8 @@ func valueOf(c config.Config, k knob) string {
 		return c.Panel.Hotkey
 	case "control.pause_hotkey":
 		return c.Control.PauseHotkey
+	case "control.quiet_hotkey":
+		return c.Control.QuietHotkey
 	case "panel.width_frac":
 		return floatStr(c.Panel.WidthFrac)
 	case "panel.height_frac":
@@ -680,6 +685,8 @@ func setValue(c *config.Config, k knob, v string) error {
 		c.Panel.Hotkey = norm
 	case "control.pause_hotkey":
 		c.Control.PauseHotkey = norm
+	case "control.quiet_hotkey":
+		c.Control.QuietHotkey = norm
 	case "panel.width_frac":
 		c.Panel.WidthFrac = f
 	case "panel.height_frac":
