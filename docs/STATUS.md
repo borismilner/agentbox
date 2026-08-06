@@ -920,6 +920,14 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
+**As of session 53 (2026-08-06) the leftover queue is spent and FR30 is the only
+substantial thing left** - a documented `must` in
+[01-requirements.md](01-requirements.md) that was never built, blocked on one
+sentence from Boris because it changes when a card appears. The two questions to
+put to him are in the handoff's queue item 1. Note that the deployed daemon
+(`7609088aae12`) is deliberately older than HEAD: everything after it is tests and
+docs, so no deploy is owed.
+
 **FR83, multi-agent sync (designed in [09-sync.md](09-sync.md)): all five slices
 are finished, deployed and verified live as of session 45.** Presence, discovery,
 the rider, the Agents surface, locks, signals and shared values - all four

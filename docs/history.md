@@ -9,6 +9,77 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fifty-third session (2026-08-06): two clean fuzz targets, and the hook that made a whole surface unreadable
+
+A leftover-queue session. Nothing was in flight and no field request was open, so
+it spent itself on the two solo items session 52 left and on the one thing that
+had been carried, unfixed, through six handoffs.
+
+**Two fuzz targets, both clean.** `walkthrough.Parse` (9.0M executions) and
+`BuildPayload` (3.1M). After session 52's target found a real overflow inside
+thirty seconds, clean is the duller answer and still the right one to record. What
+makes them worth having is not the panic check but the invariants, which are the
+promises callers read off these two without ever testing: that an accepted spec's
+citations are sliceable, that glossary marking **partitions** the author's text
+rather than rewriting it (concatenate the runs, get the input back), that the
+tallies match the lists under them, that no remark is dropped or doubled between
+its step and `orphaned_comments`, that absence travels as `[]` and never `null`,
+and that the payload marshals at all - a handback `json.Marshal` refuses loses the
+whole review at the instant of submitting it.
+
+**A cap that reads like a cap and is not one.** `Parse` checks the whole payload
+against `MaxSpecBytes+MaxDiffBytes` and then the diff against `MaxDiffBytes`, and
+nothing anywhere checks the spec's own half - so a spec carrying no diff may be
+3 MB, three times what `MaxSpecBytes = 1 << 20` reads as. The worst case that
+could be built (2.8 MB, 48 glossary terms of near-miss spellings) costs 940 ms in
+`Parse`, nearly all of it the glossary scan, which is O(prose x spellings).
+Documented rather than patched: the obvious check, `len(raw) - len(s.Diff)`,
+counts a heavily-escaped diff against the spec's half and would start refusing
+honest specs at the extreme.
+
+### The Agents row detail, watched at last - and two answers nobody can reach
+
+`Recent items` paints exactly as designed: twelve rows at the `agentDetailItems`
+cap, newest first, each with kind, state and age. That was the point of the
+sitting. The other two carried assumptions turned out to be the wrong shape of
+question - they are not unseen, they are **unreachable**:
+
+- *"This session has left the board"* needs `found: false`, but `Agents.svelte`
+  closes the detail the instant the roster stops listing the row. The daemon's
+  answer survives only in the sub-second race between the surface's roster copy
+  and the daemon's map, or when the bridge call itself throws.
+- *"Nothing behind it yet"* needs a row with no timeline, no signals and no items -
+  and **every row on the board got there by announcing**, which posts the signal
+  that fills the block. Watched on the hook-only row, which showed its meta and
+  its one announce, correctly.
+
+Both are right defensive code. Neither is worth chasing again, which is the actual
+value of having looked.
+
+### The thing six handoffs called a wording preference
+
+The same screen showed why the blocks under the activity line had never been the
+problem. Boris's PostToolUse hook wrote the raw Bash command through
+`cut -c1-70` - and **`cut` truncates every line and drops none**, so a heredoc
+arrived whole. One opened row rendered a Go test file as a single wrapping
+activity line and a commit message as another; `Recent items` sat two screens
+below the fold and `Signals` was off-screen.
+
+That is not a wording problem, and calling it one for six handoffs is why it
+survived. He authorised the fix in one line:
+
+    jq -r '.tool_input.command' | tr '\n' ' ' | tr -s ' ' | sed -E 's/^(.{80}).+$/\1…/'
+
+Collapse first, then truncate, and mark the cut. Watched on the board with the
+last old-format entry still in the activity ring directly above the new ones -
+three wrapped lines against one, and `Signals` back in the first screenful. The
+ellipsis is what says a line was cut, which `cut` never did.
+
+**The lesson worth keeping:** a note that gets carried across handoffs unchanged
+is a note nobody has tested. Six sessions described this line; the first one to
+open the surface it lands on found both a different cause and a different severity
+than the description had.
+
 ## Fifty-second session (2026-08-06): the column goes quiet with the sign, and FR95 closes
 
 The one answer session 51 left: while the hands-off sign is demoted for a
