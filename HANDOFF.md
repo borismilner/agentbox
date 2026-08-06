@@ -1,286 +1,309 @@
-# Handoff - AgentBox: FR73 is closed, so the inbox can no longer be the place a message goes to die
+# Handoff - AgentBox: four field requests closed, and the review learned two ways to be read
 
-*Written by session 47, which gave every inbox row a detail view, found the two
-things the store cannot hold, and re-earned the layout trap the hard way - by
-opening somebody else's item.*
+*Written by session 48, which cleared a fix list, took three new asks in the
+same sitting, and spent three build-deploy-look cycles believing a diff over the
+pixels.*
 
-**Written:** 2026-08-05 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
+**Written:** 2026-08-06 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
 ## Do this next
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean, in sync with origin/main
-git log --oneline -8        # db810e0 is FR73 itself; everything after it is docs/tests
-make deployed               # db810e0fd881 - OLDER than HEAD on purpose, see Live state
+git status -sb              # expect clean, in sync with origin/main at e5b2473
+make deployed               # expect 35a5bd8ed0df - OLDER than HEAD on purpose, see Live state
 agentbox pending            # expect "nothing pending"
-agentbox sync agents        # your own row, put there by a hook; two peers usually here
+agentbox sync agents        # your own row plus a peer in ~/work/minimus
 agentbox sync locks         # expect "no locks held"
 make check                  # gofmt + vet + race, ~2 min
 ```
 
-**Nothing is in flight.** FR73 shipped and was watched on screen. Pick the next
-item from the queue below; none of it is blocked on Boris.
+**Nothing is in flight.** No field request Boris has filed is open. The one thing
+he asked for and has NOT yet received is item 1 below - it is written, it just
+has not been run.
 
 ### The queue, in order
 
-1. **FR65 - open a citation in the editor.** The next review-board gap: an open
-   button per code block beside copy, running a configured editor command template.
-   The JetBrains invocation is already worked out under "Mechanics discovered" in
-   [docs/07-field-requests.md](docs/07-field-requests.md). Nothing has been built.
-2. **FR74's fullscreen marker is built and has never been seen.** Session 47
-   corrected STATUS about this: it is NOT unwritten. `internal/webui/control.go`
-   has the marker, `controlmark_test.go` unit-tests its placement rule, the
-   `_NET_WM_STATE_FULLSCREEN` read is in `x11.go`, and `keepOnTop` already makes
-   the marker its one exception to top-most. Session 34 built the lot. What is
-   missing is a live look: a real fullscreen window covering the strip, with the
-   marker checked to be still on top of it. Needs consent to drive the desktop and
-   a fullscreen app to test against. An untested marker is worth no more than none,
-   because a fully covered strip reads as "the desktop is yours" while an agent
-   drives.
-3. **The row detail's three empty blocks on the Agents board.** `wireAgent.Timeline`,
-   `.Signals`, `.Items` and `.Pending` are rendered by Agents.svelte and filled
-   **only by demo.go** - `ShowRoster` never sets them, so opening an agent row shows
-   the meta list and held locks and none of the history the design promises. The
-   honest shape is a bridge call per opened row, which is exactly the shape FR73
-   just built and proved (`Bridge.ItemDetail`, `internal/webui/inbox.go` - copy it).
-   Note that **"received" signals are not recorded anywhere**: the store's
-   `sync_signals` has `session_key` for the POSTER only, so received needs a bounded
-   in-memory ring where a wait resolves (`internal/daemon/signals.go`), the way the
-   activity ring works.
-4. **A resolved review's diff and any spoken line cannot be read back.** Found while
-   building FR73 and deliberately not fixed by it: this is a schema change, and FR73
-   was a reader. See "Facts" below for exactly what the table holds. Worth its own FR
-   number if Boris wants it; it is a named gap in STATUS now either way.
+1. **Run the walkthrough-standard experiment.** Boris asked for a prompt to give
+   an agent that has just written a walkthrough, so it consults AgentBox's
+   standard, reports what it had to change, and tells us where the standard is
+   thin. The prompt is in "The experiment Boris asked for" below, verbatim and
+   ready to paste. **Its point is the agent's answer to question 4** - what the
+   standard does not cover - because that is a hole to close, and the standard
+   grew by two whole sections today (domains, the TL;DR) without anybody but me
+   reading them.
+2. **FR74's fullscreen marker has still never been seen.** Unchanged from the
+   last two handoffs. `internal/webui/control.go` has the marker,
+   `controlmark_test.go` unit-tests its placement rule, the
+   `_NET_WM_STATE_FULLSCREEN` read is in `x11.go`. What is missing is a live
+   look: a real fullscreen window covering the strip, with the marker checked to
+   be still on top of it. Needs consent to drive the desktop and a fullscreen app.
+   An untested marker is worth no more than none, because a fully covered strip
+   reads as "the desktop is yours" while an agent drives.
+3. **The `xdg-open` fallback has never been exercised.** FR65 resolves an editor
+   in three steps: `editor.command`, then a table of known launchers, then
+   `xdg-open` (which loses the line and says so). Only the first two were watched
+   - this machine has `goland` on PATH, so detection never reached the fallback.
+   Unit-tested with a stubbed PATH; never seen.
+4. **Consider giving `[editor]` a settings control.** Deliberately skipped: the
+   value is an argv array and the descriptor table in `internal/webui/settings.go`
+   has no kind for one, which is why `speech.command` has none either. If Boris
+   wants it, the honest shape is a new knob kind, not a text field that gets
+   shell-split.
 
 ## Where we are
 
-FR73 is closed - the one he filed in his own words, quoting what he could not
-recover. **FR65 is now the only open field request**, and FR74's live look sits
-behind it; both are older and quieter than FR73 was. Every inbox row now opens a
-detail that reads its item back whole, and it was exercised on the exact case he
-filed: a veto raised while he was away, expired on its own, its 946-character body
-given back rendered with both timestamps and how long it stood. Six commits, all
+Session 48 was two halves. The first cleared the queue session 47 left: **FR65**
+shipped (an arrow beside copy on every citation, opening the reader's editor at
+the cited line), and then Boris said "fix everything needs fixing", which turned
+into migration 0012, the Agents board's three empty detail blocks, and a keyboard
+collision older than any of it.
+
+The second half was three new asks arriving while that was in flight: **FR91**
+(every step gets a TL;DR and the board opens in it), **FR92** (steps group into
+domains, one shown at a time, animated), and **FR93** (Esc could not close a
+notification). All three shipped and were watched on screen. Twelve commits, all
 pushed. Nothing half-done.
 
-## What this session changed, and what each cost
+## The experiment Boris asked for
 
-**FR73 in one paragraph.** Clicking any row - pending or resolved - opens a detail
-under it: the body through `RenderMarkdown` (the renderer the card used, so it reads
-the same way after it closed), both timestamps to the minute plus how long it stood,
-what it offered with the default and the taken option marked separately, a form's
-answers in its fields' order rather than its map's, and the identity with hue,
-session key and id. Nothing is clamped or ellipsised; the list scrolls instead.
-`Bridge.ItemDetail(id)` is a call per opened row, not a field on the snapshot,
-because a hundred rendered bodies in every push is what the row's 140-character
-`Snippet` exists to avoid.
+Paste this to an agent that has just authored a walkthrough. He asked for it
+near the end of the session and it was never run.
 
-**The FR's "everything needed is already stored" was nearly true, and the gap only
-showed in the schema.** `Speak` and `Diff` were written into `wireDetail` and then
-taken back out: `proto.Item` has both fields, so it compiled and the tests passed,
-but the store's insert names `id, kind, level, title, body, options, fields,
-actions, cwd, timeout_s, dflt, agent, project, session, state, created_at` and
-neither is a column. `RecentItems` reads that table, so both would have been empty
-in every real read - a reader promising two things the read behind it cannot
-deliver. **The lesson worth keeping: for a read-back feature, check the INSERT, not
-the struct.**
+```
+You just wrote a walkthrough. Before you hand it over, consult AgentBox's own
+authoring standard and bring what you wrote up to it.
 
-**Two things the change itself broke, both caught before shipping.** A row used to
-be inert unless pending, so nobody had reason to click into the list and then type;
-with every row opening, reading one row and pressing `d` would have dismissed
-whichever row `j/k` was last left on - so a click now moves the triage selection
-too. And a row can change under an open detail (answered on its card, triaged from
-the keyboard), which left it saying "waiting" and offering a card for something
-already answered; one `$effect` now owns that and the row leaving the list.
+1. Read the standard. It is `agentbox docs walkthrough` from a shell, or the MCP
+   resource `agentbox://standards/walkthrough`. Read all of it, not the headings.
+2. Go through your walkthrough against it rule by rule and list, in one place,
+   every place yours diverges - the rule number, the step, and what is wrong.
+   Include the ones you disagree with, marked as such.
+3. Fix them, then create it with `create_walkthrough`. If it is refused, the
+   error says what to do; do that rather than working around it.
+4. Report back three things: what you had to change, which rules you found
+   ambiguous or contradictory when applied to real content, and anything the
+   standard does not cover that you had to decide for yourself.
 
-**One guard added while the screen was locked.** Every `svc("Name")` in bridge.js
-must appear in the shipped bundle. A Bridge method is where the committed-`dist`
-trap is both silent and fatal - the surface resolves it by name at runtime, so a
-stale bundle compiles fine and fails when Boris clicks. Verified by naming a method
-the bundle cannot have and watching it fail.
+Point 4 is the actual purpose of this exercise, so do not skip it or soften it.
+The standard is being tested, not you.
+```
 
-**A STATUS entry was wrong and is now right.** Its priority list said FR74's marker
-still needed writing, listing the three pieces it needed; all three are in the code.
-Corrected rather than carried forward, and the list renumbered.
+The standard is `internal/manual/walkthrough.md` (59 numbered rules now). It
+reaches an agent three ways: the MCP resource above, the `walkthrough_standard`
+MCP prompt, and `agentbox docs walkthrough`.
+
+## What this session shipped, and what each cost
+
+**FR65 - open a citation in the editor.** `internal/editor` resolves an argv
+template and launches it; `Bridge.BoardOpenInEditor` and an arrow beside copy in
+every block header. The surface names a REVIEW and a repo-relative path, never a
+file - the root comes from the stored walkthrough and `underRoot` refuses
+anything outside it.
+
+> **The trap that would have shipped invisibly:** `agentbox.service` is
+> `KillMode=control-group` and a JetBrains Toolbox launcher *execs* the IDE rather
+> than forking it, so the IDE **is** the daemon's child and dies on the next
+> `make deploy`. The launch goes through `systemd-run --user --scope --collect`.
+> Cold start only in practice, which is exactly the case testing skips.
+
+**Migration 0012 - `session_key`, `speak`, `diff` on items.** The first is the
+only identity naming ONE session; the other two were written into FR73's
+read-back and taken out again when the insert turned out not to name them. The
+unified-diff parser moved to `frontend/src/lib/diff.js` so the card that asks for
+a review and the detail that reads it back use the same one.
+
+**The Agents board's three detail blocks are real.** They were rendered by
+`demo.go` and by nothing else. Now assembled per opened row (`Bridge.AgentDetail`
+→ `Daemon.AgentDetail`), because the roster is pushed once a second while
+anything moves. Three owners meet and none learns about the others: the roster
+gained a ring of activity lines a session has moved past, the signal hub gained a
+ring of what a session HEARD (**the store cannot know** - a signal is fanned out
+by meaning and one row is read by every listener), and the store answers what it
+posted and raised.
+
+**FR91 - the TL;DR.** Not a summary field. Boris: "not necessarily less
+exhaustive, but optimally structured for a person with a very short attention
+span that must still get a mastery level of the most important aspects." That
+killed both obvious designs and left a shape: `bottom` plus up to six standalone
+`points`, capped **per point** so the bound is on the shape rather than on how
+much may be said.
+
+**FR92 - domains.** Two to six groups, every step in one, contiguity validated
+(the board walks one at a time, so a domain the order leaves and returns to would
+open twice). The rail is an accordion; `[` and `]` move by domain; clicking a
+collapsed domain opens it *without* navigating there.
+
+**FR93 - Esc on a notification.** It deferred, so escalation raised the card again
+every 20 seconds and ⇧Esc was the only way out and was written down nowhere.
+
+**Two keyboard/layout defects found by using the new controls**, both older than
+them: Enter on any focused button on the board ran the button AND the board's own
+shortcut, and `all: unset` on a button wiped the grid-column the step sets on
+every child.
 
 ## Traps this session paid for
 
-- **Never click a list row at a coordinate read off an earlier screenshot.** This
-  is now in [CLAUDE.md](CLAUDE.md) because it cost this session a wrong click on
-  **another session's item**. Session 46 recorded it as "clicking a row you already
-  opened closes it and the layout moves"; it is true of ANY queue change. Two
-  pending items were answered by Boris in the gap between the screenshot and the
-  click, the Pending section collapsed, everything moved up. **The fix that made
-  the rest of the run repeatable: type a term into the search box first, so the
-  target is the only row on screen.** The queue is shared with every other session
-  and no lock protects it.
-- **`LockedHint` can be `yes` for hours, and there is no way around it.** It was
-  `yes` from the first check to roughly two hours later. `import -window` on a
-  locked screen photographs the lock screen, and **there is no Xvfb on this
-  machine**, so there is no off-screen path either. Read it with
-  `loginctl show-session $(loginctl | awk '/boris/ {print $1; exit}') -p LockedHint --value`
-  and check it immediately before looking, never once at the start. If it is
-  locked, do the docs and wait - a background `until` loop polling it costs nothing
-  and wakes you.
-- **Building the fixture during a locked screen turned out to be right, not a
-  workaround.** A veto raised and expired while he was away IS the case FR73 was
-  filed about. `agentbox veto --in 8 --body "$(cat file.md)"` and let it proceed.
-- **Verify the window NAME immediately before the shutter**, because ids are
-  recycled: `n=$(xdotool getwindowname $id); case "$n" in "agentbox · app") import -window $id ...`.
-  Window titles differ by surface: `agentbox · app`, `agentbox · toast`,
-  `agentbox · hands off`, `agentbox · <document title>`, and **a card is titled
-  plainly `agentbox`** - so use `window =agentbox` in `drive_desktop` for the exact
-  match, and note there is also a permanent 1x1 window named `agentbox` to skip.
-- **One flat colour in the png is the tell** that the screen was locked or the
-  window had not painted. `identify -format "%k colours"` - a real surface gives
-  well over a thousand.
-- **Hard-wrapped markdown keeps its line breaks.** `html.WithHardWraps()` is on in
-  `internal/webui/mdhtml.go`, so a body written at 78 columns renders wrapped at 78
-  columns and looks like a layout bug in a wide window. It is not one, and it is
-  identical to what the card shows.
+- **A control can be fully styled in the stylesheet and unstyled on screen.** The
+  segmented mode control rendered as two bare words in the header while its rules
+  sat in the bundle with the right scope hash and the markup carried it. Moving it
+  into its own component (`frontend/src/lib/board/ModeToggle.svelte`) fixed it.
+  **Every `var()` there now carries a fallback**: a var() that resolves to nothing
+  takes its whole declaration with it, so a control that has lost its background
+  still reads as working to everything except the screen. Now in CLAUDE.md.
+- **`agentbox walkthrough open` on an ALREADY-OPEN board retargets the window
+  without reloading the page.** After a frontend change the surface you are
+  judging can be the old bundle even though the deploy succeeded. Close the window
+  or restart the daemon first. This cost two of the three cycles above. Now in
+  CLAUDE.md.
+- **`make deployed`'s build stamp does not change within a commit.** Two deploys
+  of the same commit print the same sha and the same timestamp, one with
+  `(dirty)`. It is not a way to tell whether a dirty rebuild actually happened -
+  compare `stat -c %y` on the binary, or grep the binary for the current asset
+  hash (`grep -ac "board-XXXX.css" ~/.local/bin/agentbox`).
+- **A walkthrough fixture needs a `tldr` on every code and check step now**, and
+  five test fixtures across three packages had to gain one. If a future spec
+  change adds another required field, `grep -rn '"kind": *"code"' --include='*_test.go'`
+  finds them all.
+- **Borrowing Boris's live config is fine if you restore it by checksum.** The
+  FR65 failure wording needed a deliberately broken `editor.command`;
+  `~/.config/agentbox/config.toml` was backed up, edited, and restored with its
+  md5 confirmed (`815d7770f5ed86892f3932cc152a68c9`).
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `db810e0fd881`, clean stamp - **older than HEAD on purpose.**
-  Everything after it is markdown, one Go comment (`inbox.go`) and one test
-  (`frontend/policy_test.go`), so the binary's behaviour is current. It was NOT
-  redeployed because `make deploy` restarts the daemon, and two other live sessions
-  reach Boris through it; a restart for a cosmetic sha match is the wrong trade.
-  Redeploy freely at the start of a session, when nobody is mid-question.
-- **Git:** clean, `main` pushed to `origin`. This session, oldest first: `db810e0`
-  (FR73 itself), `85e9429` (FR73 closed in the docs), `c9b681a` (history),
-  `7db2840` (a comment saying why the detail repeats the outcome chip), `edee067`
-  (the bundle guard), `71583f6` (what was seen on screen + the CLAUDE.md trap), plus
-  this handoff.
-- **Background jobs: none.** The `until` loop that waited for the unlock has exited.
-  `pgrep -ax agentbox` should show one daemon plus one `agentbox mcp` per live
-  session. **PRs:** none, ever - Boris pushes `main`.
-- **Nothing pending, no locks held.** Every fixture item this session created was
-  resolved: the veto proceeded on its own, Boris answered the choice `Beta` himself,
-  and the confirm was answered `no` from its card as part of the demonstration.
-- **Two windows were left open on his desktop on purpose**: `agentbox · app` on the
-  inbox (search box cleared) and `agentbox · FR73: the card you missed, read back`,
-  a viewer holding the captures. Close them if they are in the way; nothing depends
-  on them.
-- **The captures live in a session scratchpad**, so they will not survive a reboot:
-  `/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/7c132d41-4f47-4fba-97c0-f7ce8b6caa1e/scratchpad/`
-  (`04-detail-veto.png` is the one that matters). Deliberately not committed - they
-  are a demonstration, not repo content.
-- **Three sessions were on the board** during this one: this one, one in `~/minimus`
-  ("SSVC in Advisories"), one in `~/work/assignments` ("fixing images#9879").
-  Neither was touched. The roster reported `partial`, so there may have been more.
-- **The desktop was taken once and released once.**
-- **Usage:** session **0%** used, resets 2026-08-05 20:00 Asia/Jerusalem; week (all
-  models) **5%**, resets 2026-08-12 04:59. Plenty of room.
+- **Deployed:** `35a5bd8ed0df` - **older than HEAD (`e5b2473`) on purpose.**
+  Everything after it is markdown (`docs/`, `CLAUDE.md`), so the binary's
+  behaviour is current. Not redeployed because `make deploy` restarts the daemon
+  and a peer session reaches Boris through it. Redeploy freely at the start of a
+  session, when nobody is mid-question.
+- **Git:** clean, `main` pushed to `origin` at `e5b2473`. Twelve commits this
+  session, oldest first: `657e093` `2c22e9f` `0a456a0` `a730caf` `0bb42d7`
+  `e511a01` `89dec68` `4c974ab` `655b076` `72d65cb` `35a5bd8` `e5b2473`.
+- **Background jobs: none. PRs:** none, ever - Boris pushes `main`.
+- **Nothing pending, no locks held.** The fixture walkthrough this session created
+  (`w4568642ae564`) was deleted. Two of Boris's own remain in the library and were
+  not touched: `w878f0c51c433` and `wfd51b30be854`, both the peer session's.
+- **A GoLand window on `~/me/projects/agentbox` is open on his desktop**, opened
+  by FR65's own button during the demonstration and deliberately left (closing an
+  IDE window he may since have used is worse). Nothing depends on it.
+- **The desktop was taken twice and released twice.**
+- **Captures live in a session scratchpad** and will not survive a reboot:
+  `/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/e1fc6994-afab-4e94-87cb-37f56cb75f91/scratchpad/`
+  (`20-hdr.png` and `21-hdr.png` are the mode control; `14-domainkey-crop.png` is
+  the rail accordion). Deliberately not committed.
+- **One peer on the board** in `~/work/minimus` ("SSVC in Advisories"), untouched.
+- **Usage:** session **23%**, resets 2026-08-06 18:40 Asia/Jerusalem; week (all
+  models) **18%**, resets 2026-08-12 05:00. Plenty of room.
 - **In-flight edits: none.**
 
 ## Blocked on you (Boris)
 
-Nothing - proceed autonomously. Two things carried over from the last handoff that
-are still yours and still not blocking anything:
+Nothing - proceed autonomously. Three things are still yours and still not
+blocking anything:
 
-- **Your PostToolUse hook writes the raw Bash command as the activity line.** It is
-  your `~/.claude/settings.json`, so the wording is yours. This session's board row
-  showed a nine-line shell function as its activity, which is worse than session
-  46's five-line commit message. Truncating to the first line, or the first 80
-  characters, would read better.
 - **FR84's other half** (a long body still pushes a form's fields below the fold)
   needs your word, because the approach that fixes it is the one you did not pick.
-  The mock is in the repo: [docs/mocks/fr84-form-shapes.html](docs/mocks/fr84-form-shapes.html),
+  Mock: [docs/mocks/fr84-form-shapes.html](docs/mocks/fr84-form-shapes.html),
   approach C. Do not build it on a session's initiative.
+- **Your PostToolUse hook writes the raw Bash command as the activity line.** It
+  is your `~/.claude/settings.json`, so the wording is yours. This session's board
+  row showed a `git push … | tail -2; git` fragment as its activity. Truncating to
+  the first line, or the first 80 characters, would read better. Carried from the
+  last two handoffs.
+- **Whether the re-record is worth scheduling** (STATUS priority 2). Unchanged.
 
 ## I can do solo (no input needed)
 
-1. **FR65** - open a citation in the editor. Mechanics already in the FR doc.
-2. **The Agents board's three empty blocks**, on expand rather than in the snapshot.
-   `Bridge.ItemDetail` is now the worked example to copy. Received signals need a
-   ring; nothing records them today.
-3. **FR74's marker, watched live** - needs consent to drive the desktop, which is a
-   request rather than a blocker.
-4. **The read-back gap in the schema** (a resolved review's diff, a spoken line), if
-   it is wanted as more than a documented gap.
+1. **The walkthrough-standard experiment** (the prompt above), and closing
+   whatever holes the agent's answer to question 4 finds.
+2. **FR74's marker, watched live** - needs consent to drive the desktop, which is
+   a request rather than a blocker.
+3. **The `xdg-open` fallback**, exercised with a PATH that has no known launcher
+   on it.
+4. **A JS test runner** (STATUS priority 6). It would have caught none of today's
+   CSS problem - that was a render, not a unit - but `parseDiff` is now a shared
+   module with two callers and no test of its own.
 
 ## Facts - verified vs assumed
 
-- [verified] **FR73's read-back, on the real screen, on the case Boris filed.** A
-  veto with a 946-character body raised while he was away and expired on its own;
-  the row said `proceeded`, opening it gave `arrived Aug 5 15:02, ended Aug 5 15:02,
-  stood 8s`, the whole body rendered (bold, inline code, a numbered list), and
-  `kind veto / level warning / from claude · db-migrations / id k33b0772f589bc668`.
-  The body ran past the window and the rest scrolled into reach.
-- [verified] **A choice read back its options**: three with descriptions, `Beta`
-  carrying both `DEFAULT` and `TAKEN`, `WHAT WENT BACK: Beta`, `stood 2h27m`.
-- [verified] **A pending row's `Show the card` raises the card in one click**, and
-  the detail carries no "ended" line while the item waits.
-- [verified] **A row changing under an open detail re-reads itself.** Answering that
-  card `n` on the card moved the row to Recent, dropped the button, and grew
-  `ended Aug 5 17:34, stood 1m` and `WHAT WENT BACK: no` with nothing touching the
-  detail.
-- [verified] **A row leaving the list closes its detail** - filtering the search to a
-  term the open row does not match shut it rather than leaving it under another row.
-- [verified] **The store persists no `speak` and no `diff`**, read off the insert
-  statement in `internal/store/store.go` and confirmed against `Recent`'s SELECT.
-- [verified] **The bundle guard can fail**, by naming a Bridge method the bundle
-  cannot have and watching it name that method.
-- [verified] **FR74's marker exists in code with a unit-tested placement rule**
-  (`control.go`, `controlmark_test.go`, `x11.go`), which is what corrected STATUS.
-- [verified] `make check` passes (gofmt, vet, race) with the new tests.
-- [verified] The early line wraps in a rendered body are `WithHardWraps()` keeping
-  the source's own line breaks, not a width clamp - checked in `mdhtml.go` after it
-  looked like a layout defect on screen.
-- [assumed] **That the `found: false` path ever paints.** It is unit-tested, and on
-  the surface it is close to unreachable: the effect closes a detail whose row left
-  the list, so the wording ("dropped out of the recent hundred") has never been
-  seen. Carried as an assumption rather than claimed.
-- [assumed] **That the keyboard route to a resolved row's detail works.** Tab to a
-  row, then Enter or Space - built and reasoned about, never pressed. The mouse path
-  was exercised thoroughly; this one was not.
-- [assumed] **That a detail holding a mermaid diagram, math or an artifact block
-  hydrates.** The `use:markdown` action is the same one the card uses, so it should,
-  but no fixture with any of the three was opened in a row.
-- [assumed] **That `provisionalFor` retires a hook-only row after ten minutes.** Read
-  in the code, never waited out. Carried from session 45.
-- [assumed] **The 200-key prefix cap** on the surface and in a tool result; tested at
-  the store layer only. Carried from session 45.
-- [assumed] **`@me` in a shared key**, and **a real client's `await_signal` parked
-  longer than 20s** (the 1500s ceiling and the keep-alive ticker have never been
-  exercised together). Carried from session 45.
-- [assumed] **The `holder parked on ask_user` and 600s long-wait lock warnings** -
-  unit-tested, never seen live. Carried from session 42.
-- [assumed] That `webui-demo agents` still renders; that path has not been opened
-  since session 44 gained three shared values in its fixture. (Note it cannot render
-  at all while the deployed daemon holds the session bus - see CLAUDE.md.)
-- [assumed] That the identity cross-check's no-node skip path works. Written, never
-  exercised. Carried from session 46.
+- [verified] **FR65 end to end on the real screen.** With no `editor.command` set
+  at all, detection picked `goland`; the caret landed on `141:2`, the cited line.
+  The second citation, project already open, routed to that window, switched tabs
+  and raised it - `378:2`.
+- [verified] **The editor survives a daemon restart.** The window opened by the
+  button was still up after a real `make deploy`, and `/proc/<pid>/cgroup` showed
+  a transient scope, not `agentbox.service`.
+- [verified] **GoLand raises a This Window / New Window / Attach modal** for a
+  project it does not already have, and the file then lands in a background tab
+  behind the restored session's own.
+- [verified] **The failure wording appears beside the block**:
+  `editor "nosucheditor-fr65-probe" is not on PATH`, and the next click recovered
+  once the config was right.
+- [verified] **Enter on a focused button moved the step, and no longer does.**
+  Watched from step 2 landing back on step 1, fixed, watched again staying put
+  while the daemon log recorded the open the same Enter triggered.
+- [verified] **The TL;DR and the domain rail on screen**: the accordion opening
+  and collapsing, `[` twice moving back two domains, `t` switching to the full
+  text, and the mode control rendering as a filled pill after the component move.
+- [verified] `make check` passes (gofmt, vet, race) with every new test.
+- [verified] **Boris's config was restored** - md5 back to
+  `815d7770f5ed86892f3932cc152a68c9`.
+- [assumed] **That the Agents board's new detail blocks paint.** The Go side is
+  unit-tested end to end (`internal/webui/agentdetail_test.go`,
+  `internal/daemon/agentdetail_test.go`) and the surface was rewritten to fetch
+  per opened row, but **an opened agent row was never looked at on screen** - the
+  session ran out of screen time on the board instead. This is the largest
+  untested thing shipped today. Check it first: open the app's Agents tab, click a
+  row, and expect an Activity block, a Signals block, or the honest sentence.
+- [assumed] **That the "This session has left the board" wording ever paints.** It
+  needs a row to vanish between the click and the reply.
+- [assumed] **That the domain drawer animation is what Boris wants.** He asked for
+  "elegant and eye-pleasing, maybe even animated"; the drawer and the banner both
+  animate and he has not said either way.
+- [assumed] **That `speak` and `diff` read back on screen.** The columns, the
+  insert, the select and the wire are tested; no item raised since the migration
+  has been opened in the inbox detail to look at. Raise a `agentbox review` with a
+  diff, answer it, then open its row.
+- [assumed] **That a step with no `tldr` renders its "shown in full" line.** Built
+  and reasoned about; every fixture this session had one. Boris's two stored
+  walkthroughs predate the field and are the natural test.
+- [assumed] The older carried-over set, all unchanged from session 47: the
+  inbox detail's `found: false` path, the keyboard route to a resolved row's
+  detail, a detail holding a mermaid diagram, `provisionalFor` retiring a
+  hook-only row after ten minutes, the 200-key prefix cap on the surface, `@me` in
+  a shared key, a real client's `await_signal` parked past 20s, the
+  holder-parked-on-ask_user and 600s long-wait lock warnings, `webui-demo agents`
+  still rendering, and the identity cross-check's no-node skip path.
 
 ## Declutter ledger
 
 | Removed / condensed | Where its knowledge now lives |
 |---|---|
-| The whole FR73 research block from the last handoff (what `wireItem` carried, the two `{@html}` allowlists, `inbox.rows` as the lookup, the keyboard-triage rule) | It is all built and shipped. The decisions and what they cost are in FR73's entry in [docs/07-field-requests.md](docs/07-field-requests.md) and session 47 of [docs/history.md](docs/history.md); the code is `internal/webui/inbox.go` and `frontend/src/surfaces/Inbox.svelte` |
-| Session 46's whole "What this session changed" section (FR85's two divergences, FR86, the board's dead ends, the `1fr` shell fix, FR84) | All five are closed and none is on the path of the work ahead. Session 46 in [docs/history.md](docs/history.md) carries each in full; the `1fr` lesson survives as a trap below and in `App.svelte`'s comment |
-| Session 46's usage-assignment paragraph (the `qq-data` tag, the stale `cachedUsageUtilization`) | Fixed in the assignment's own prompt and proved by a run. Its record is session 46 of history.md; nothing about it is actionable now |
-| Session 46's trap "clicking a row you already opened closes it and the layout moves" | Promoted and widened into [CLAUDE.md](CLAUDE.md)'s trap list, because any queue change does it and it cost this session a wrong click on another session's item |
-| The last handoff's note that FR74's marker was "built session 34, never exercised" contradicting STATUS's "needs building" | Resolved in favour of the code, which has all three pieces. STATUS's priority list item 1 now says what is actually missing (a live look) |
-| The "After FR73" section's four-item list | Became "The queue, in order" above, with FR73 gone and the schema gap added |
+| Session 47's whole "Do this next" queue (FR65, FR74, the Agents blocks, the schema gap) | Three of the four shipped today. FR65 is closed in [docs/07-field-requests.md](docs/07-field-requests.md); the Agents blocks and the schema gap are in session 48 of [docs/history.md](docs/history.md); FR74's live look survives as item 2 above, unchanged |
+| Session 47's FR73 paragraph, its two-things-broken section, and the bundle-guard note | FR73 is closed and its record is complete in the FR doc and session 47 of history.md. The bundle guard is a test (`frontend/policy_test.go`) and needs no prose |
+| Session 47's trap list (LockedHint, the window-name check, the flat-colour tell, hard wraps) | All still true and all still in session 47 of [docs/history.md](docs/history.md). Only the two that cost THIS session time are carried above, plus the two new ones now in [CLAUDE.md](CLAUDE.md) |
+| The last handoff's "STATUS entry was wrong" note about FR74 | Resolved then; STATUS's priority list has said the right thing since |
+| Session 47's capture paths | Its scratchpad is gone or going; this session's paths are listed fresh in Live state |
 
 ## Map
 
-1. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in commits
-   and handoffs. **FR65 is the only open one Boris filed**; FR73 closed 2026-08-05
-   with what building it found, including the captures it was verified with.
-2. [docs/STATUS.md](docs/STATUS.md) - current state, what works, known gaps, and the
-   numbered priority tail behind this handoff's short queue.
+1. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in
+   commits and handoffs. **FR65, FR91, FR92 and FR93 all closed 2026-08-06, and
+   nothing Boris filed is open.** Each entry carries the sentence that decided its
+   design and what building it found.
+2. [docs/STATUS.md](docs/STATUS.md) - current state, what works, known gaps, and
+   the numbered priority tail behind this handoff's short queue.
 3. [docs/history.md](docs/history.md) - session by session; this session is
-   "Forty-seventh".
-4. [docs/09-sync.md](docs/09-sync.md) - FR83, all five slices, the chip vocabulary.
-5. [docs/mocks/fr84-form-shapes.html](docs/mocks/fr84-form-shapes.html) - the card
-   shapes Boris chose from; approach C is the unbuilt half of FR84.
-6. [docs/agent-manual.md](docs/agent-manual.md) - the tool reference.
-   `internal/manual/agent.md` is the embedded copy; `TestManualListsEveryTool` fails
-   if a tool ships without them.
-7. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions. **Read it before touching
-   the build, the daemon, or driving the desktop.**
-8. `tools/sync-probe.py` - `rider`, `locks`, `signals`, `shared`, `board` scenarios.
-   `board` leaves orphaned holds behind on purpose; its own sessions exit early, so a
-   blocked row is better made by hand with two `agentbox sync lock` wraps.
+   "Forty-eighth".
+4. [internal/manual/walkthrough.md](internal/manual/walkthrough.md) - the authoring
+   standard, 59 rules, and the thing item 1 exists to test. Two new sections today:
+   domains, and the TL;DR.
+5. [docs/06-configuration.md](docs/06-configuration.md) - the `[editor]` section
+   (FR65) and every other knob.
+6. [docs/agent-manual.md](docs/agent-manual.md) - the tool reference;
+   `internal/manual/agent.md` is the embedded copy, and
+   `TestManualListsEveryTool` fails if a tool ships without them.
+7. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions. **Read it before
+   touching the build, the daemon, or driving the desktop.** Two new entries.
+8. [docs/09-sync.md](docs/09-sync.md) - FR83, all five slices, the chip vocabulary.

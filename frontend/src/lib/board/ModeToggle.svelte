@@ -8,11 +8,22 @@
   // Its own component because it needs to be unmistakably a control, and one
   // small stylesheet is easier to keep that way than another twenty lines in a
   // seven-hundred-line one.
-  let { brief, onPick } = $props();
+  //
+  // `available` is false when NOT ONE step in the review has a TL;DR. The control
+  // then has to say so rather than offer a mode it cannot enter: a lit "TL;DR"
+  // over a screen full of code is the control telling the reader something untrue
+  // about what they are looking at, which is worse than having no control.
+  let { brief, onPick, available = true } = $props();
 </script>
 
-<div class="track" role="group" aria-label="reading mode">
-  <button class={brief ? "seg on" : "seg"} aria-pressed={brief} onclick={() => onPick(true)} title="the TL;DR (t)">
+<div class="track" class:empty={!available} role="group" aria-label="reading mode">
+  <button
+    class={brief && available ? "seg on" : "seg"}
+    aria-pressed={brief && available}
+    disabled={!available}
+    onclick={() => onPick(true)}
+    title={available ? "the TL;DR (t)" : "no step in this review has a TL;DR - it was written before they existed, or its author left them out"}
+  >
     TL;DR
   </button>
   <button class={brief ? "seg" : "seg on"} aria-pressed={!brief} onclick={() => onPick(false)} title="the full text (t)">
@@ -62,6 +73,18 @@
   .seg.on:hover {
     color: var(--k-ground, #0d1117);
     background: var(--k-accent, #7c8cf8);
+  }
+  /* Offered and unavailable, which is different from not offered: the reader
+     should be able to see that this review COULD have had a short version and
+     does not, and hover to find out why. */
+  .seg:disabled {
+    cursor: default;
+    color: var(--k-ink-3, #8b93a1);
+    opacity: 0.45;
+    background: transparent;
+  }
+  .track.empty {
+    opacity: 0.9;
   }
   /* The fallbacks above are not belt and braces: a var() that resolves to
      nothing takes the whole declaration with it, and a control that has silently

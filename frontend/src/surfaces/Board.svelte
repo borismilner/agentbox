@@ -159,6 +159,9 @@
   // reading posture, not an annotation, and nothing about it belongs in the
   // store beside the verdicts.
   let brief = $state(true);
+  // Whether the review can be read short at all. A walkthrough written before
+  // tldr existed has none, and the board must not claim to be showing one.
+  const anyTldr = $derived((review?.steps ?? []).some((s) => s.tldr?.bottom));
 
   let noteFocus = $state(0); // bumped to ask the verdict box to focus the note
   let stepComposer = $state(0); // bumped to open the step-level composer
@@ -345,7 +348,7 @@
       // the regions have their own buttons, because a key that walks between them
       // would be a position, and a position is what FR72 removed.
       case "a": aloud(readingRegion ?? "intro"); e.preventDefault(); break;
-      case "t": brief = !brief; e.preventDefault(); break;
+      case "t": if (anyTldr) brief = !brief; e.preventDefault(); break;
       case "[": goDomain(-1); e.preventDefault(); break;
       case "]": goDomain(1); e.preventDefault(); break;
       case "g": toggleGlossary(); e.preventDefault(); break;
@@ -395,7 +398,7 @@
           <span class="n">{review.glossary.length}</span>
         </button>
       {/if}
-      <ModeToggle {brief} onPick={(v) => (brief = v)} />
+      <ModeToggle brief={brief && anyTldr} available={anyTldr} onPick={(v) => (brief = v)} />
       <div class="pips">
         {#each counted as s (s.id)}
           <span
@@ -498,7 +501,7 @@
             onTerm={hasGlossary ? openTerm : null}
             {onTermHover}
             {onOpen}
-            {brief}
+            brief={brief && anyTldr}
           />
         {/key}
       </div>
@@ -508,7 +511,7 @@
     </div>
 
     <footer data-agentbox-find-exclude>
-      ← → step · u understood · x unclear · Enter next unread · n note · c comment · select code to comment · a read the opening aloud · t {brief ? "full text" : "TL;DR"}{#if domains.length} · [ ] domain{/if}{#if hasGlossary} · g glossary{/if} · l library · s submit · q close
+      ← → step · u understood · x unclear · Enter next unread · n note · c comment · select code to comment · a read the opening aloud {#if anyTldr} · t {brief ? "full text" : "TL;DR"}{/if}{#if domains.length} · [ ] domain{/if}{#if hasGlossary} · g glossary{/if} · l library · s submit · q close
     </footer>
 
     {#if tip}
