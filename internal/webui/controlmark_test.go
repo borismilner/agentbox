@@ -53,3 +53,73 @@ func TestPlanMarkFollowsTheFullscreenWindowNotTheStrip(t *testing.T) {
 		t.Fatalf("marker on %+v, want the fullscreen window's monitor %+v", got.markMon, b)
 	}
 }
+
+// Recording mode's rule (FR95), as a function over three booleans. The windows are
+// not available to a test and the decision is, which is the split planMark uses.
+func TestPlanSurface(t *testing.T) {
+	cases := []struct {
+		name                     string
+		quiet, wasQuiet, haveWin bool
+		want                     surfacePlan
+		because                  string
+	}{
+		{
+			name: "first paint of a run", haveWin: false,
+			want:    surfacePlan{open: true},
+			because: "the strip has no window yet, which is what the whole switch was before FR95",
+		},
+		{
+			name: "a repaint while loud", haveWin: true,
+			want:    surfacePlan{},
+			because: "an activity line changing must not close and reopen a window",
+		},
+		{
+			name: "demoted mid-run", quiet: true, haveWin: true,
+			want:    surfacePlan{demote: true},
+			because: "he hit the key while an agent was driving",
+		},
+		{
+			name: "a repaint while demoted", quiet: true, wasQuiet: true, haveWin: false,
+			want:    surfacePlan{demote: true},
+			because: "demote is idempotent, and asking for it again is what keeps the marker up",
+		},
+		{
+			name: "a run STARTING while already demoted", quiet: true, wasQuiet: true,
+			want:    surfacePlan{demote: true},
+			because: "the mode is usually armed before any agent has asked for anything, and that run must come up demoted rather than loud",
+		},
+		{
+			name: "loud again", quiet: false, wasQuiet: true,
+			want:    surfacePlan{promote: true},
+			because: "the marker goes and the strip comes back with the type, the ABOVE and the keeper",
+		},
+		{
+			name: "loud again, with a strip somehow still up", quiet: false, wasQuiet: true, haveWin: true,
+			want:    surfacePlan{promote: true},
+			because: "promote is the one that also knows not to open a second window",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := planSurface(c.quiet, c.wasQuiet, c.haveWin)
+			if got != c.want {
+				t.Fatalf("planSurface(quiet=%v was=%v haveWin=%v) = %+v, want %+v - %s",
+					c.quiet, c.wasQuiet, c.haveWin, got, c.want, c.because)
+			}
+		})
+	}
+}
+
+// The one thing that must never happen: a quiet desktop asking for the strip. It
+// is the failure the mode exists to remove, so it gets an assertion of its own
+// rather than living inside the table above.
+func TestPlanSurfaceNeverPutsTheStripBackWhileQuiet(t *testing.T) {
+	for _, was := range []bool{false, true} {
+		for _, win := range []bool{false, true} {
+			p := planSurface(true, was, win)
+			if p.open || p.promote {
+				t.Errorf("quiet with was=%v haveWin=%v asked for the strip: %+v", was, win, p)
+			}
+		}
+	}
+}

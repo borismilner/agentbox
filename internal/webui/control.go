@@ -63,6 +63,18 @@ const (
 	keepOnTopEvery = 1200 * time.Millisecond
 )
 
+// markKind is why the marker is up, and it is the difference between a sign that
+// cannot be covered and one that can. Same window, same four pixels, two window
+// treatments: FR74's steps aside from a fullscreen app and must still be seen over
+// it; FR95's is demoted for a recording and is allowed to be overlapped.
+type markKind int
+
+const (
+	markNone markKind = iota
+	markFullscreen
+	markDemoted
+)
+
 type control struct {
 	ui *UI
 
@@ -76,6 +88,20 @@ type control struct {
 	fs      bool
 	mark    *application.WebviewWindow
 	markXID xproto.Window
+	kind    markKind
+	// winXID is the strip's own X id, recorded where it is already known - on the
+	// main thread, inside openWindow. Asking a Wails window for its native handle
+	// from any other goroutine is a GTK call off the UI thread, which is not a
+	// thing to do for a number that never changes.
+	winXID xproto.Window
+
+	// Recording mode (FR95). quiet is the last state the daemon sent, kept so the
+	// promote path can tell "still loud" from "loud again". stripMon is where the
+	// strip was when it was last on screen: the demoted marker belongs on that
+	// monitor, and by the time it opens there is no strip left to ask.
+	quiet    bool
+	stripMon mon
+	haveMon  bool
 }
 
 // markPlan is what one beat of the keeper decided. It is a value rather than a
@@ -119,12 +145,131 @@ func (c *control) set(st *daemon.ControlState) {
 	c.mu.Lock()
 	c.state = st
 	w := c.win
+	wasQuiet := c.quiet
+	c.quiet = st.Quiet
 	c.mu.Unlock()
 
+	// The emit goes to every open surface, the marker's included: that is how four
+	// pixels learn they are green rather than amber while he is paused (FR95).
 	c.ui.emit("agentbox:control", st)
+
+	switch p := planSurface(st.Quiet, wasQuiet, w != nil); {
+	case p.demote:
+		c.demote()
+	case p.promote:
+		c.promote()
+	case p.open:
+		c.openWindow()
+	}
+}
+
+// surfacePlan is what one repaint means for the two windows this owns. Pulled out
+// for the same reason planMark was: the rule is the interesting part, and neither
+// window is available to a test.
+type surfacePlan struct {
+	demote  bool // the strip comes down, the 4px marker goes up (FR95)
+	promote bool // the marker goes, the strip comes back with its whole treatment
+	open    bool // first paint of a run: the strip has no window yet
+}
+
+// planSurface decides between the strip and the demoted marker.
+//
+// demote is returned on EVERY repaint while recording mode is on, not only on the
+// edge into it, and that is deliberate: a run that starts while the mode is already
+// armed has to come up demoted, and the daemon's answer to "is it quiet" is the only
+// thing that knows. demote itself is idempotent, which is what makes that safe.
+func planSurface(quiet, wasQuiet, haveStrip bool) surfacePlan {
+	switch {
+	case quiet:
+		return surfacePlan{demote: true}
+	case wasQuiet:
+		// Loud again. promote covers both halves, because after a demote there is
+		// never a strip window left to keep.
+		return surfacePlan{promote: true}
+	case !haveStrip:
+		return surfacePlan{open: true}
+	default:
+		return surfacePlan{} // a repaint of a strip that is already up
+	}
+}
+
+// demote is recording mode arriving (FR95): the strip comes off the screen and the
+// 4px marker takes its place, mapped and then left alone. Idempotent, because it is
+// reached from every repaint while the mode is on and not only from the transition.
+//
+// The keeper stops with it. Its whole job is restacking the strip and holding the
+// FR74 marker in front of a fullscreen window, and both are exactly what this mode
+// gives up - a beat still running here would raise the sign back over the recording
+// 1.2 seconds after it was demoted.
+func (c *control) demote() {
+	c.mu.Lock()
+	w, xid := c.win, c.winXID
+	already := c.mark != nil && c.kind == markDemoted
+	c.mu.Unlock()
+
+	// Read the monitor before the window that answers for it goes.
+	if xid != 0 && c.ui.x != nil {
+		m := c.ui.x.windowMon(xid)
+		c.mu.Lock()
+		c.stripMon, c.haveMon = m, true
+		c.mu.Unlock()
+	}
+	c.stopKeeper()
+	if w != nil {
+		c.mu.Lock()
+		c.win, c.winXID = nil, 0
+		c.mu.Unlock()
+		// The column slot is released by the closing hook, not here: a second drop
+		// would be one more thing to keep in step with it for no gain.
+		application.InvokeSync(func() { w.Close() })
+	}
+	if already {
+		return
+	}
+	// A marker already up for the fullscreen reason is the WRONG one now: it has
+	// the notification type and the keeper behind it, which is the whole thing
+	// being given up here. Swap it rather than keeping it.
+	c.closeMark()
+	c.mu.Lock()
+	m, have := c.stripMon, c.haveMon
+	c.fs = false
+	c.mu.Unlock()
+	if !have {
+		if c.ui.x == nil {
+			return
+		}
+		// Armed on an idle desktop, so there has never been a strip to ask. The
+		// pointer's screen is the best answer available and the right one on the
+		// single-monitor case this is nearly always used on.
+		m = c.ui.x.activeMon()
+	}
+	c.openMark(m, markDemoted)
+}
+
+// promote is going loud again: the demoted marker goes and the strip comes back
+// with all of its treatment - notification type, ABOVE, and the keeper that makes
+// "nothing of agentbox's own may cover it" a fact rather than a hint.
+func (c *control) promote() {
+	c.mu.Lock()
+	kind, w := c.kind, c.win
+	c.mu.Unlock()
+	if kind == markDemoted {
+		c.closeMark()
+	}
 	if w == nil {
 		c.openWindow()
 	}
+}
+
+// stopKeeper ends the beat without touching the windows, for the one caller that
+// wants the strip's restacking to stop while the run lives on.
+func (c *control) stopKeeper() {
+	c.mu.Lock()
+	if c.stop != nil {
+		close(c.stop)
+		c.stop = nil
+	}
+	c.mu.Unlock()
 }
 
 func (c *control) clear() {
@@ -132,7 +277,7 @@ func (c *control) clear() {
 	c.state = nil
 	w := c.win
 	m := c.mark
-	c.mark, c.markXID, c.fs = nil, 0, false
+	c.mark, c.markXID, c.fs, c.kind = nil, 0, false, markNone
 	if c.stop != nil {
 		close(c.stop)
 		c.stop = nil
@@ -178,7 +323,7 @@ func (c *control) openWindow() {
 
 		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 			c.mu.Lock()
-			c.win = nil
+			c.win, c.winXID = nil, 0
 			c.mu.Unlock()
 			// Release the slot, or the column keeps a gap where the strip was and
 			// every toast under it stays pushed down for nothing.
@@ -202,6 +347,9 @@ func (c *control) openWindow() {
 				// being second in a column is a quieter way of being covered (FR75).
 				c.ui.top.put("control", xid, controlW, controlH, true)
 				c.ui.x.setName(xid, "agentbox · hands off")
+				c.mu.Lock()
+				c.winXID = xid
+				c.mu.Unlock()
 				c.keepOnTop(xid)
 				return
 			}
@@ -268,7 +416,7 @@ func (c *control) beat(strip xproto.Window) {
 		return
 	}
 	if !was {
-		c.openMark(plan.markMon)
+		c.openMark(plan.markMon, markFullscreen)
 		if plan.step {
 			x.lower(strip)
 		}
@@ -286,15 +434,21 @@ func (c *control) beat(strip xproto.Window) {
 	}
 }
 
-// openMark puts the line across the top edge of the fullscreen window's monitor.
-// Same treatment as the strip - notification type, no keyboard, no taskbar - minus
-// the top-centre column, which this is not in: it sits ON the screen edge, above
-// where the column starts, and it is the one agentbox window whose whole job is to be
-// four pixels of nothing in particular.
-func (c *control) openMark(m mon) {
+// openMark puts the line across the top edge of a monitor. Not in the top-centre
+// column, which this is not in: it sits ON the screen edge, above where the column
+// starts, and it is the one agentbox window whose whole job is to be four pixels of
+// nothing in particular.
+//
+// kind decides its treatment, and the two are opposites. markFullscreen keeps the
+// strip's own - notification type, ABOVE, raised on every beat - because it is
+// standing in for a sign that must be seen over a fullscreen app. markDemoted (FR95)
+// drops all three: it is mapped once and then left alone, so a window over the top
+// edge covers it, which is what a screen recording needs.
+func (c *control) openMark(m mon, kind markKind) {
 	c.ui.onMain("control-mark", func() {
 		c.mu.Lock()
 		already := c.mark != nil
+		c.kind = kind
 		c.mu.Unlock()
 		if already {
 			return
@@ -317,23 +471,35 @@ func (c *control) openMark(m mon) {
 
 		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 			c.mu.Lock()
-			c.mark, c.markXID = nil, 0
+			c.mark, c.markXID, c.kind = nil, 0, markNone
 			c.mu.Unlock()
 		})
 
 		if c.ui.x != nil {
 			if xid := xidOf(w.NativeWindow()); xid != 0 {
-				c.ui.x.prepare(xid, true)
+				if kind == markDemoted {
+					// Everything except the stacking (FR95). No notification type, no
+					// ABOVE and no raise: a newly mapped window is on top of the stack
+					// anyway, so it is visible from the first frame, and the next window
+					// over the top edge simply covers it. Measured on this desktop: with
+					// the type dropped the line is still visible over GNOME's own top
+					// bar, which is what makes a demoted sign a sign at all.
+					c.ui.x.plain(xid)
+				} else {
+					c.ui.x.prepare(xid, true)
+					c.ui.x.above(xid)
+				}
 				c.ui.x.quiet(xid)
 				showNoActivate(w.NativeWindow())
-				c.ui.x.above(xid)
 				c.ui.x.unlisted(xid)
 				c.ui.x.setName(xid, "agentbox · hands off marker")
 				// After the map, and again on every beat: GTK opens the window at
 				// whatever it thinks the minimum is, and the WM places it where it
 				// likes. Four pixels tall is neither.
 				c.ui.x.moveResize(xid, m.x, m.y, m.w, markH)
-				c.ui.x.raise(xid)
+				if kind != markDemoted {
+					c.ui.x.raise(xid)
+				}
 				c.ui.x.flush()
 				c.mu.Lock()
 				c.markXID = xid
@@ -348,7 +514,7 @@ func (c *control) openMark(m mon) {
 func (c *control) closeMark() {
 	c.mu.Lock()
 	m := c.mark
-	c.mark, c.markXID = nil, 0
+	c.mark, c.markXID, c.kind = nil, 0, markNone
 	c.mu.Unlock()
 	if m != nil {
 		application.InvokeSync(func() { m.Close() })

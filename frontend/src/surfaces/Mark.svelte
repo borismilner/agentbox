@@ -7,7 +7,13 @@
   // colour says it.
   //
   // It follows the strip's own vocabulary so the two are read as one thing: the
-  // accent while an agent is still asking, amber once it is driving.
+  // accent while an agent is still asking, amber once it is driving, green while
+  // the human has it paused (FR95).
+  //
+  // That last one is the whole of Boris's answer to "a paused, recording desktop
+  // has two things to say in four pixels": the colour carries one of them. There
+  // is no second element to add at this size, and the vocabulary was already
+  // there - this line has switched to the accent for asking since FR74.
   import { bridge, on } from "../lib/bridge.js";
 
   let run = $state(null);
@@ -15,10 +21,11 @@
   bridge.control().then((st) => (run = st)).catch(() => {});
   on("agentbox:control", (st) => (run = st));
 
-  const asking = $derived(run?.state === "asking");
+  const paused = $derived(!!run?.paused);
+  const asking = $derived(!paused && run?.state === "asking");
 </script>
 
-<div class="mark" class:asking></div>
+<div class="mark" class:asking class:paused></div>
 
 <style>
   /* The window IS the line, so the bar fills it: nothing here may rely on the
@@ -32,6 +39,17 @@
   .mark.asking {
     background: var(--k-accent);
   }
+  /* Paused: the desktop is his again, mid-run, and the sign says so in the one
+     dimension four pixels have. Every var() carries a fallback - a var() that
+     resolves to nothing takes its whole declaration with it, and a marker that
+     has silently lost its background is a hands-off sign that is not there. */
+  .mark.paused {
+    background: var(--k-success, #4fb286);
+  }
+  /* The breathe stays under the latch, unlike the strip's dot, which stops. They
+     say different things: the dot's pulse means work is happening and none is,
+     while this fade is what stops four still pixels reading as a seam between two
+     windows. A green seam would be no clearer than an amber one. */
   /* A still line at this height could be a seam between two windows. The slow
      fade is what makes it read as something drawn on purpose - and it is slow
      enough not to pull the eye off whatever is playing underneath. */

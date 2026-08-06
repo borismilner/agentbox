@@ -231,6 +231,40 @@ func (x *x11) prepare(win xproto.Window, notification bool) {
 	xproto.GetInputFocus(x.c).Reply() // flush
 }
 
+// plain is prepare with exactly the two things that make a window impossible to
+// cover taken out: no notification type and no ABOVE. Everything that is not
+// about stacking stays - undecorated, out of the taskbar and the switcher, and
+// never given the keyboard.
+//
+// It exists for FR95's demoted marker, where being coverable IS the feature:
+// Boris asked for the sign to step out of a screen recording, and "generally it
+// should live on top of any and all surfaces; when demoted for purposes of
+// recording or stuff like that it can be overlapped". Session 49 proved a
+// notification-type window cannot be pushed under a fullscreen one however hard
+// you lower it, so giving up the type is the only route there.
+//
+// The undecorated half is not cosmetic either. Mutter frames a bare window, and a
+// 4px window then comes back about 30px tall wearing a title bar - measured, while
+// answering this feature's own question with a probe that had forgotten to say it.
+func (x *x11) plain(win xproto.Window) {
+	motif := make([]byte, 20)
+	binary.LittleEndian.PutUint32(motif, 2) // flags = MWM_HINTS_DECORATIONS, decorations = 0
+	xproto.ChangeProperty(x.c, xproto.PropModeReplace, win,
+		x.atoms["_MOTIF_WM_HINTS"], x.atoms["_MOTIF_WM_HINTS"], 32, 5, motif)
+
+	// No _NET_WM_WINDOW_TYPE at all: a normal window is the most coverable thing
+	// this stack has, and utility already carries stacking hints of its own.
+	state := append(card32(uint32(x.atoms["_NET_WM_STATE_SKIP_TASKBAR"])),
+		card32(uint32(x.atoms["_NET_WM_STATE_SKIP_PAGER"]))...)
+	xproto.ChangeProperty(x.c, xproto.PropModeReplace, win,
+		x.atoms["_NET_WM_STATE"], xproto.AtomAtom, 32, 2, state)
+
+	xproto.ChangeProperty(x.c, xproto.PropModeReplace, win,
+		x.atoms["_NET_WM_USER_TIME"], xproto.AtomCardinal, 32, 1, card32(0))
+
+	xproto.GetInputFocus(x.c).Reply() // flush
+}
+
 // stateMsg changes a mapped window's _NET_WM_STATE. Once a window is mapped
 // the WM owns that property, so writing it directly is ignored - Mutter had
 // already replaced our pre-map ABOVE with DEMANDS_ATTENTION by the time the
