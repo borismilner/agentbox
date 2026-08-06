@@ -127,8 +127,17 @@ Not read off the diff. Captures are in the scratchpad listed under Live state.
   until you release it" / **Allow agents**, and the strip comes down on resume.
 - **The second agent.** A `request_control` from another identity blocked **23
   seconds** across the pause and was granted the instant of the resume.
-- **The three-minute card** - see Live state, this was still in flight when the
-  handoff was written.
+- **The three-minute card**, watched arriving at exactly `paused_s: 180`: a
+  warning toast, *"claude has been parked for 3m0s"*, with a **Resume now**
+  button, under an amber `AGENT WAITING` strip. Its button was then clicked for
+  real and the log shows the whole path -
+  `action.started ... command: agentbox control resume` then
+  `action.finished ... output: "resumed: agents may drive again"` - with the
+  state back to `driving`. **"End the run" was deliberately not built** as a
+  third button: the agent gives up on its own at ten minutes with its run
+  intact, which is a gentler end than cutting it off mid-sequence, and an
+  irreversible button on a card read in passing is the wrong shape for a state
+  that resolves itself.
 
 > **The defect only the screen could find.** At `2m 50s` with the run released,
 > the strip read `AGENT WAITING` over the line "nothing is driving" - the
@@ -151,13 +160,17 @@ Not read off the diff. Captures are in the scratchpad listed under Live state.
   left the tree pushed, this one did not, because pushing was never asked for.
   Ask Boris, or push if he has said so since. Commits this session, oldest first:
   `11778f1` `8b06691` `16d2e78` `eca7190` `808237f` `2c3584e` `4421863`
-  `171ba0e` `254285b` `31da412`, plus this handoff's own commit.
+  `171ba0e` `254285b` `31da412` `12d27fe`, plus this amendment's own commit.
 - **Background jobs: none. PRs:** none, ever - Boris pushes `main`.
-- **Nothing pending, no locks held.** The desktop was taken and released several
-  times. **One pause was live when this was written** (16:56:57, with a run
-  parked, to watch the 3-minute card) - if a green or amber strip is on screen,
-  that is it: `agentbox control resume` clears it, and `agentbox control release`
-  from this session's identity ends the run behind it.
+- **Nothing pending, no locks held, no strip on screen, nothing paused.** All
+  four checked at the end (`agentbox control state` says "no run: the desktop is
+  the human's"). The desktop was taken and released several times during the
+  session and is not held now.
+- **A second session was on this machine** at 16:56, `proc-722811`, purpose
+  "finding why the same image build failures keep coming back and fixing them
+  for good", area `repo:assignments`. Different area, no shared files, no
+  coordination needed - but check `agentbox sync agents` yourself rather than
+  trusting this line.
 - **The FR94 mock window was closed by a deploy.** Reopen with
   `agentbox` if wanted; the file is committed at
   `docs/mocks/fr94-pause-resume.html` and every decision it settled is written
