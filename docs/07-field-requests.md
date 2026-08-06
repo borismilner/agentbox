@@ -2804,6 +2804,41 @@ is `openMark` there.
 Verified facts from field sessions, kept so a later session does not re-derive
 them.
 
+**GNOME Shell swallows every `Super` combination before a core X11 passive grab
+can see it, and does it silently** (measured 2026-08-06, session 50, GNOME on
+X11). This cost the FR94 hotkey an hour and it will cost the next one the same,
+because every signal says the grab worked:
+
+- `XGrabKey` returns success. No `BadAccess`, so `hotkey.Open` reports a grab
+  taken and logs `hotkey.grabbed`.
+- The key then does nothing, forever. No error anywhere, no event in the reader
+  loop.
+
+Measured with a grab-then-XTEST-press-itself probe, one line per combination:
+
+```
+Super+F9             swallowed before the grab
+Super+P              swallowed before the grab
+Ctrl+Alt+Escape      FIRES
+Ctrl+Alt+P           FIRES
+Ctrl+Alt+space       FIRES
+Ctrl+Alt+comma       FIRES
+Ctrl+Shift+Escape    FIRES
+```
+
+So: **no Super in any AgentBox default or suggestion.** The panel's
+`Ctrl+Alt+grave` was already in the right family; `[control] pause_hotkey` is
+`Ctrl+Alt+Escape` for the same reason after `Super+Escape` was written, shipped
+and found dead.
+
+Two techniques worth keeping. **XTEST presses do trigger passive grabs**, so
+`agentbox drive "key ctrl+alt+grave"` is a real end-to-end test of a hotkey and
+needs no human at the keyboard - that is how the difference above was isolated,
+by firing a combination known to work through the same path. And a **throwaway
+probe under `internal/` beats one under the scratchpad**: a `main.go` outside the
+module cannot import `internal/...` at all (`use of internal package not
+allowed`), so put it in `internal/<pkg>/probe/` and delete it afterwards.
+
 **`claude -p ...` from inside a session leaves a ghost row on the Agents board**
 (verified 2026-08-06, session 49). The usage check the global CLAUDE.md asks for
 (`claude -p /usage`) starts a real Claude session, so the SessionStart hook

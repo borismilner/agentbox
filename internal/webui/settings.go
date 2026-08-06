@@ -156,8 +156,8 @@ var settingsSpec = []knobSection{
 			}},
 			{title: "Hands off", caption: "the strip an agent drives your desktop behind, and the key that takes it back", knobs: []knob{
 				{section: "control", key: "pause_hotkey", label: "Pause key", kind: knobText,
-					hint:    "pauses a run mid-drive and resumes it; empty = no grab, use `agentbox control pause`",
-					suggest: []string{"Super+Escape", "Ctrl+Alt+Escape", "Super+P", "Pause"}},
+					hint:    "pauses a run mid-drive and resumes it; empty = no grab, use `agentbox control pause`. Avoid Super: GNOME takes those combinations before AgentBox can see them",
+					suggest: []string{"Ctrl+Alt+Escape", "Ctrl+Alt+space", "Ctrl+Alt+P", "Ctrl+Shift+Escape"}},
 			}},
 			{title: "Cards and toasts", knobs: []knob{
 				{section: "window", key: "card_width", label: "Card width", kind: knobInt,

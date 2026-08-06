@@ -249,11 +249,19 @@ func Default() Config {
 	c.Sync.SignalKeepDays = 7
 	c.Sync.SharedMaxBytes = 16384
 	c.Panel.Hotkey = "Ctrl+Alt+grave"
-	// Super+Escape: Escape is already the whole desktop's word for "stop what you
-	// are doing", and Super keeps it out of the way of every application that
-	// uses bare Escape - which is all of them. Nothing in GNOME's default map
-	// claims the pair.
-	c.Control.PauseHotkey = "Super+Escape"
+	// Ctrl+Alt+Escape. Escape is already the whole desktop's word for "stop what
+	// you are doing", and Ctrl+Alt keeps it away from every application that uses
+	// bare Escape - which is all of them.
+	//
+	// It is NOT Super+Escape, which is what this was first written as and what
+	// reads better. Super is unusable here: GNOME Shell takes every Super
+	// combination for itself before a core X passive grab can see it, and it does
+	// so silently - XGrabKey succeeds, no BadAccess, and the key then does nothing
+	// forever. Measured on this desktop, 2026-08-06: Super+F9 and Super+P
+	// swallowed, Ctrl+Alt+Escape, Ctrl+Alt+P, Ctrl+Alt+space, Ctrl+Alt+comma and
+	// Ctrl+Shift+Escape all delivered. The panel's own default landed on Ctrl+Alt
+	// for the same reason.
+	c.Control.PauseHotkey = "Ctrl+Alt+Escape"
 	c.Panel.HeightFrac = 0.5 // half the monitor, never more: see the clamp below
 	c.Panel.WidthFrac = 0.74
 	// Off by default: see the note in internal/webui/panel.go. A resize per frame
