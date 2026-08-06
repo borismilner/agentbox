@@ -1779,10 +1779,38 @@ hands-off guarantee survives without the strip covering his video. Accepting a
 fully covered strip was rejected: an agent driving while he watches something, with
 nothing on screen saying so, is the one wrong answer FR74 exists to prevent.
 
-Not built yet. It needs the fullscreen signal FR29 already reads
-(`_NET_WM_STATE_FULLSCREEN` on the active window, X11-only) to drive a second, tiny
-window shape, and `keepOnTop` has to stop restacking the full strip over a
-fullscreen app once the marker exists.
+Built in session 34 (`internal/webui/control.go` for the marker and its placement
+rule, `controlmark_test.go` for the rule, `x11.go` for the
+`_NET_WM_STATE_FULLSCREEN` read), and **watched for the first time on
+2026-08-06, session 49.**
+
+**The marker half works exactly as designed.** With the desktop held and a
+fullscreen `gnome-terminal` focused, an `agentbox · hands off marker` window maps
+at `+0+0`, `1920x4`, amber (`srgb(189,144,60)`) across every column sampled from
+x=200 to x=1900. Leaving fullscreen takes it away again, and the window is gone
+from `wmctrl` within one keeper beat.
+
+**The other half does not.** The strip is supposed to step aside while the
+marker stands in for it, and it does not: the full 620x62 card stays visible on
+top of the focused fullscreen window, so a film gets both the card and the line.
+`planMark` computes `step` correctly here (one monitor, so the fullscreen
+window's monitor equals the strip's), and `beat` does call `x.lower(strip)` on
+the transition - but lowering cannot win. The strip is mapped as a NOTIFICATION
+type window with `_NET_WM_STATE_ABOVE`, and Mutter layers notifications above a
+fullscreen window whatever the stacking order says; `xwininfo -root -children`
+confirms the probe is above both agentbox windows in the X order while the strip
+is still the thing on screen. The premise written into `fullscreenActive`'s
+comment - "Mutter only promotes a fullscreen window above the always-on-top
+layer while it HAS the focus" - holds for ABOVE and not for the notification
+layer the strip actually sits in.
+
+**Severity is the good direction, which is why this is a decision rather than a
+fix.** The failure FR74 exists to prevent is a covered strip reading as "the
+desktop is yours"; what happens instead is the strip refusing to be covered. The
+fix is to HIDE the strip while fullscreen rather than lower it, and that is a
+change worth Boris's word first: an unmap/remap cycle on a live run risks taking
+the keyboard back on the way in (the first map goes through `showNoActivate` for
+exactly that reason), which would be a worse defect than a card over a film.
 
 ---
 

@@ -901,17 +901,20 @@ carries the current short order (FR74's fullscreen marker, now that FR65 shipped
 on 2026-08-06); the numbered list below is the long tail behind it, kept for the
 items nothing else records.
 
-1. **FR74's fullscreen marker is built and has never been seen.** This entry said
-   it still needed writing until session 47 checked: `internal/webui/control.go`
-   has the marker, its placement rule is unit-tested in `controlmark_test.go`, the
-   `_NET_WM_STATE_FULLSCREEN` read is in `x11.go`, and `keepOnTop` already makes
-   the marker its one exception to top-most. Session 34 built all of it. What is
-   missing is the only thing that counts here - nobody has watched a real
-   fullscreen window cover the strip and checked that the marker stayed on top of
-   it, which needs consent to drive the desktop and a fullscreen app to test
-   against. A fully covered strip reads as "the desktop is yours" while an agent
-   drives, and that is the one wrong answer this feature can give, so an untested
-   marker is worth no more than no marker.
+1. **FR74's fullscreen marker was watched on 2026-08-06 and is half right.**
+   Session 49 held the desktop, put a `gnome-terminal` fullscreen and looked. The
+   marker itself is exactly what was designed: a `1920x4` amber line at `+0+0`,
+   present the whole time the fullscreen window has focus and gone within a beat
+   of leaving it. **The strip does not step aside**, though, so a film gets the
+   620x62 card AND the line. It is not the arithmetic - `planMark` returns
+   `step: true` on one monitor and `beat` does call `x.lower(strip)` - it is that
+   the strip is a NOTIFICATION type window with `_NET_WM_STATE_ABOVE`, and Mutter
+   layers notifications above a fullscreen window whatever the stacking order
+   says. **This needs Boris's word before it is fixed** (07-field-requests.md,
+   FR74): the failure is in the safe direction - the guarantee is over-kept, not
+   broken - and the fix is to hide the strip rather than lower it, which risks
+   taking the keyboard back on the remap. That would be a worse defect than a
+   card over a film.
 2. **The re-record.** Boris has said go on a from-scratch re-record and
    re-upload (the uploaded take is missing the slide-11 progress bar AND
    wears the old brand end to end); scheduling is his call, ~21 minutes of

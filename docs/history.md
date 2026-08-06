@@ -90,6 +90,24 @@ set - the rule that most needs a validator has none), and **nothing says what
 changes when the reader is the code's own author**, which is the normal case
 here. A paragraph now says the rules assume the other reader.
 
+**FR74's fullscreen marker, watched at last - and it is half right.** Built in
+session 34, never seen. With the desktop held and a `gnome-terminal` fullscreen
+and focused, an `agentbox · hands off marker` window maps at `+0+0`, `1920x4`,
+amber (`srgb(189,144,60)`) at every column sampled across the screen, and it is
+gone within a beat of leaving fullscreen. **The strip does not step aside**, so
+a film would get the 620x62 card as well as the line. Not the arithmetic:
+`planMark` returns `step: true` on one monitor and `beat` calls `x.lower(strip)`
+on the transition. The strip is a NOTIFICATION type window carrying
+`_NET_WM_STATE_ABOVE`, and Mutter layers notifications above a fullscreen window
+whatever the X stacking order says - `xwininfo -root -children` shows the probe
+above both agentbox windows while the strip is still the thing on screen. The
+comment on `fullscreenActive` states the premise that fails: Mutter promotes a
+focused fullscreen window above the ABOVE layer, not above the notification
+layer. Left unfixed on purpose and put to Boris, because the failure is in the
+safe direction (the guarantee is over-kept, not broken) and the fix - hide the
+strip rather than lower it - risks taking the keyboard back on the remap, which
+would be worse than a card over a film.
+
 **The `xdg-open` fallback, exercised.** Never seen before because this machine
 has `goland` on PATH. Run against four real PATHs rather than a stubbed one:
 `goland` (config absent, JetBrains first), `subl` (a lower-priority known
