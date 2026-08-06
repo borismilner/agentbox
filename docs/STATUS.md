@@ -953,13 +953,21 @@ yet"* needs a row with no timeline, no signals and no items - and every row on t
 board got there by announcing, which posts the signal that fills the block. Both
 were tried; the hook-only row showed its meta and its one announce, as it should.
 
-**What the same sitting showed is that the activity line is the problem, not the
-blocks under it.** Boris's PostToolUse hook writes the raw Bash command, so one
-opened row rendered a heredoc'd Go test file as a single wrapping activity line
-and a whole commit message as another, and Recent items sat two screens below the
-fold. Six handoffs have carried this as a wording preference; it is a legibility
-defect in the surface's most detailed view. The fix is his - it is his
-`~/.claude/settings.json` - and first line, or first 80 characters, is enough.
+**What the same sitting showed is that the activity line was the problem, not the
+blocks under it - and it is now fixed.** The PostToolUse hook in
+`~/.claude/settings.json` wrote the raw Bash command through `cut -c1-70`, which
+truncates every line and drops none, so a heredoc arrived whole: one opened row
+rendered a Go test file as a single wrapping activity line and a commit message as
+another, and Recent items sat two screens below the fold. Six handoffs carried this
+as a wording preference. It was a legibility defect, and the fix Boris authorised
+on 2026-08-06 collapses the command to one line before truncating:
+
+    jq -r '.tool_input.command' | tr '\n' ' ' | tr -s ' ' | sed -E 's/^(.{80}).+$/\1…/'
+
+Watched on the board with the last old-format entry still in the ring directly
+above the new ones - three wrapped lines against one, and the Signals block back
+in the first screenful. The ellipsis is what says a line was cut, which `cut` never
+did.
 
 **The field defects this feature turned up are all closed.** FR86 (a project named
 after whatever directory the agent stood in) and FR85 (two identity hues that
