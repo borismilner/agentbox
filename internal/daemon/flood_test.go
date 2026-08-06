@@ -324,7 +324,7 @@ func TestFloodControlOffByDefault(t *testing.T) {
 }
 
 func TestAQuestionCaughtInABurstStaysAnswerable(t *testing.T) {
-	d, _, _, _ := newTestDaemon(t, floodCfg())
+	d, _, _, st := newTestDaemon(t, floodCfg())
 	callNotify(t, d, floodNotify("one"))
 	callNotify(t, d, floodNotify("two"))
 
@@ -413,6 +413,26 @@ func TestAQuestionCaughtInABurstStaysAnswerable(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("the caller never heard back: a question inside a burst was swallowed")
+	}
+
+	// And the list it came from stops asking. Watched failing on the real
+	// desktop: the answer shipped, the stack card came back, and its row still
+	// read "waiting on you" under a footer still counting one.
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, e := range stack.Stack {
+		if e.ID == askID && !e.Done {
+			t.Fatal("the answered row still reads as waiting")
+		}
+	}
+	stored, err := st.Item(stack.ID)
+	if err != nil || stored == nil {
+		t.Fatalf("stack card missing from the store (err %v)", err)
+	}
+	for _, e := range stored.Stack {
+		if e.ID == askID && !e.Done {
+			t.Fatal("the quieted row was not written back; a restart would ask again")
+		}
 	}
 }
 

@@ -186,6 +186,33 @@ func (d *Daemon) collapseLocked(it *proto.Item, now time.Time) (collapsed bool, 
 	return true, stack
 }
 
+// markStackedLocked quiets the row of an item that has just been resolved, in
+// whichever live stack card is carrying it. Called from resolve, so every way an
+// item can end - answered through its own row, dismissed, expired, cancelled -
+// reaches the list showing it.
+//
+// The row is marked and not removed. A list that reflows under the pointer is
+// how the wrong thing gets clicked, and the burst is also a record: "you were
+// sent fourteen things" stays true after you have dealt with four of them.
+func (d *Daemon) markStackedLocked(id string) *proto.Item {
+	all := d.queue
+	if d.current != nil {
+		all = append([]*proto.Item{d.current}, d.queue...)
+	}
+	for _, it := range all {
+		if it.Kind != proto.KindStack {
+			continue
+		}
+		for i := range it.Stack {
+			if it.Stack[i].ID == id && !it.Stack[i].Done {
+				it.Stack[i].Done = true
+				return it
+			}
+		}
+	}
+	return nil
+}
+
 // worstLevel is the level a stack card wears: the highest of the entries in it,
 // floored at warning. Warning is the floor because the collapse itself is the
 // warning FR30 asks for - a stack of info toasts is still agentbox saying an

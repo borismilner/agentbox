@@ -38,6 +38,12 @@ type StackEntry struct {
 	Title    string `json:"title"`
 	Blocking bool   `json:"blocking,omitempty"`
 	AtMS     int64  `json:"at_ms"` // arrival, so the card can say "7 notifications in 20s"
+	// Done marks a row whose item has since been resolved - answered from the
+	// stack, dismissed, or expired. The row stays (a list that reflows under the
+	// pointer is how the wrong thing gets clicked) and goes quiet instead. Without
+	// it a question answered through its own row came back to a stack card still
+	// saying "waiting on you" underneath the answer that had just shipped.
+	Done bool `json:"done,omitempty"`
 }
 
 type FieldType string

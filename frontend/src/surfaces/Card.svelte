@@ -55,7 +55,10 @@
   const stackAll = $derived([...(item?.stack ?? [])].reverse());
   const shownStack = $derived(stackOpen ? stackAll : stackAll.slice(0, STACK_PEEK));
   const stackHidden = $derived(stackAll.length - shownStack.length);
-  const stackAsks = $derived(stackAll.filter((e) => e.blocking).length);
+  // Only rows still waiting count. A question answered through its own row is
+  // not one the footer should keep warning about, and the daemon marks it the
+  // moment it resolves - by any door, including the inbox.
+  const stackAsks = $derived(stackAll.filter((e) => e.blocking && !e.done).length);
 
   const baseOf = (p) => p.split("/").pop();
   const dirOf = (p) => p.slice(0, p.length - baseOf(p).length);
@@ -232,7 +235,7 @@
     if (kind === "stack" && /^[1-9]$/.test(e.key)) {
       e.preventDefault();
       const row = shownStack[Number(e.key) - 1];
-      if (row) bridge.openStacked(item.id, row.id);
+      if (row && !row.done) bridge.openStacked(item.id, row.id);
       return;
     }
     if (kind === "stack" && (e.key === "e" || e.key === "E")) {
@@ -438,11 +441,11 @@
                the collapse could cost more than it saves. -->
           <div class="stack">
             {#each shownStack as e, i}
-              <button class="srow" class:ask={e.blocking} onclick={() => bridge.openStacked(item.id, e.id)}>
+              <button class="srow" class:ask={e.blocking && !e.done} class:done={e.done} disabled={e.done} onclick={() => bridge.openStacked(item.id, e.id)}>
                 <kbd>{i + 1}</kbd>
                 <span class="sdot" style="--sev: var(--k-{e.level || 'info'}, var(--k-info))"></span>
                 <span class="slbl">{e.title}</span>
-                {#if e.blocking}<span class="sask">waiting on you</span>{/if}
+                {#if e.done}<span class="sdone">done</span>{:else if e.blocking}<span class="sask">waiting on you</span>{/if}
               </button>
             {/each}
             {#if stackHidden > 0}
@@ -701,6 +704,22 @@
     flex: none;
     font-size: 0.7rem;
     color: var(--k-warning, #d9a441);
+  }
+  /* A row that has been dealt with. It stays in the list - the burst is a record
+     of what was sent, and a list that reflows under the pointer is how the wrong
+     thing gets clicked - but it stops asking for anything. */
+  .srow.done {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .srow.done:hover {
+    background: var(--k-surface-2, rgba(127, 127, 127, 0.08));
+    border-color: transparent;
+  }
+  .srow .sdone {
+    flex: none;
+    font-size: 0.7rem;
+    color: var(--k-ink-3, #8a8a8a);
   }
   .smore {
     align-self: flex-start;

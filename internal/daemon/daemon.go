@@ -1749,6 +1749,10 @@ func (d *Daemon) resolve(id, toState string, out store.Outcome) bool {
 	d.mu.Lock()
 	d.stopTimerLocked(id)
 	delete(d.gone, id)
+	// FR30: if this item is a row in a stack card that is still open, the row goes
+	// quiet. Every way an item can end comes through here, which is why the mark
+	// lives at this one point rather than beside each of them.
+	stackTouched := d.markStackedLocked(id)
 	if w, ok := d.waiters[id]; ok {
 		delete(d.waiters, id)
 		w <- proto.Result{
@@ -1769,6 +1773,11 @@ func (d *Daemon) resolve(id, toState string, out store.Outcome) bool {
 	}
 	view := d.viewLocked()
 	d.mu.Unlock()
+	if stackTouched != nil {
+		// The quieted row has to survive a restart too, or the stack card comes
+		// back asking for an answer that was given an hour ago.
+		d.persistStack(stackTouched)
+	}
 	d.ui.Present(view)
 	return true
 }
