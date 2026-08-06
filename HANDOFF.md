@@ -10,8 +10,8 @@ pixels.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean, in sync with origin/main at e5b2473
-make deployed               # expect 35a5bd8ed0df - OLDER than HEAD on purpose, see Live state
+git status -sb              # expect clean, in sync with origin/main at 631eaa9
+make deployed               # expect 1cd941e1c022 (HEAD is one docs commit ahead)
 agentbox pending            # expect "nothing pending"
 agentbox sync agents        # your own row plus a peer in ~/work/minimus
 agentbox sync locks         # expect "no locks held"
