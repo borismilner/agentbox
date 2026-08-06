@@ -2704,6 +2704,16 @@ plus the desktop lock in the daemon are where a run's state lives today.
 Verified facts from field sessions, kept so a later session does not re-derive
 them.
 
+**`claude -p ...` from inside a session leaves a ghost row on the Agents board**
+(verified 2026-08-06, session 49). The usage check the global CLAUDE.md asks for
+(`claude -p /usage`) starts a real Claude session, so the SessionStart hook
+announces it, and when it exits its row stays behind as `detached · agentbox
+session (purpose not yet stated)`. Three checks in one session left three. It is
+harmless and it is indistinguishable on the board from a session that started and
+never said what it was for, which is the one signal the placeholder wording
+exists to give. A `-p` run is the one case where the hook has nothing worth
+announcing.
+
 **Testing a NEW MCP tool from the session that just wrote it** (verified
 2026-08-01, session 35). An MCP client fixes its tool list when the server
 starts, and every Claude session holds an `agentbox mcp` child spawned from whatever
