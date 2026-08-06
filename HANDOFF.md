@@ -156,11 +156,12 @@ Not read off the diff. Captures are in the scratchpad listed under Live state.
 
 - **Deployed:** `9156e474f2a0`. Anything committed after it is docs; check
   `make deployed` against `git log` before assuming a deploy is owed.
-- **Git:** `main`, clean. **Ahead of `origin/main` and NOT pushed** - session 49
-  left the tree pushed, this one did not, because pushing was never asked for.
-  Ask Boris, or push if he has said so since. Commits this session, oldest first:
-  `11778f1` `8b06691` `16d2e78` `eca7190` `808237f` `2c3584e` `4421863`
-  `171ba0e` `254285b` `31da412` `12d27fe`, plus this amendment's own commit.
+- **Git:** `main`, clean, **pushed** (`1f193b4..b5d83c9` to
+  `gitlab.com:fu-bar/agentbox.git`, on Boris's word at the end of the session).
+  Fourteen commits, oldest first: `11778f1` `8b06691` `16d2e78` `eca7190`
+  `808237f` `2c3584e` `4421863` `171ba0e` `254285b` `31da412` `12d27fe`
+  `0a3d95e` `9156e47` `b5d83c9`, plus this handoff's own commit, which is
+  written after the push and so is local until somebody pushes again.
 - **Background jobs: none. PRs:** none, ever - Boris pushes `main`.
 - **Nothing pending, no locks held, no strip on screen, nothing paused.** All
   four checked at the end (`agentbox control state` says "no run: the desktop is
@@ -168,27 +169,33 @@ Not read off the diff. Captures are in the scratchpad listed under Live state.
   session and is not held now.
 - **A second session was on this machine** at 16:56, `proc-722811`, purpose
   "finding why the same image build failures keep coming back and fixing them
-  for good", area `repo:assignments`. Different area, no shared files, no
-  coordination needed - but check `agentbox sync agents` yourself rather than
-  trusting this line.
-- **The FR94 mock window was closed by a deploy.** Reopen with
-  `agentbox` if wanted; the file is committed at
-  `docs/mocks/fr94-pause-resume.html` and every decision it settled is written
-  into the FR94 entry, so nothing depends on it.
+  for good", area `repo:assignments`. Different repo, no shared files - but it
+  did collide on one thing, which is worth knowing because it is not code:
+  **`~/.claude/last-handoff.md` is a single global file two `/handoff` runs
+  write within minutes of each other**, and it overwrote this assignment's
+  pointer with its own. It was merged back by hand, under an
+  `agentbox sync lock last-handoff`, with both entries kept and a note at the
+  top saying the first line is whichever finished last. **So do not trust that
+  pointer to name this assignment** - `/resume` from this directory finds the
+  local `HANDOFF.md` first anyway, which is the route that cannot be raced.
+- **The FR94 mock window was closed by a deploy.** Reopen it with
+  `agentbox show --artifact docs/mocks/fr94-pause-resume.html` if wanted, but
+  nothing depends on it: the file is committed and every decision it settled is
+  written into the FR94 entry.
 - **Captures live in a session scratchpad** and will not survive a reboot:
   `/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/aea199b3-203e-4f55-930c-b3e14708b8e5/scratchpad/`
   (`crop-10-driving.png`, `crop-11-paused.png`, `crop-13-warm.png`,
   `crop-15.png` are the four strip states; `park.log` is the parked drive's
   timing). Deliberately not committed.
-- **Usage:** session **52%** at 16:47, resets 2026-08-06 18:40 Asia/Jerusalem;
-  week (all models) **22%**, resets 2026-08-12 04:59.
+- **Usage at handoff:** session **62%**, resets 2026-08-06 18:40
+  Asia/Jerusalem; week (all models) **23%**, resets 2026-08-12 05:00. Neither is
+  near a trigger, so this handoff is a stopping point rather than a rescue.
 - **In-flight edits: none.**
 
 ## Blocked on you (Boris)
 
-Nothing - proceed autonomously. Four things stay yours and block nothing:
+Nothing - proceed autonomously. Three things stay yours and block nothing:
 
-- **Whether to push `main`.** Ten commits are sitting local. See Live state.
 - **FR84's other half** (a long body still pushes a form's fields below the fold)
   needs your word, because the approach that fixes it is the one you did not
   pick. Mock: [docs/mocks/fr84-form-shapes.html](docs/mocks/fr84-form-shapes.html),

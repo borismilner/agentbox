@@ -1,8 +1,21 @@
 # STATUS
 
-Updated: 2026-08-06, forty-eighth session (**FR65, FR91, FR92 and FR93 all
-closed; no field request Boris filed is open**). Session 48 cleared a fix list
-and then took three new asks in the same sitting:
+Updated: 2026-08-06, fiftieth session (**FR94 shipped; FR95 is the one open
+field request, and its shape is already settled**).
+
+Session 50 mocked FR94, had Boris settle it at the mock, and built it: he can now
+take his keyboard and mouse back mid-run with `Ctrl+Alt+Escape` or the strip's own
+Pause button, and hand them on again, without the run ending. The strip inverts to
+green `PAUSED - YOURS` instead of vanishing, a running `drive_desktop` parks at the
+end of its step (between characters inside a `type`) rather than failing, the latch
+is desktop-wide so no second agent is handed the desktop while he is using it, and
+nothing an agent can call resumes it. It also found that **GNOME Shell swallows
+every `Super` combination before a core X11 grab can see it, silently** - the first
+default, `Super+Escape`, grabbed successfully and never fired once.
+
+Session 49 put the walkthrough standard on trial against a real change and it
+failed in five places, all fixed. Session 48 cleared a fix list and then took three
+new asks in the same sitting:
 
 - **FR65** put an arrow beside copy in every code block header, so a reader stops
   leaving the board to paste a path and count lines. Building it found that an
@@ -900,8 +913,8 @@ not pick.
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (FR74's fullscreen marker, now that FR65 shipped
-on 2026-08-06); the numbered list below is the long tail behind it, kept for the
+carries the current short order (FR95's mock, now that FR94 shipped on
+2026-08-06); the numbered list below is the long tail behind it, kept for the
 items nothing else records.
 
 1. **FR74's fullscreen marker was watched on 2026-08-06 and is half right.**
