@@ -9,6 +9,134 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fiftieth session (2026-08-06): FR94 shipped, and the hotkey it shipped with was dead on arrival
+
+Resumed from session 49's handoff. Everything in it verified clean on arrival -
+tree in sync, deployed `35d1cf4d0e6e`, nothing pending, no locks, and none of the
+three ghost rows it warned about still on the board. Queue item 1 was FR94, so
+that is what this session is.
+
+### The mock did its job, twice over
+
+Built [mocks/fr94-pause-resume.html](mocks/fr94-pause-resume.html) before writing
+any code, per the working rule: a stage with a fake desktop and a live strip, the
+agent's side of the wire as a scrolling log, three candidate shapes for the paused
+sign, and the entry's three open questions as options with their costs. Boris
+drove it himself and pressed Settle it.
+
+**He went against the recommendation on two of the four**, which is the argument
+for mocking rather than speccing:
+
+- The **inverted strip**, not the collapsed pill that was recommended. One shape
+  to learn, and he accepted the cost (it keeps the top of the screen).
+- **Finish the current step**, not park at the next atomic boundary.
+
+The second needed one narrowing before it could be written down, and he took it:
+finish the step *except* `type`, which parks between characters. `move`, `click`
+and `drag` are all sub-100ms and stopping a drag half way is what leaves a button
+held down, but a `type` step is a whole sentence at a set wpm - finishing it is
+seconds of typing into whatever he just switched to, which is the opposite of
+"suddenly need the keyboard".
+
+The other two went as recommended: **no auto-resume ever** (it would take the
+desktop back while he is still using it, the exact collision the feature
+prevents), and a **desktop-wide latch** rather than a per-run one.
+
+> **A mock is a shared desktop.** Driving the mock to check it worked while Boris
+> was clicking in it produced twenty minutes of confusion: the page scrolled
+> between my screenshot and my click, selections changed on their own, and one
+> stray click emitted a decision he had not made. It was him, and he said so.
+> CLAUDE.md already warns never to click a row at a coordinate read off an
+> earlier screenshot; the missing half is that **the moment a mock is on his
+> screen it is his**, and the agent's job is to get out of it.
+
+### What shipped
+
+Four commits, each exercised on the real desktop rather than read:
+
+- **The latch** (`internal/daemon/control.go`). Desktop-wide, not per-run:
+  `Pause`/`Resume`/`Paused`/`gate`, a `resumed` channel replaced on each pause so
+  one resume wakes every parked caller, and a 10-minute waiting budget whose
+  expiry says the run is still the agent's. `Request` waits on it too, so a
+  paused desktop is never handed to the next agent when the parked run releases.
+  A release under a live latch keeps the strip up and flips it to
+  nobody-waiting - a strip that vanished there would say "agents may drive
+  again" at the exact moment they may not.
+- **The park** (`internal/hand`). A two-method `Park` interface rather than one
+  blocking call, because `Blocked()` runs between every keystroke and has to be
+  free on the common path. `Run` parks between steps and now returns how many
+  actually ran; `Type` parks between strokes and **releases Shift first**, since
+  a latch held for minutes with a modifier down is the stuck keyboard parking is
+  supposed to avoid.
+- **The strip's paused form** (`Control.svelte`). Green, `PAUSED - YOURS`, the
+  frozen activity line in italic, a filled Resume button. At two minutes it turns
+  amber and reads `AGENT WAITING`.
+- **`Ctrl+Alt+Escape`**, and the `grab` helper in `cmd/agentbox/daemon.go` that
+  now carries both hotkeys through open, rebind-on-reload and release.
+
+### The hotkey was dead on arrival, and the log said it was fine
+
+`Super+Escape` was the first default. It reads better than what shipped, the
+daemon logged `hotkey.grabbed for=pause hotkey=Super+Escape`, and pressing it did
+nothing at all.
+
+**GNOME Shell takes every `Super` combination before a core X11 passive grab can
+see it, and it does so silently.** `XGrabKey` returns success - no `BadAccess`,
+so nothing anywhere reports a problem - and the key is simply dead forever.
+
+Isolating it took firing a combination known to work through the identical path:
+`agentbox drive "key ctrl+alt+grave"` toggled the panel, which proved XTEST
+presses do trigger passive grabs and that the fault was specific to Super. A
+throwaway probe then grabbed each candidate and pressed it at itself:
+
+```
+Super+F9             swallowed before the grab
+Super+P              swallowed before the grab
+Ctrl+Alt+Escape      FIRES
+Ctrl+Alt+P           FIRES
+Ctrl+Alt+space       FIRES
+Ctrl+Alt+comma       FIRES
+Ctrl+Shift+Escape    FIRES
+```
+
+Both the finding and the two techniques are in "Mechanics discovered"
+(07-field-requests.md), including that a probe importing `internal/...` has to
+live under `internal/` itself - a `main.go` in the scratchpad cannot compile
+against it at all.
+
+### What was verified on the real desktop
+
+Not read off the diff:
+
+- **The parked drive.** A `drive_desktop` sent through a fresh `agentbox mcp`
+  child held for **21.45s** with the pointer frozen at `1228,85`, then ran both
+  its steps on resume and landed on `900,640` exactly, returning `{"steps": 2}`.
+- **The hotkey**, after the fix: one press paused a live run, the next resumed
+  it.
+- **All three strip states**, captured: amber `HANDS OFF` with a Pause button,
+  green `PAUSED - YOURS` with the italic frozen line at `0s`, and amber
+  `AGENT WAITING` at `2m 12s`.
+- **The second agent.** A `request_control` from another identity blocked for 23
+  seconds across the pause and was granted the instant of the resume.
+
+### The defect only the screen could find
+
+At `2m 50s` with the run released, the strip read **`AGENT WAITING` over the line
+"nothing is driving; agents are held off"** - the escalation firing with nobody
+to escalate about. The warm state's entire content is "somebody is blocked on
+you", so an idle latch must never reach it. One line (`warm` now requires
+`!idle`), and it is the second time in three sessions that a surface passed every
+test and lied on screen.
+
+### Also this session
+
+**FR95, filed by Boris mid-build**: the strip should be hidable while he records
+the screen. Settled in shape the same day - **demoted, not hidden** (it drops to
+FR74's 4px marker), and the demoted marker **gives up being top-most**, so a
+window over the top edge covers it. That relaxation also removes the one thing
+FR74 could never make work: Mutter will not put a fullscreen window above a
+notification window. It still needs a mock.
+
 ## Forty-ninth session (2026-08-06): the standard was tested on a real change, and it failed in five places
 
 Resumed from session 48's handoff with nothing in flight. Three things it had
