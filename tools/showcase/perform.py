@@ -19,8 +19,12 @@ sentence of this slide's narration". The commands are the ones in docs/showcase.
 which is the plan a human reads; this is the same sequence, executed.
 
 Slides advance with the right arrow at the end of each entry, so the deck follows the
-voice rather than a timer. Start it with the slideshow already fullscreen (see
-tools/showcase/record.sh, which prepares the desk and rolls the camera).
+voice rather than a timer. Start it with the slideshow already fullscreen, on the
+monitor the pointer is on.
+
+This used to be half of a video pipeline; the recording scripts went on 2026-08-06
+when the showcase video was dropped for good. What is left is the live half - the
+deck, the words and the driving - which is what you want in front of a room.
 
 The synthetic input below is stagecraft and never the subject: it is how the cards get
 answered with nobody in the frame, and the deck does not mention it. Do not put it back
@@ -35,7 +39,6 @@ import sys
 import time
 
 AGENTBOX = os.path.expanduser("~/.local/bin/agentbox")
-RECORD = os.path.join("tools", "showcase", "record.sh")
 DECK = os.path.join("docs", "agentbox-showcase.pptx")
 
 # Who the cards come from. The tour is one team's afternoon rather than a feature
@@ -86,37 +89,14 @@ def drive(script):
 # three failed silently in the recording of 2026-07-25 22:33. They are checked here
 # instead of being hoped for.
 
-STATE = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "agentbox-showcase-record")
-
-
-def stage_region():
-    """The monitor being recorded, as (w, h, x, y), or None outside a take."""
-    try:
-        parts = open(os.path.join(STATE, "region")).read().split()
-        return int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
-    except Exception:
-        return None
-
-
-def _geometry(win):
-    r = subprocess.run(["xwininfo", "-id", win], capture_output=True, text=True)
-    g = {}
-    for line in r.stdout.splitlines():
-        if "Absolute upper-left X" in line:
-            g["x"] = int(line.split()[-1])
-        elif "Absolute upper-left Y" in line:
-            g["y"] = int(line.split()[-1])
-        elif line.strip().startswith("Width:"):
-            g["w"] = int(line.split()[-1])
-        elif line.strip().startswith("Height:"):
-            g["h"] = int(line.split()[-1])
-    return g
-
-
 def stage_window():
-    """The fullscreen window covering the recorded monitor, as an X id, or None.
-    Outside a take there is no region file, so any fullscreen window counts."""
-    reg = stage_region()
+    """A fullscreen window, as an X id, or None - the deck's slideshow if the desk
+    was set up as the run expects.
+
+    This used to narrow the search to the monitor a recording covered, off a region
+    file the camera wrote. The camera went with the video, so any fullscreen window
+    counts now. That is the same answer on a one-monitor desk and a weaker one on
+    two, where a fullscreen window on the other screen would satisfy the check."""
     r = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True)
     for line in r.stdout.splitlines():
         win = line.split()[0] if line.split() else ""
@@ -124,12 +104,7 @@ def stage_window():
             continue
         st = subprocess.run(["xprop", "-id", win, "_NET_WM_STATE"],
                             capture_output=True, text=True)
-        if "FULLSCREEN" not in st.stdout:
-            continue
-        if reg is None:
-            return _xid(win)
-        g = _geometry(win)
-        if (g.get("w"), g.get("h"), g.get("x"), g.get("y")) == reg:
+        if "FULLSCREEN" in st.stdout:
             return _xid(win)
     return None
 
@@ -839,8 +814,6 @@ def main():
     ap.add_argument("--from", dest="start", type=int, default=1)
     ap.add_argument("--to", dest="end", type=int, default=len(SLIDES))
     ap.add_argument("--park", default="", help="x,y for the pointer between beats")
-    ap.add_argument("--marks", action="store_true",
-                    help="set record.sh's in and out marks around the performance")
     args = ap.parse_args()
 
     if args.park:
@@ -888,17 +861,8 @@ def main():
         drive("key home\n")  # the deck starts where the narration does
         time.sleep(0.8)
 
-    # The marks belong in here rather than in the hands of whoever starts this. The
-    # first rehearsal put them in two separate shell commands and the thirteen
-    # seconds between those commands landed inside the video, as a title slide in
-    # silence. Set from here, the cut begins on the first word and ends on the last.
-    def mark(which):
-        if args.marks and not args.dry_run:
-            subprocess.run([RECORD, "mark", which], capture_output=True, text=True)
-
     began = time.time()
     timing = []
-    mark("in")
     try:
         for n in range(args.start, args.end + 1):
             at = time.time() - began
@@ -914,7 +878,6 @@ def main():
                 print(f"  [{n}] advance")
     except StageLost as e:
         print(f"\nSTOPPED: {e}. Nothing after this point would have been usable.")
-    mark("out")
     print(f"\ndone in {time.time() - began:.0f}s")
 
     if REHEARSE:

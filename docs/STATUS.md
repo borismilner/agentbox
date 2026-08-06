@@ -1159,16 +1159,21 @@ behind it, kept for the items nothing else records.
    [mocks/fr95-recording-mode.html](mocks/fr95-recording-mode.html); the entry
    carries the four decisions, the measurements, and the silent race the delivery
    had to be hardened against.
-2. ~~**The re-record.**~~ **Dropped by Boris on 2026-08-06, for good.** The
-   showcase and its docs are no longer maintained: no re-record, no re-upload,
-   and nothing in this file or the handoff should ask about scheduling one
-   again. The uploaded take stays up as it is, missing the slide-11 progress bar
-   and wearing the old brand. `tools/showcase/`, `docs/showcase.md`,
-   `docs/recording.md` and `docs/youtube.md` are kept but frozen - their
-   contents describe a pipeline nobody is going to run, so treat any number in
-   them (the "fourteen tools" the deck still claims, the chapter timings) as
-   stale by design rather than as a defect to fix. Deleting them outright is
-   Boris's call and he has not made it.
+2. ~~**The re-record.**~~ **Dropped by Boris on 2026-08-06, for good, and the
+   video half is now deleted rather than frozen.** He settled the open question
+   the same day: delete the video, keep what is reusable. Gone:
+   `tools/showcase/record.sh`, `take.sh`, `verify.sh`, `docs/recording.md` and
+   `docs/youtube.md` - in git history if ever wanted, and nothing left in the
+   tree points at them. Kept, because each stands on its own without a camera:
+   `deck.py` (generates `docs/agentbox-showcase.pptx`, `make deck`),
+   `perform.py` (drives and narrates a LIVE demo; its recorder marks and its
+   recorded-monitor check were stripped), `console.jsx` (a working sandbox
+   artifact, the only one that calls `agentbox.emit`), `tour.md` (a document
+   exercising every `show_document` block) and `docs/showcase.md`, reframed from
+   frozen to live-only. The uploaded take stays up as it is, missing the slide-11
+   progress bar and wearing the old brand. Numbers in the deck that describe the
+   product (the "fourteen tools" it still claims) are stale - check one before
+   saying it to a room, but correcting them is not owed work.
 3. **Resize affordance for frameless surfaces** (owner, 2026-07-28, from the
    FR58 mock round): a maximized artifact window can only be resized through
    WM chords (Alt+F8, Super+middle-drag), which is undiscoverable. Wanted:

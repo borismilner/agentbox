@@ -340,9 +340,13 @@ uninstall: ## remove binary, desktop entry, icon and service unit
 # one script, and `rm -rf .venv-deck` undoes it.
 DECKVENV = .venv-deck
 
+# The gate is "can it import pptx", not "does bin/python exist". Those come apart:
+# this machine had a venv with a python and no pip, so the old target skipped the
+# venv build and then died on the pip line every time.
 deck: ## rebuild docs/agentbox-showcase.pptx from tools/showcase/deck.py
-	@test -x $(DECKVENV)/bin/python || python3 -m venv $(DECKVENV)
-	@$(DECKVENV)/bin/pip install -q python-pptx
+	@$(DECKVENV)/bin/python -c 'import pptx' 2>/dev/null || { \
+	    test -x $(DECKVENV)/bin/pip || python3 -m venv --clear $(DECKVENV); \
+	    $(DECKVENV)/bin/pip install -q python-pptx; }
 	@$(DECKVENV)/bin/python tools/showcase/deck.py
 
 clean: stop ## remove build output

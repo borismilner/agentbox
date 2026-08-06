@@ -20,9 +20,7 @@ Reading order:
 | [agent-manual.md](agent-manual.md) | Complete reference for an AI agent driving AgentBox (MCP + CLI) |
 | [recipes.md](recipes.md) | Copy-paste integration snippets |
 | [sample.md](sample.md) | The renderer's fixture: every block the viewer draws (`agentbox show docs/sample.md`) |
-| [showcase.md](showcase.md) | The self-performing sales deck: preflight, traps, slide notes |
-| [recording.md](recording.md) | The recorder behind the showcase takes |
-| [youtube.md](youtube.md) | The upload listing for the recorded take; chapters regenerate per take |
+| [showcase.md](showcase.md) | The self-performing demo: preflight, traps, slide notes. Live only - the video pipeline was deleted on 2026-08-06 |
 | [decisions/](decisions/) | ADRs, one decision per file |
 
 The two ADRs a change to the UI most often needs:
