@@ -438,6 +438,37 @@ func TestDismissingAStackKeepsTheQuestionsAndClearsTheNotices(t *testing.T) {
 	}
 }
 
+func TestTheCliDismissAlsoSweepsTheStack(t *testing.T) {
+	// The other door, and the one the sweep was originally missing. `agentbox
+	// dismiss <stack>` cleared the summary and left five invisible notices
+	// pending, so `agentbox pending` read as empty-ish and a restart would have
+	// replayed a flood the human had closed.
+	d, _, _, st := newTestDaemon(t, floodCfg())
+	callNotify(t, d, floodNotify("one"))
+	callNotify(t, d, floodNotify("two"))
+	third := callNotify(t, d, floodNotify("three"))
+
+	d.mu.Lock()
+	var stackID string
+	for _, q := range d.queue {
+		if q.Kind == proto.KindStack {
+			stackID = q.ID
+		}
+	}
+	d.mu.Unlock()
+
+	if _, rpcErr := d.DismissItems(proto.DismissParams{ID: stackID, Human: true}); rpcErr != nil {
+		t.Fatalf("dismiss: %v", rpcErr)
+	}
+	got, err := st.Item(third.ID)
+	if err != nil || got == nil {
+		t.Fatalf("collapsed notice missing (err %v)", err)
+	}
+	if got.State != store.StateDismissed {
+		t.Fatalf("collapsed notice is %q after the CLI dismissed its stack, want dismissed", got.State)
+	}
+}
+
 func TestNoCallerMaySubmitAStackCard(t *testing.T) {
 	d, _, _, _ := newTestDaemon(t, floodCfg())
 	it := proto.Item{

@@ -280,19 +280,30 @@ func (d *Daemon) OpenStacked(stackID, itemID string) {
 	d.ui.Present(view)
 }
 
-// dismissStackLocked is what dismissing a stack card means for the burst under
-// it: the notifications go with it (the human has seen the count and said
-// enough), and every blocking row stays pending, because an agent parked on a
-// question is not answered by the human closing a summary. Those keep their
-// place in the inbox, which is where FR30 said they would be resolved.
+// sweepStack is what dismissing a stack card means for the burst under it: the
+// notifications go with it (the human has seen the count and said enough), and
+// every blocking row stays pending, because an agent parked on a question is not
+// answered by somebody closing a summary. Those keep their place in the inbox,
+// which is where FR30 said they would be resolved.
 //
-// Returns the notification IDs to resolve, which the caller does off the lock.
-func dismissStackLocked(stack *proto.Item) []string {
+// It takes the ID rather than the item, and every door that retires an item
+// calls it, because there are three: the card's own Esc (Resolver.Dismiss), the
+// inbox row, and `agentbox dismiss` / an agent retracting (DismissItems, FR89).
+// It was written on the first of those alone, and the CLI then dismissed a stack
+// card and left five invisible notifications pending behind it - found by
+// clearing the queue after a live test, not by reading the diff.
+func (d *Daemon) sweepStack(id string) {
+	d.mu.Lock()
 	var ids []string
-	for _, e := range stack.Stack {
-		if !e.Blocking {
-			ids = append(ids, e.ID)
+	if it := d.liveStackLocked(id); it != nil && it.Kind == proto.KindStack {
+		for _, e := range it.Stack {
+			if !e.Blocking {
+				ids = append(ids, e.ID)
+			}
 		}
 	}
-	return ids
+	d.mu.Unlock()
+	for _, cid := range ids {
+		d.resolve(cid, store.StateDismissed, store.Outcome{})
+	}
 }

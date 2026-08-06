@@ -1807,15 +1807,7 @@ func (d *Daemon) Review(id string, approved bool, comment string) {
 // so those stay pending and are resolved from the inbox, which is the triage
 // route FR30 named.
 func (d *Daemon) Dismiss(id string) {
-	d.mu.Lock()
-	var collapsed []string
-	if it := d.liveStackLocked(id); it != nil && it.Kind == proto.KindStack {
-		collapsed = dismissStackLocked(it)
-	}
-	d.mu.Unlock()
-	for _, cid := range collapsed {
-		d.resolve(cid, store.StateDismissed, store.Outcome{})
-	}
+	d.sweepStack(id)
 	d.resolve(id, store.StateDismissed, store.Outcome{})
 }
 
@@ -1892,6 +1884,11 @@ func (d *Daemon) DismissItems(p proto.DismissParams) (proto.DismissResult, *prot
 				continue
 			}
 		}
+		// FR30: retiring a stack card retires the notifications it collapsed, from
+		// this door too. Before the sweep lived here, `agentbox dismiss <stack>`
+		// cleared the summary and left every invisible notice behind it pending -
+		// so the queue read as empty and a restart replayed the flood.
+		d.sweepStack(c.id)
 		if d.resolve(c.id, store.StateDismissed, store.Outcome{}) {
 			out.Dismissed++
 			out.IDs = append(out.IDs, c.id)
