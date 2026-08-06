@@ -56,7 +56,29 @@ type control struct {
 	// notice something that happens on a state change would be the wrong shape.
 	nagTimer *time.Timer
 	nagWith  func(title, body string, actions []proto.Action)
+
+	// Recording mode (FR95): the sign demoted to four pixels, so an agent can
+	// drive while the screen is being recorded without an internal tool sitting in
+	// every frame. Like the latch above it belongs to the desktop and not to a run
+	// - he arms it a second before he hits record, which is usually before any
+	// agent has asked for anything.
+	//
+	// It is deliberately NOT persisted, and it expires. Both are the same answer to
+	// the one failure this feature can have: a recording mode left on is a
+	// hands-off sign nobody can see, and now that the demoted marker can be
+	// covered, forgotten-on means no visible sign at all rather than a thin one.
+	// So it dies with the daemon AND with quietFuse, and neither needs the human to
+	// remember anything.
+	quiet      bool
+	quietAt    time.Time
+	quietTimer *time.Timer
 }
+
+// quietFuse is how long recording mode lasts before it goes loud on its own. Half
+// an hour covers any take Boris has described and is short enough that a mode left
+// on after one heals before the next time an agent drives. A longer recording
+// re-arms with one key, which is the cheap side of the trade.
+const quietFuse = 30 * time.Minute
 
 // pauseWait is how long an agent parks on a latched desktop before it is told to
 // go and do something else. It is deliberately long: a run that dies because its
@@ -117,6 +139,11 @@ type ControlState struct {
 	Paused   bool  `json:"paused,omitempty"`
 	PausedMs int64 `json:"paused_ms,omitempty"`
 	Waiting  bool  `json:"waiting,omitempty"`
+	// FR95. Quiet is recording mode: the surface reads it and puts up the marker
+	// instead of the strip, without the notification type or the keeper that make
+	// the strip impossible to cover. It changes what is on screen, never what the
+	// run is, which is why it sits beside Paused rather than in State.
+	Quiet bool `json:"quiet,omitempty"`
 }
 
 // Handover exposes the two answers the human can give, and nothing else, so the
@@ -292,6 +319,10 @@ func (c *control) State() proto.ControlResult {
 		res.Paused = true
 		res.PausedS = int(time.Since(c.pausedAt).Seconds())
 	}
+	if c.quiet {
+		res.Quiet = true
+		res.QuietLeftS = int(max(quietFuse-time.Since(c.quietAt), 0).Seconds())
+	}
 	if c.run == nil {
 		return res
 	}
@@ -367,6 +398,86 @@ func (c *control) Resume(how string) proto.ControlResult {
 		hide()
 	}
 	return c.State()
+}
+
+// Quiet demotes the sign for a recording (FR95): the strip comes down and the 4px
+// marker takes over, mapped and then left alone so a window over the top edge
+// covers it. The guarantee is deliberately weaker in this mode, and it is weaker
+// because Boris asked for it to be - "generally it should live on top of any and
+// all surfaces; when demoted for purposes of recording or stuff like that it can be
+// overlapped".
+//
+// Legal with no run at all, which is the common case: it gets armed a second before
+// the recording starts, and the agent that asks for the desktop two minutes later
+// finds the sign already demoted.
+//
+// Calling it again restarts the fuse rather than doing nothing. A second press is a
+// human saying "still recording", and the useful reading of that is more time.
+func (c *control) Quiet(how string) proto.ControlResult {
+	c.mu.Lock()
+	c.quiet = true
+	c.quietAt = time.Now()
+	if c.quietTimer != nil {
+		c.quietTimer.Stop()
+	}
+	c.quietTimer = time.AfterFunc(quietFuse, func() { c.Loud("the 30 minute fuse") })
+	run, show := c.run, c.show
+	c.mu.Unlock()
+
+	c.log.Info(logging.EvControl, "component", "daemon", "control", "quiet",
+		"how", how, "fuse_s", int(quietFuse.Seconds()))
+	// Only repaint if there is something on screen to demote. With no run and no
+	// latch the screen is already empty, and show(nil) there would put a strip up
+	// to say the sign is quiet, which is the joke this feature is not.
+	if show != nil && (run != nil || c.isPaused()) {
+		show(c.snapshot(run, 0))
+	}
+	return c.State()
+}
+
+// Loud undoes it, from the hotkey, the CLI or the fuse. It is idempotent because
+// the fuse and a keypress race by construction: he goes loud as the recording
+// stops, a few seconds either side of the timer that was going to do it anyway.
+func (c *control) Loud(how string) proto.ControlResult {
+	c.mu.Lock()
+	if !c.quiet {
+		c.mu.Unlock()
+		return c.State()
+	}
+	c.quiet = false
+	was := time.Since(c.quietAt)
+	if c.quietTimer != nil {
+		c.quietTimer.Stop()
+		c.quietTimer = nil
+	}
+	run, show := c.run, c.show
+	c.mu.Unlock()
+
+	c.log.Info(logging.EvControl, "component", "daemon", "control", "loud",
+		"how", how, "quiet_s", int(was.Seconds()))
+	if show != nil && (run != nil || c.isPaused()) {
+		show(c.snapshot(run, 0))
+	}
+	return c.State()
+}
+
+// Quieted reports recording mode and what the fuse has left, without blocking.
+// The surface asks this when its window opens, the same way it asks about a run.
+func (c *control) Quieted() (bool, time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.quiet {
+		return false, 0
+	}
+	return true, max(quietFuse-time.Since(c.quietAt), 0)
+}
+
+// isPaused is Paused's boolean half without the duration, for the two places that
+// only need to know whether anything is on screen.
+func (c *control) isPaused() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.paused
 }
 
 // SetNag wires the card a forgotten pause raises. Separate from the surface
@@ -550,7 +661,7 @@ func (c *control) end(run *controlRun, why string) {
 func (c *control) snapshot(run *controlRun, window time.Duration) *ControlState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	st := &ControlState{}
+	st := &ControlState{Quiet: c.quiet}
 	if c.paused {
 		st.Paused = true
 		st.PausedMs = time.Since(c.pausedAt).Milliseconds()

@@ -199,9 +199,9 @@ func (a audio) ReadWait(ctx context.Context, text string) {
 
 // grab is one desktop-wide key combination over its whole life: taken at
 // startup, rebound when the config changes under it, released on the way out.
-// Two of them exist (the panel's, M10, and the pause key, FR94) and every step
-// is identical bar the wording, so they share this rather than the logic being
-// written twice and drifting.
+// Three of them exist (the panel's, M10; the pause key, FR94; the recording
+// key, FR95) and every step is identical bar the wording, so they share this
+// rather than the logic being written three times and drifting.
 //
 // Nothing here is fatal. A grab that cannot be taken - no X11, or another
 // application already owns the combination - leaves the feature reachable by its
@@ -453,15 +453,32 @@ func runDaemon() {
 	}
 	pauseKey.open(strings.TrimSpace(cfg.Control.PauseHotkey))
 
+	// The recording key (FR95), the third of the same shape. One key toggles here
+	// too, and for a plainer reason than the pause: once the sign is demoted there
+	// is no strip left to click, so whatever demoted it has to be able to undo it.
+	quietKey := &grab{
+		name: "quiet", log: log, quiet: true,
+		hint: "use `agentbox control quiet` instead, or set [control] quiet_hotkey",
+		fn: func() {
+			if q, _ := d.Handover().Quieted(); q {
+				d.Handover().Loud("the hotkey")
+				return
+			}
+			d.Handover().Quiet("the hotkey")
+		},
+	}
+	quietKey.open(strings.TrimSpace(cfg.Control.QuietHotkey))
+
 	ctx, cancel := context.WithCancel(context.Background())
 	var shutdown func()
 	shutdown = func() {
 		log.Info(logging.EvDaemonStop, "component", "daemon")
 		say.Close() // let the voice finish its sentence, then drop the model
-		// Release both key grabs before the process goes, or the combinations stay
+		// Release every key grab before the process goes, or the combinations stay
 		// claimed on the X server until something notices the client is gone.
 		panelKey.close()
 		pauseKey.close()
+		quietKey.close()
 		d.StopAssignments() // no new runs; one in flight is left to finish
 		d.StopRoster()      // stop repainting a board that is about to go
 		// Before st.Close() below, and that ordering is the reason this call exists:
@@ -522,12 +539,13 @@ func runDaemon() {
 		// conversation with the config file rather than a restart.
 		u.SetConfig(c)
 
-		// Both hotkeys too: rebind a live grab, take one if the config had none,
-		// or drop it if the key was cleared. Changing either takes effect while
-		// he watches rather than at the next restart, which is the whole reason
-		// hotkey.Rebind exists.
+		// All three hotkeys too: rebind a live grab, take one if the config had
+		// none, or drop it if the key was cleared. Changing any of them takes
+		// effect while he watches rather than at the next restart, which is the
+		// whole reason hotkey.Rebind exists.
 		panelKey.apply(strings.TrimSpace(c.Panel.Hotkey))
 		pauseKey.apply(strings.TrimSpace(c.Control.PauseHotkey))
+		quietKey.apply(strings.TrimSpace(c.Control.QuietHotkey))
 
 		log.Info("config.reloaded", "component", "daemon")
 	})

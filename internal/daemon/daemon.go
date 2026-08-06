@@ -776,6 +776,14 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			return d.control.Pause(req.Reason), nil
 		case proto.ControlResume:
 			return d.control.Resume(req.Reason), nil
+		case proto.ControlQuiet:
+			// His verbs too (FR95), and reachable from the same three places for the
+			// same reason: the shell so a recording script can arm it, the hotkey so
+			// it is one press away, and the socket because both of those come through
+			// here.
+			return d.control.Quiet(req.Reason), nil
+		case proto.ControlLoud:
+			return d.control.Loud(req.Reason), nil
 		default:
 			return d.control.State(), nil
 		}

@@ -89,8 +89,13 @@ type Config struct {
 	// X11 by the daemon; an empty string turns the grab off and leaves
 	// `agentbox control pause` as the way in, which is also the route on Wayland
 	// where no client may claim a key globally.
+	// QuietHotkey is the recording mode's key (FR95): it demotes the strip to the
+	// 4px marker and back, on the same one-key-toggles argument as the pause. The
+	// mode expires on its own after half an hour whichever way it was armed, so a
+	// key left pressed once cannot leave the sign demoted for a week.
 	Control struct {
 		PauseHotkey string `toml:"pause_hotkey"`
+		QuietHotkey string `toml:"quiet_hotkey"`
 	} `toml:"control"`
 	// Window is every agentbox window's shape. These were constants until the sizes
 	// turned out to be taste: a card that is right on a 1080p laptop is small on a
@@ -262,6 +267,10 @@ func Default() Config {
 	// Ctrl+Shift+Escape all delivered. The panel's own default landed on Ctrl+Alt
 	// for the same reason.
 	c.Control.PauseHotkey = "Ctrl+Alt+Escape"
+	// Same family, and Q for quiet. GNOME 46 binds Ctrl+Alt+Shift+R for its own
+	// screencast, so this deliberately is not an R: two recording keys one modifier
+	// apart is a way to stop a recording while meaning to demote a strip.
+	c.Control.QuietHotkey = "Ctrl+Alt+Q"
 	c.Panel.HeightFrac = 0.5 // half the monitor, never more: see the clamp below
 	c.Panel.WidthFrac = 0.74
 	// Off by default: see the note in internal/webui/panel.go. A resize per frame

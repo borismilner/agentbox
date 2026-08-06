@@ -56,6 +56,14 @@ func (s *stripSpy) hidden() int {
 	return s.hides
 }
 
+// shown counts the paints, for the cases where the claim is that nothing was
+// painted at all (FR95 arms recording mode on an empty desktop).
+func (s *stripSpy) shown() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.states)
+}
+
 var agentA = proto.Identity{Agent: "claude-code", Project: "agentbox"}
 var agentB = proto.Identity{Agent: "chrome-driver", Project: "web"}
 
@@ -649,4 +657,151 @@ func TestTheNagDoesNotRaceTheActivityLineItQuotes(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+}
+
+// --- FR95: recording mode -----------------------------------------------------
+
+func TestQuietDemotesTheSignAndLoudPutsItBack(t *testing.T) {
+	c, spy := newTestControl()
+	c.Request(context.Background(), agentA, "walking the settings surface", 10*time.Millisecond)
+
+	if st, _ := spy.last(); st.Quiet {
+		t.Fatal("a run starts loud")
+	}
+	res := c.Quiet("the hotkey")
+	if !res.Quiet {
+		t.Error("quiet did not report itself")
+	}
+	if res.QuietLeftS <= 0 {
+		t.Errorf("the fuse has no time left: %ds", res.QuietLeftS)
+	}
+	st, _ := spy.last()
+	if !st.Quiet {
+		t.Error("the surface was not told to demote the sign")
+	}
+	// The run is untouched, which is the whole claim: this changes what is on
+	// screen and nothing about whose desktop it is.
+	if st.State != proto.ControlDriving {
+		t.Errorf("quiet changed the run's state to %q", st.State)
+	}
+
+	if res := c.Loud("the hotkey"); res.Quiet {
+		t.Error("loud did not undo it")
+	}
+	if st, _ := spy.last(); st.Quiet {
+		t.Error("the surface was not told to go loud")
+	}
+	if spy.hidden() != 0 {
+		t.Error("demoting took the strip off the screen instead of repainting it")
+	}
+}
+
+func TestQuietIsLegalWithNoRunAndPaintsNothing(t *testing.T) {
+	// The common case: armed a second before the recording starts, which is
+	// usually before any agent has asked for anything. Nothing may appear on
+	// screen for it - a strip that came up to announce the sign was quiet would
+	// be the joke this feature is not.
+	c, spy := newTestControl()
+	c.Quiet("the command line")
+
+	if q, _ := c.Quieted(); !q {
+		t.Fatal("an idle desktop cannot be armed")
+	}
+	if spy.shown() != 0 || spy.hidden() != 0 {
+		t.Errorf("arming an empty desktop painted something: %d shows, %d hides",
+			spy.shown(), spy.hidden())
+	}
+	// And the run that starts afterwards finds the sign already demoted.
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	if st, _ := spy.last(); !st.Quiet {
+		t.Error("a run started under recording mode came up loud")
+	}
+}
+
+func TestTheFuseGoesLoudOnItsOwn(t *testing.T) {
+	// Not persisted AND it expires: the two independent ways a forgotten mode
+	// heals. The fuse's real length is half an hour, so the timer is driven
+	// directly rather than waited on.
+	c, spy := newTestControl()
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	c.Quiet("the hotkey")
+
+	c.mu.Lock()
+	timer := c.quietTimer
+	c.mu.Unlock()
+	if timer == nil {
+		t.Fatal("quiet armed no fuse, so a forgotten mode would never heal")
+	}
+	c.Loud("the 30 minute fuse") // what the timer's func does
+	if q, _ := c.Quieted(); q {
+		t.Error("the fuse did not go loud")
+	}
+	if st, _ := spy.last(); st.Quiet {
+		t.Error("the fuse left the sign demoted on screen")
+	}
+}
+
+func TestQuietAgainRestartsTheFuseRatherThanDoingNothing(t *testing.T) {
+	// A second press is a human saying "still recording", and the useful reading
+	// of that is more time, not a no-op.
+	c, _ := newTestControl()
+	c.Quiet("the hotkey")
+	c.mu.Lock()
+	c.quietAt = time.Now().Add(-25 * time.Minute)
+	first := c.quietTimer
+	c.mu.Unlock()
+
+	if _, left := c.Quieted(); left > 6*time.Minute {
+		t.Fatalf("the fuse did not age: %s left", left)
+	}
+	c.Quiet("the hotkey")
+	if _, left := c.Quieted(); left < quietFuse-time.Minute {
+		t.Errorf("a second press did not restart the fuse: %s left", left)
+	}
+	c.mu.Lock()
+	same := first == c.quietTimer
+	c.mu.Unlock()
+	if same {
+		t.Error("the old fuse is still the live one, so it will fire early")
+	}
+}
+
+func TestQuietAndPausedAreIndependent(t *testing.T) {
+	// Both are properties of the desktop and both can be true: he pauses to say
+	// something to camera, mid-recording. Colour carries the pause on four
+	// pixels, which is only possible if the state says both.
+	c, spy := newTestControl()
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	c.Quiet("the hotkey")
+	c.Pause("the hotkey")
+
+	st, _ := spy.last()
+	if !st.Quiet || !st.Paused {
+		t.Errorf("quiet=%v paused=%v, want both", st.Quiet, st.Paused)
+	}
+	if !st.Waiting {
+		t.Error("the parked run was lost")
+	}
+	// Resuming leaves recording mode alone: the recording did not stop because
+	// he took his mouse back.
+	c.Resume("the hotkey")
+	st, _ = spy.last()
+	if st.Paused {
+		t.Error("still paused after a resume")
+	}
+	if !st.Quiet {
+		t.Error("a resume also went loud, putting the strip back in the recording")
+	}
+}
+
+func TestLoudOnALoudDesktopIsNotAnEvent(t *testing.T) {
+	c, spy := newTestControl()
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	before := spy.shown()
+	if res := c.Loud("the hotkey"); res.Quiet {
+		t.Error("loud on a loud desktop reported quiet")
+	}
+	if spy.shown() != before {
+		t.Error("loud repainted a strip that was already loud")
+	}
 }

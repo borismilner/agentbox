@@ -234,6 +234,12 @@ const (
 	// that could resume its own pause would make the pause a suggestion.
 	ControlPause  = "pause"
 	ControlResume = "resume"
+	// And his two for a recording (FR95). quiet demotes the strip to the 4px
+	// marker and lets a window cover it; loud puts it back. Also his own rather
+	// than an agent's, for a smaller reason than the pause: an agent that could
+	// quieten the sign it is being watched by would be marking its own homework.
+	ControlQuiet = "quiet"
+	ControlLoud  = "loud"
 )
 
 // The states a live run can be in. There are only two, and that is a rule: the
@@ -726,6 +732,11 @@ type ControlResult struct {
 	// with no run live at all - a pre-emptive "not now" to every agent.
 	Paused  bool `json:"paused,omitempty"`
 	PausedS int  `json:"paused_s,omitempty"` // how long it has been latched
+	// FR95. Quiet says the sign is demoted to the marker for a recording. Like
+	// Paused it belongs to the desktop, so it can be armed before any run exists,
+	// and QuietLeftS is what the fuse has left before it goes loud on its own.
+	Quiet      bool `json:"quiet,omitempty"`
+	QuietLeftS int  `json:"quiet_left_s,omitempty"`
 }
 
 // ProgressUpdate creates or updates a live progress report (FR21). An empty

@@ -1217,6 +1217,18 @@ func waitingSuffix(res proto.ControlResult) string {
 	return fmt.Sprintf(" · %s is parked, waiting for you", res.HeldBy)
 }
 
+// quietSuffix says recording mode is on wherever the state is printed (FR95). It
+// rides on every line rather than replacing one, because quiet is orthogonal to
+// what the run is doing: a demoted sign over a live run and a demoted sign over an
+// empty desktop are both worth knowing, and neither is a state of the run.
+func quietSuffix(res proto.ControlResult) string {
+	if !res.Quiet {
+		return ""
+	}
+	return fmt.Sprintf(" · quiet: the sign is demoted for %s more",
+		(time.Duration(res.QuietLeftS) * time.Second).Round(time.Minute))
+}
+
 // runControl is the desktop handover from a shell (FR74). It exists beside the MCP
 // tools because not every agent speaks MCP - Boris asked for this to work "while
 // they drive my debug chrome or other automations", and a shell script is the
@@ -1230,12 +1242,14 @@ func waitingSuffix(res proto.ControlResult) string {
 //
 //	agentbox control pause      # take the keyboard back; the run keeps its place
 //	agentbox control resume     # hand it on
+//	agentbox control quiet      # demote the sign to 4px for a recording (FR95)
+//	agentbox control loud       # put the strip back
 //
 // request exits 0 when granted and 3 when denied or held by somebody else, so a
 // script can gate on it: `agentbox control request "..." || exit`.
 func runControl(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "agentbox control: want request|activity|release|state|pause|resume")
+		fmt.Fprintln(os.Stderr, "agentbox control: want request|activity|release|state|pause|resume|quiet|loud")
 		return exitError
 	}
 	verb, rest := args[0], args[1:]
@@ -1243,7 +1257,7 @@ func runControl(args []string) int {
 	fs := flag.NewFlagSet("control "+verb, flag.ExitOnError)
 	window := fs.Int("window", 20, "seconds before silence counts as consent (request only)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: agentbox control request REASON [--window N] | activity LINE | release | state | pause | resume")
+		fmt.Fprintln(os.Stderr, "usage: agentbox control request REASON [--window N] | activity LINE | release | state | pause | resume | quiet | loud")
 		fmt.Fprintln(os.Stderr, "\nOne strip on screen while an agent has the desktop. While it is up, hands off;")
 		fmt.Fprintln(os.Stderr, "when it goes, the desktop is the human's again.")
 		fs.PrintDefaults()
@@ -1289,6 +1303,17 @@ func runControl(args []string) int {
 		}
 	case "resume":
 		action = proto.ControlResume
+		if text == "" {
+			text = "the command line"
+		}
+	case "quiet", "loud":
+		// Recording mode (FR95). Here rather than only on a hotkey because the
+		// natural place to arm it is the line above `obs`, in whatever script starts
+		// the recording - the same argument that put `control request` in a shell.
+		action = proto.ControlQuiet
+		if verb == "loud" {
+			action = proto.ControlLoud
+		}
 		if text == "" {
 			text = "the command line"
 		}
@@ -1353,16 +1378,29 @@ func runControl(args []string) int {
 		return exitOK
 	}
 
+	if action == proto.ControlQuiet || action == proto.ControlLoud {
+		if res.Quiet {
+			// The fuse is printed, not implied. A mode that expires and does not say
+			// when is a mode he has to remember, which is the thing it exists to
+			// avoid.
+			fmt.Printf("quiet: the sign is four pixels on the top edge, and a window can cover it (loud again in %s)\n",
+				(time.Duration(res.QuietLeftS) * time.Second).Round(time.Minute))
+		} else {
+			fmt.Println("loud: the hands-off strip is back on top of everything")
+		}
+		return exitOK
+	}
+
 	if action == proto.ControlState {
 		switch {
 		case res.Paused:
-			fmt.Printf("paused: the desktop is yours%s\n", waitingSuffix(res))
+			fmt.Printf("paused: the desktop is yours%s%s\n", waitingSuffix(res), quietSuffix(res))
 		case !res.Live:
-			fmt.Println("no run: the desktop is the human's")
+			fmt.Printf("no run: the desktop is the human's%s\n", quietSuffix(res))
 		case res.Activity != "":
-			fmt.Printf("%s · %s · %s\n", res.State, res.HeldBy, res.Activity)
+			fmt.Printf("%s · %s · %s%s\n", res.State, res.HeldBy, res.Activity, quietSuffix(res))
 		default:
-			fmt.Printf("%s · %s · %s\n", res.State, res.HeldBy, res.Reason)
+			fmt.Printf("%s · %s · %s%s\n", res.State, res.HeldBy, res.Reason, quietSuffix(res))
 		}
 		return exitOK
 	}
