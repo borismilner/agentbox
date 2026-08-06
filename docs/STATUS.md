@@ -413,8 +413,17 @@ still on disk as a fallback; delete them once a few quiet days pass.
   bounds. The live/restart split matches `SetPolicy`: only
   `dnd.start_in_dnd`, `history.*` and `log.*` carry an "applies on restart"
   tag - theme and font apply live. `ask.allow_reply` is omitted (the global
-  flag is unwired). The surface edits the real `config.toml`, so point
-  `XDG_CONFIG_HOME` at a scratch directory when poking at it.
+  flag is unwired). Since session 54 there is a `command` kind for argv
+  arrays, which is what `[editor] command` and `[speech] command` needed and
+  is why neither had a control before: they are edited as the line you would
+  type, quotes holding a path together, and stored as arrays. Neither carries
+  a restart tag - `applySpeech` hands the new argv to the Speaker on every
+  config change, and the board reads the editor config when the click happens.
+  It is not a shell (no globbing, variables or pipes): what is typed is exec'd
+  directly. The surface edits the real `config.toml`, so point
+  `XDG_CONFIG_HOME` at a scratch directory when poking at it - or type into a
+  knob and press Revert, which is how session 54 exercised this one without
+  touching Boris's file.
 - Inbox (FR10): the inbox surface shows pending (click to summon) + history
   with identity dots and outcome chips. Live search box filters by title,
   body, agent, project, kind and state; footer shows today's interruption
@@ -921,13 +930,41 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
-**As of session 53 (2026-08-06) the leftover queue is spent and FR30 is the only
-substantial thing left** - a documented `must` in
-[01-requirements.md](01-requirements.md) that was never built, blocked on one
-sentence from Boris because it changes when a card appears. The two questions to
-put to him are in the handoff's queue item 1. Note that the deployed daemon
-(`7609088aae12`) is deliberately older than HEAD: everything after it is tests and
-docs, so no deploy is owed.
+**As of session 54 (2026-08-06) nothing is blocked on Boris and FR30 is built.**
+He cleared the whole queue in two exchanges at the start of that session: flood
+control's shape and threshold, FR84's other half, the argv settings control, the
+showcase dropped for good, and permission to take the daemon down for the last
+unseen surface. All five shipped in the same session and every one of them was
+exercised on the real desktop; session 54 in [history.md](history.md) says what
+that turned up, which was four defects the tests could not see.
+
+**Flood control (FR30) is deployed.** `internal/daemon/flood.go`, kind `stack`,
+migration 0013, knobs in `[flood]` (`burst = 3`, `window_s = 10`; burst 0 is
+off). Past its budget a session's items collapse into one warning-level stack
+card that lists the burst newest first and drops nothing: every collapsed item is
+stored and pending exactly as it would have been, so a question caught in a flood
+still has its own item, says "waiting on you" in the list, and opens as a real
+card by click or number key. Dismissing the stack takes the notifications and
+keeps the questions.
+
+Four things about it are worth knowing before touching it:
+
+- **The budget is keyed on the session, not the agent name.** Every Claude
+  session on this machine calls itself `claude`, so a name-keyed bucket would let
+  the first looping agent collapse its innocent neighbours.
+- **An open stack card keeps collecting whatever the bucket says.** The window
+  refills underneath it otherwise, and a sustained loop gets a fresh budget every
+  window - three cards per ten seconds on the defaults, eighteen a minute. The
+  collapse ends when the human ends it.
+- **Three doors retire an item** (the card's Esc, the inbox row, and
+  `agentbox dismiss` / an agent retracting) and all three must sweep the stack.
+  The sweep was first written on one of them, and the CLI then cleared a summary
+  and left five invisible notifications pending behind it.
+- **Promoting a row means the stack steps aside FIRST.** Written the other way
+  round the stack card simply retakes the screen and the promoted item sits
+  behind it reading "1 waiting" - which is what the number key did on the real
+  desktop while every unit test passed, because they all had the stack queued
+  rather than on screen.
 
 **FR83, multi-agent sync (designed in [09-sync.md](09-sync.md)): all five slices
 are finished, deployed and verified live as of session 45.** Presence, discovery,
@@ -1007,9 +1044,21 @@ UTF-8. FR87 (a daemon restart replaying a stale activity line) was fixed in sess
 42. All three are in [07-field-requests.md](07-field-requests.md). FR84 (a form
 clipping sentence-length options) closed the same day: Boris picked a shape from a
 live mock of three, and the chosen option is now spelled out under the control.
-Half of FR84 is deliberately still open - a long body still pushes a form's fields
-down a scrolling card, which is what the mock's third approach addressed and he did
-not pick.
+**FR84 is fully closed as of session 54.** Its other half - a long body pushing a
+form's fields down a scrolling card - was the mock's third approach, and Boris
+picked it on 2026-08-06. Past 240 characters of body the controls come first and
+the reasoning folds behind one line ("?" or a click). A diff is never folded: its
+body is the thing being judged, which is the one cost the mock named for this
+shape.
+
+Closing it uncovered a defect older than the feature. `.card` is
+`min-height: 100%`, so measuring the shell measures the WINDOW: once a card had
+grown it reported the window's height back to Go forever and could never shrink.
+Nothing on a card changed height mid-life before, so it had never shown. The fix
+is in two parts and the second is the one that is easy to miss - past the
+window's height the content pushes the shell out and the observer fires, but
+under it min-height pins the shell and there is nothing left to observe, so
+anything that can make the card shorter has to ask for a measurement itself.
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. FR95 closed on

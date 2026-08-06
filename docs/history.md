@@ -9,6 +9,78 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fifty-fourth session (2026-08-06): FR30 built, and four things only the screen said
+
+The session opened on an empty queue with everything of substance blocked on one
+answer, so the first move was to ask for all of them at once. Boris cleared the
+whole list in two exchanges: collapse a flood into one stack card at 3 cards in
+10s per agent (configurable); close FR84's other half with approach C; build the
+argv settings control; drop the showcase video for good; and go ahead with the
+daemon-down look at `webui-demo agents`. Nothing was left blocked.
+
+**`webui-demo agents`, the last unseen surface, is seen and is fine.** Every
+area, every state badge, the orphan lock with its Break lock confirm, the
+abandoned shared claim, the wait chain, and an opened row's four blocks off the
+canned fixture. The findings that cost time were about the harness rather than
+the app, and both are now in [STATUS.md](STATUS.md): `import -window` captures
+window-relative coordinates while `xdotool` clicks in screen coordinates, and a
+click only reaches the page once the window has focus. Clicking at an unoffset
+coordinate silently changed surface, which is the demo-mode version of the trap
+CLAUDE.md already warns about on the real board.
+
+**FR30 flood control is built** (`internal/daemon/flood.go`, kind `stack`,
+migration 0013). Past its budget a session stops getting a card each and
+everything over collapses into one warning-level stack card listing the burst,
+newest first, nothing dropped. A question caught in a flood keeps its own item,
+says "waiting on you" in the list, and opens as a real card by click or number
+key. The budget is keyed on the SESSION rather than the agent name, because
+every Claude session here calls itself `claude` and a name-keyed bucket would
+let the first looping agent collapse its innocent neighbours. The one departure
+from the written requirement is recorded in
+[01-requirements.md](01-requirements.md): the warning FR30 asks for is the stack
+card itself, not a second toast beside it.
+
+**Three of the four defects this session found were invisible to the tests, and
+all three came from running it.** The window refilled underneath an open stack
+card, so a sustained loop collected a fresh budget every window - eighteen cards
+a minute on the shipped defaults, which is not "calm survives buggy callers".
+`agentbox dismiss <stack>` cleared the summary and left every notification under
+it pending, because the sweep had been written on the card's own Esc and there
+are three doors. And the number key promoted the right item and then put the
+stack card back in front of it, so pressing 1 read as nothing happening except
+"1 waiting" in the footer - the test that missed it had the stack in the queue
+rather than on screen, which is not where a human is when they press the key.
+The fourth was on the same screen: an answered row still read "waiting on you"
+under a footer still counting one, because the entries were a snapshot taken at
+collapse time that nothing revisited.
+
+**FR84's other half is closed with approach C.** Past 240 characters of body the
+controls come first and the reasoning folds behind one line ("?" or a click). A
+diff is never folded - its body is the thing being judged, which is the cost the
+mock named for this shape. Fixing it uncovered a defect older than the feature:
+`.card` is `min-height: 100%`, so measuring the shell measured the WINDOW, and
+once a card had grown it could never shrink again. It had stayed invisible
+because nothing on a card changed height mid-life before. Two fixes, because the
+first was only half: the measurement now takes min-height off for the read, and
+anything that can make the card shorter asks for a re-measure, since under the
+window's height there is nothing left for the observer to observe. Measured on
+the deployed build: 230px folded, 384 open, 230 folded again.
+
+**The two argv settings have a control.** `[editor] command` and `[speech]
+command` are edited as the line you would type, quotes holding a path together,
+and stored as arrays. Neither needs a restart, which is worth saying because the
+carried note assumed both would. Exercised on the real Settings surface against
+Boris's own config: his `speech.command` renders as itself and the form stays
+clean, which is the round-trip check that mattered - a knob that normalised
+differently would mark the form dirty on sight. Typing into the editor box
+flipped the footer to "1 key to write · editor.command", and Revert put it back
+without writing to his file.
+
+**The showcase is dropped for good.** No re-record, no re-upload. `docs/showcase.md`,
+`docs/recording.md` and `docs/youtube.md` carry a frozen banner instead of being
+deleted; `tools/showcase/` is untouched, because deleting it is Boris's call and
+he has not made it.
+
 ## Fifty-third session (2026-08-06): two clean fuzz targets, and the hook that made a whole surface unreadable
 
 A leftover-queue session. Nothing was in flight and no field request was open, so
