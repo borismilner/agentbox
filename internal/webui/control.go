@@ -491,7 +491,15 @@ func (c *control) openMark(m mon, kind markKind) {
 				}
 				c.ui.x.quiet(xid)
 				showNoActivate(w.NativeWindow())
-				c.ui.x.unlisted(xid)
+				// The demoted one gets the version that does NOT add ABOVE back.
+				// unlisted sends it as a post-map client message, which is the route
+				// the WM honours, so this line is the one that decides whether a
+				// fullscreen window can cover the sign.
+				if kind == markDemoted {
+					c.ui.x.unlistedPlain(xid)
+				} else {
+					c.ui.x.unlisted(xid)
+				}
 				c.ui.x.setName(xid, "agentbox · hands off marker")
 				// After the map, and again on every beat: GTK opens the window at
 				// whatever it thinks the minimum is, and the WM places it where it

@@ -470,6 +470,16 @@ func (x *x11) moveResize(win xproto.Window, px, py, w, h int) {
 // wrong-looking dock.
 func (x *x11) unlisted(win xproto.Window) {
 	x.stateMsg(win, 1, "_NET_WM_STATE_ABOVE")
+	x.unlistedPlain(win)
+}
+
+// unlistedPlain is unlisted without the ABOVE, for FR95's demoted marker. It is
+// split out because the ABOVE above is a client message sent AFTER the map, which
+// is the one route Mutter honours - so a window that carefully avoided asking for
+// ABOVE before mapping got it anyway on the next line, and a fullscreen window
+// still could not cover it. Measured on screen after the code read correctly:
+// four amber pixels on top of a genuinely fullscreen window.
+func (x *x11) unlistedPlain(win xproto.Window) {
 	x.stateMsg(win, 1, "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER")
 	x.stateMsg(win, 0, "_NET_WM_STATE_DEMANDS_ATTENTION")
 	xproto.GetInputFocus(x.c).Reply() // flush
