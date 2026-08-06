@@ -235,7 +235,8 @@ func (s *scheduler) Start() {
 			case <-stop:
 				return
 			case <-t.C:
-				s.tick(time.Now())
+				now := time.Now()
+				safely(s.log, "assignments.tick", func() { s.tick(now) })()
 			}
 		}
 	}()

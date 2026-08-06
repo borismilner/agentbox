@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -648,6 +649,34 @@ func newID() string {
 	return "k" + hex.EncodeToString(b[:])
 }
 
+// safely wraps a callback that runs on its own goroutine - a timer firing, a
+// reaper, anything the runtime calls with no caller left to answer to. A panic
+// there has no Handle above it to recover, so it takes the process down, and
+// with it every agent parked on a question and every card the human has not read.
+// systemd puts the daemon back two seconds later, but the blocked callers are
+// already gone and a restart is not an answer to a bug that repeats.
+//
+// The stack is logged because these fire long after the call that armed them:
+// "panic in toast.expire" without one names the symptom and nothing else.
+func (d *Daemon) safely(where string, fn func()) func() { return safely(d.log, where, fn) }
+
+// safely is the same guard for the subsystems beside the daemon - control, the
+// roster, locks, signals, the scheduler - each of which owns a ticker or a timer
+// and its own logger. Wrapping the TICK rather than the loop is deliberate where
+// there is a loop: a guard around the goroutine would swallow the panic and end
+// the reaper with it, which trades a loud death for a silent one.
+func safely(log *slog.Logger, where string, fn func()) func() {
+	return func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error(logging.EvPanic, "component", "daemon", "where", where,
+					"panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+			}
+		}()
+		fn()
+	}
+}
+
 // Handle is the proto.Handler for the socket server. A panic in any handler
 // is recovered here and turned into a logged CodeInternal error, so one bad
 // request can never take the daemon down or leave its caller hanging.
@@ -898,7 +927,7 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 		if d.OnQuit == nil {
 			return nil, &proto.RPCError{Code: proto.CodeInternal, Message: "quit not wired"}
 		}
-		go d.OnQuit()
+		go d.safely("daemon.quit", d.OnQuit)()
 		return map[string]bool{"ok": true}, nil
 	case proto.MethodDnd:
 		var p struct {
@@ -1393,9 +1422,9 @@ func (d *Daemon) setCurrentLocked(it *proto.Item) {
 		if lvl == proto.LevelInfo || lvl == proto.LevelSuccess {
 			id := it.ID
 			d.dismissAt = time.Now().Add(d.cfg.ToastDuration)
-			d.timers[id] = time.AfterFunc(d.cfg.ToastDuration, func() {
+			d.timers[id] = time.AfterFunc(d.cfg.ToastDuration, d.safely("toast.expire", func() {
 				d.toastExpired(id)
-			})
+			}))
 			return
 		}
 	}
@@ -1422,7 +1451,7 @@ func (d *Daemon) scheduleEscalationLocked(it *proto.Item) {
 	}
 	id := it.ID
 	d.escCount = 0
-	d.escTimer = time.AfterFunc(interval, func() { d.escalate(id, interval) })
+	d.escTimer = time.AfterFunc(interval, d.safely("item.escalate", func() { d.escalate(id, interval) }))
 }
 
 func (d *Daemon) escalate(id string, interval time.Duration) {
@@ -1438,7 +1467,7 @@ func (d *Daemon) escalate(id string, interval time.Duration) {
 	if d.cfg.HoldWhenIdle && d.idle {
 		// FR29: pause while idle without spending the escalation budget;
 		// reschedule so the cadence picks up the moment the user is back.
-		d.escTimer = time.AfterFunc(interval, func() { d.escalate(id, interval) })
+		d.escTimer = time.AfterFunc(interval, d.safely("item.escalate", func() { d.escalate(id, interval) }))
 		d.mu.Unlock()
 		return
 	}
@@ -1446,7 +1475,7 @@ func (d *Daemon) escalate(id string, interval time.Duration) {
 	count := d.escCount
 	it := *d.current
 	if count < d.cfg.EscalationCount {
-		d.escTimer = time.AfterFunc(interval, func() { d.escalate(id, interval) })
+		d.escTimer = time.AfterFunc(interval, d.safely("item.escalate", func() { d.escalate(id, interval) }))
 	}
 	d.mu.Unlock()
 	d.log.Info("item.escalated", "component", "daemon", "item_id", id, "count", count)
@@ -1633,7 +1662,7 @@ func (d *Daemon) callerGone(id string) {
 	}
 	d.stopTimerLocked(id)
 	window := d.cfg.CallerGone
-	d.timers[id] = time.AfterFunc(window, func() { d.resolve(id, store.StateCancelled, store.Outcome{}) })
+	d.timers[id] = time.AfterFunc(window, d.safely("item.autocancel", func() { d.resolve(id, store.StateCancelled, store.Outcome{}) }))
 	view := d.viewLocked()
 	d.mu.Unlock()
 	d.log.Info("item.caller_gone", "component", "daemon", "item_id", id, "dismiss_ms", window.Milliseconds())
@@ -1890,7 +1919,7 @@ func (d *Daemon) maybeGrace(id string, out store.Outcome, text string) {
 	}
 	grace := d.cfg.UndoGrace
 	g := &graced{id: id, out: out, text: text, until: time.Now().Add(grace)}
-	g.timer = time.AfterFunc(grace, func() { d.finalizeGrace(g) })
+	g.timer = time.AfterFunc(grace, d.safely("answer.grace", func() { d.finalizeGrace(g) }))
 	d.graced = g
 	view := d.viewLocked()
 	view.Graced = true
@@ -2016,7 +2045,7 @@ func (d *Daemon) RunAction(id string, index int) {
 	cwd := it.Cwd
 	agent := it.Identity.Agent
 	d.mu.Unlock()
-	go d.execAction(id, agent, cwd, act)
+	go d.safely("action.exec", func() { d.execAction(id, agent, cwd, act) })()
 }
 
 // execAction runs one action command via sh -c, in the item's cwd, as the
@@ -2140,7 +2169,7 @@ func (d *Daemon) Progress(ctx context.Context, u proto.ProgressUpdate) (proto.Pr
 		d.log.Info("progress.started", "component", "daemon", "progress_id", id,
 			"agent", u.Identity.Agent, "title", u.Title, "held", u.Hold)
 		if u.Hold && ctx != nil {
-			go d.reapProgressConn(ctx, id)
+			go d.safely("progress.reap", func() { d.reapProgressConn(ctx, id) })()
 		}
 	}
 	d.ui.ShowProgress(reports)

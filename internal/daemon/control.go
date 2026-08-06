@@ -389,7 +389,7 @@ func (c *control) Pause(how string) proto.ControlResult {
 	if run != nil {
 		agent = run.identity.Agent
 	}
-	c.nagTimer = time.AfterFunc(pauseNagAfter, c.nag)
+	c.nagTimer = time.AfterFunc(pauseNagAfter, safely(c.log, "control.nag", c.nag))
 	c.mu.Unlock()
 
 	c.log.Info(logging.EvControl, "component", "daemon", "control", "paused",
@@ -457,7 +457,7 @@ func (c *control) Quiet(how string) proto.ControlResult {
 	if c.quietTimer != nil {
 		c.quietTimer.Stop()
 	}
-	c.quietTimer = time.AfterFunc(quietFuse, func() { c.Loud("the 30 minute fuse") })
+	c.quietTimer = time.AfterFunc(quietFuse, safely(c.log, "control.fuse", func() { c.Loud("the 30 minute fuse") }))
 	run, show := c.run, c.show
 	c.mu.Unlock()
 

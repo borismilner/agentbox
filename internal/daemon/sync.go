@@ -1012,7 +1012,7 @@ func (r *roster) Start() {
 			case <-stop:
 				return
 			case <-t.C:
-				r.tick()
+				safely(r.log, "roster.tick", r.tick)()
 			}
 		}
 	}()

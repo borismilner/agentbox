@@ -690,7 +690,7 @@ func (l *locks) Start() {
 			case <-stop:
 				return
 			case <-t.C:
-				l.tick()
+				safely(l.log, "locks.tick", l.tick)()
 			}
 		}
 	}()

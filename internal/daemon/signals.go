@@ -535,7 +535,7 @@ func (s *signals) Start() {
 			case <-stop:
 				return
 			case <-t.C:
-				s.trim(time.Duration(s.keepDaysRead()) * 24 * time.Hour)
+				safely(s.log, "signals.trim", func() { s.trim(time.Duration(s.keepDaysRead()) * 24 * time.Hour) })()
 			}
 		}
 	}()

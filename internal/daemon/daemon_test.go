@@ -30,6 +30,7 @@ type fakeUI struct {
 	panelOpen   bool
 	boards      []string // walkthrough ids passed to ShowBoard, in call order
 	assignPokes int      // AssignmentsChanged calls
+	panicOn     int      // 1-based Present call that panics; 0 never
 }
 
 func (f *fakeUI) ShowBoard(id string) {
@@ -100,8 +101,26 @@ func (f *fakeUI) lastProgress() []ProgressState {
 
 func (f *fakeUI) Present(v View) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.views = append(f.views, v)
+	blow := f.panicOn > 0 && len(f.views) == f.panicOn
+	f.mu.Unlock()
+	if blow {
+		// Outside the lock deliberately: a fake that panics while holding its own
+		// mutex deadlocks every later assertion, and the test would then blame the
+		// guard for the fake.
+		panic("the surface blew up")
+	}
+}
+
+// panicOnNextPresent arms the very next Present call to panic, standing in for a
+// bug in the surface that only reaches the runtime on a timer's goroutine, where
+// there is no handler above it to recover. Counted from now rather than from the
+// start of the test: a daemon presents on its own for reasons a test should not
+// have to enumerate.
+func (f *fakeUI) panicOnNextPresent() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.panicOn = len(f.views) + 1
 }
 
 func (f *fakeUI) ShowApp(tab string) {
@@ -353,6 +372,37 @@ func TestWarningToastSticks(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 	if ui.last().Item == nil {
 		t.Fatal("warning toast auto-dismissed; must stick until dismissed")
+	}
+}
+
+func TestAPanicOnATimersGoroutineDoesNotTakeTheDaemonDown(t *testing.T) {
+	// The failure this prevents is the whole daemon: a timer fires on its own
+	// goroutine with no Handle above it, so an unguarded panic ends the process
+	// and every agent parked on a question goes with it. systemd puts it back two
+	// seconds later, which does nothing for the callers already gone.
+	//
+	// There is no polite way for this test to fail. Without the guard the process
+	// dies and takes the package's whole run with it, which is exactly the point.
+	d, ui, _, _ := newTestDaemon(t, Config{ToastDuration: 400 * time.Millisecond})
+	callNotify(t, d, notifyItem(proto.LevelInfo))
+	waitForItem(t, ui)
+	ui.panicOnNextPresent() // the next paint is the toast expiring on its timer
+
+	// The toast's timer fires, panics inside the guard, and the daemon is still
+	// answering afterwards - which is the only observable difference.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		st, rpcErr := d.Handle(context.Background(), proto.MethodStatus, nil)
+		if rpcErr != nil {
+			t.Fatalf("the daemon stopped answering after the panic: %v", rpcErr)
+		}
+		if m, ok := st.(map[string]any); ok && m["pending"] == 0 {
+			return // the toast resolved, panic and all
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the toast never expired; its timer goroutine did not survive")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
