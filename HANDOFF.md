@@ -1,8 +1,8 @@
-# Handoff - AgentBox: the standard was put on trial and lost five times
+# Handoff - AgentBox: FR94 shipped, and one new field request took its place
 
-*Written by session 49, which watched the three things session 48 shipped
-unwatched, ran the walkthrough-standard experiment Boris asked for, and took one
-new field request from him.*
+*Written by session 50, which mocked FR94, had Boris settle it, built it in four
+slices, found its first hotkey was dead on arrival, and took FR95 from him
+mid-build.*
 
 **Written:** 2026-08-06 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -10,238 +10,220 @@ new field request from him.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean and in sync with origin/main; HEAD is this handoff's own commit
-make deployed               # expect 35d1cf4d0e6e - HEAD is DOCS-ONLY ahead of it, which is fine
+git status -sb              # expect clean; see Live state about ahead-of-origin
+make deployed               # expect 31da412e9df4 or later
+agentbox control state      # expect "no run: the desktop is the human's"
 agentbox pending            # expect "nothing pending"
-agentbox sync agents        # your row, plus one or more detached ghosts (see Live state)
+agentbox sync agents        # your row; ghosts from `claude -p` checks are harmless
 agentbox sync locks         # expect "no locks held"
 make check                  # gofmt + vet + race, ~2 min
 ```
 
-**Nothing is in flight.** One field request Boris has filed is open: **FR94**,
+**Nothing is in flight.** One field request Boris has filed is open: **FR95**,
 and it is item 1 below.
 
 ### The queue, in order
 
-1. **FR94 - pause a hands-off run and resume it.** Filed 2026-08-06 and the only
-   open field request. Boris, verbatim: *"during hands-off I must be able to
-   pause the hands-off and resume it when I suddenly need the keyboard or mouse
-   urgently."* A run is binary today, so his only move is to reach for the mouse
-   anyway - the exact collision FR74 exists to prevent. **Mock it before building
-   it** (the working rule at the top of
-   [docs/07-field-requests.md](docs/07-field-requests.md)); the shape, the five
-   constraints and the three open questions are in the FR94 entry there. The
-   state a run lives in today is `internal/webui/control.go` plus the desktop
-   lock in the daemon.
-2. **Give the coverage rule a validator.** The one finding from the standard's
-   trial still open. The standard demands a traversal that accounts for every
-   changed line, and nothing checks it: `walkthrough.captured` logs
-   `ranges/cited/missed` for citations and never compares the cited set against
-   the diff's changed set. It is the rule that most needs a machine and has none,
-   and the spec already holds both halves at validation time.
-3. **Four assumed things about surfaces, still unseen.** Each needs a specific
-   staging, listed under "Facts" below: the *"This session has left the board"*
-   sentence, `speak` and `diff` reading back in the inbox detail, the Recent
-   items block on an agent row, and the demo fallback on screen.
-4. **Consider giving `[editor]` a settings control.** Unchanged from the last
-   handoff and still Boris's call: the value is an argv array and the descriptor
-   table in `internal/webui/settings.go` has no kind for one, which is why
-   `speech.command` has none either. The honest shape is a new knob kind, not a
-   text field that gets shell-split.
+1. **FR95 - get the strip out of a screen recording.** Filed 2026-08-06 while
+   FR94 was being built. Boris, verbatim: *"The hands off panel should also be
+   hidable for cases when we need to record the screen and don't want it to be
+   shown over the recording."* **Its shape is already settled** and that is the
+   valuable part, so read the FR95 entry in
+   [docs/07-field-requests.md](docs/07-field-requests.md) before anything else:
+   the strip is **demoted, not hidden** - it drops to FR74's existing 4px
+   top-edge marker - and, in his words, *"generally it should live on top of any
+   and all surfaces; when demoted for purposes of recording or stuff like that it
+   can be overlapped."* That second half is load-bearing: the demoted marker
+   gives up the `keepOnTop` fight, so a window over the top edge simply covers
+   it. **Mock it before building it.** Three questions are open in the entry:
+   what turns it on, whether it survives a restart, and what four pixels say when
+   the desktop is also paused.
+2. **Give the coverage rule a validator.** Carried unchanged from session 49 and
+   still the one open finding from the standard's trial. The standard demands a
+   traversal accounting for every changed line, and nothing checks it:
+   `walkthrough.captured` logs `ranges/cited/missed` for citations and never
+   compares the cited set against the diff's changed set. The spec already holds
+   both halves at validation time.
+3. **Four assumed things about surfaces, still unseen.** Carried; each needs a
+   specific staging, listed under "Facts" below.
+4. **Consider giving `[editor]` a settings control.** Unchanged and still his
+   call: the value is an argv array and the descriptor table in
+   `internal/webui/settings.go` has no kind for one, which is why
+   `speech.command` has none either. The honest shape is a new knob kind.
 
 ## Where we are
 
-Session 48 shipped four field requests and left three things it had never
-watched. All three were watched this session and two of them were right. The
-third - FR74's fullscreen marker - turned out to be half right, and Boris decided
-to leave it.
+FR94 is **shipped, deployed and exercised on the real desktop** - the whole of
+it, including the escalation. Boris can now take his keyboard and mouse back
+mid-run with `Ctrl+Alt+Escape` or the strip's own Pause button, and hand them on
+again, without the run ending.
 
-The larger piece was the experiment: a review of `e511a01` authored WITHOUT
-reading the walkthrough standard, then audited against it rule by rule,
-rewritten, and created (`w5bd381d0590a`, 12 steps, 4 domains, 30 citations, 0
-missed, no warnings). The point was never my draft; it was what the standard
-could not tell me. It failed in five places, all now fixed and deployed.
+The session's shape was: mock, settle, build in four slices, and one hour lost to
+a hotkey that reported success and did nothing.
 
-## The experiment, and what it cost the standard
+## FR94, as built
 
-**My draft diverged in fourteen places.** The ones worth remembering: prose
-carried the explanation and the margins were nearly empty (6 notes in the draft,
-30 in the rewrite - the standard names this as the most common way a good review
-reads badly); no `close`, no handoffs, no reading order on any step; no
-traversal, which left seven changed files nothing stood on; and `p: true` missing
-on seven paragraph-starting segments, each of which would have rendered as a wall
-fused across the seam.
+Everything below was settled at the mock by Boris himself, driving it. **Two of
+his four answers went against the recommendation**, which is the argument for
+mocking rather than speccing. Reasons live in the FR94 entry.
 
-**The five defects in the standard itself** (`84e19ef`, `35d1cf4`):
+- **The inverted strip**, not the collapsed pill. Same 620x62 window, green,
+  `PAUSED - YOURS`, the frozen activity line still readable in italic, a filled
+  Resume button and a counter. At **2 min** it turns amber and reads
+  `AGENT WAITING`; at **3 min** one card is raised with a Resume now button.
+- **No auto-resume, ever.** Only he resumes. The agent's own wait ends at 10 min
+  and it is told the desktop is still his and the run still its own.
+- **An in-flight `drive_desktop` finishes its current step, except `type`, which
+  parks between characters.** He chose "finish the step"; the `type` carve-out is
+  the narrowing he accepted, because a 40-character type step at 300 wpm is
+  seconds of typing into whatever he just switched to. `Type` releases Shift
+  before parking - a latch held for minutes with a modifier down is the stuck
+  keyboard this is supposed to avoid.
+- **A desktop-wide latch**, not per-run. It parks the live run *and* holds off
+  every other agent's `request_control`, and it is legal with no run at all (a
+  pre-emptive "not now", which paints as `PAUSED - YOURS` / "nothing is driving"
+  with an **Allow agents** button).
 
-1. **Rules 13-16 did not exist.** The "order the code" section was renumbered to
-   29-32 when domains and the TL;DR were inserted and its old numbers were never
-   reused: 55 rules numbered up to 59. Renumbered contiguously, 1-56.
-2. **It demanded fields it never named.** The runnable-check rule asked for "the
-   command, the result to expect, and the date that expectation last held" and
-   never said they are `cmd`, `expect`, `recorded`. The first spec written
-   against the standard was refused for an unknown field.
-3. **`tldr` and `domains` were in no field reference an agent reaches.** The
-   in-binary manual listed four easy-to-miss fields and named neither;
-   `create_walkthrough`'s own schema description omitted both. An agent that read
-   the standard and went looking for the shape found nothing.
-4. **"Two to four domains. Six is the cap"** in one rule, with no way to tell
-   which was the instruction.
-5. **"Say what you did not verify next to the gate" is impossible as written.** A
-   check step has no code blocks, and a codeless step is refused a `close`.
+Where it lives: `internal/daemon/control.go` (the latch, `gate`, the nag timer),
+`internal/hand/hand.go` (the `Park` interface, `Run` and `Type`),
+`cmd/agentbox/daemon.go` (the `grab` helper, now carrying both hotkeys),
+`frontend/src/surfaces/Control.svelte`, `[control] pause_hotkey` in the config
+and in the settings surface under "Hands off".
 
-Two things it also never covered are now in it: citations are captured from git
-AT the pinned sha rather than from the working tree (which is what makes
-reviewing an older commit work at all), and a committed bundle belongs out of the
-diff you pass. Plus a paragraph on who the reader is - the rules assume somebody
-meeting the subsystem for the first time, and here it is usually the author
-reading their own change back.
+## The hour it cost, so nobody spends it again
 
-> **Rule numbers are now deliberately not quoted anywhere outside the standard.**
-> They have renumbered twice, and every reference to one went stale silently -
-> three of them were sitting in the field-requests doc pointing at rules that had
-> meant something else for weeks. Name the rule, never number it.
+**`Super+Escape` was the first default and it never once fired.** The daemon
+logged `hotkey.grabbed for=pause hotkey=Super+Escape` and the key was dead.
 
-## What else this session settled
+> **GNOME Shell takes every `Super` combination before a core X11 passive grab
+> can see it, and does it silently.** `XGrabKey` returns success - no
+> `BadAccess` - so every signal AgentBox has says the grab worked.
 
-**The TL;DR control (`1cd941e`), watched.** Its original subject was gone - Boris
-deleted `wfd51b30be854` from the board ninety seconds before the session started
-- so the disabled case needed a new one: a two-step probe review of only `ground`
-and `none` steps, which are the two kinds the spec allows no `tldr` on. Dim half,
-dead `t`, no `t` in the legend, and the hover title *"no step in this review has
-a TL;DR - it was written before they existed, or its author left them out"*. On a
-review that has them the control is live, the board opens in TL;DR, and a step
-without one says *"No TL;DR was written for this step, so it is shown in full"*.
+Measured, not guessed (the table is in "Mechanics discovered"): `Super+F9` and
+`Super+P` swallowed; `Ctrl+Alt+Escape`, `Ctrl+Alt+P`, `Ctrl+Alt+space`,
+`Ctrl+Alt+comma`, `Ctrl+Shift+Escape` all delivered. **No Super in any default or
+suggestion.** The panel's `Ctrl+Alt+grave` was already in the right family.
 
-**The Agents board's three detail blocks paint.** Session 48's largest untested
-thing. An opened row shows the meta list, an Activity block and a Signals block
-with direction arrows and clipped payloads, all with real content.
+Two techniques worth keeping, both in the same entry:
 
-> **The trap that cost twenty minutes:** the row TOGGLES, and `.row.open` is the
-> same colour as `:hover`. Clicking it twice across two attempts opens and closes
-> it, and a screenshot taken with the pointer still on the row shows a surface
-> that looks broken either way. Move the mouse away before judging - the row that
-> stays lit is the open one.
+- **`agentbox drive "key ctrl+alt+grave"` is a real end-to-end hotkey test.**
+  XTEST presses do trigger passive grabs, so firing a combination known to work
+  through the identical path is what isolated the fault to Super.
+- **A probe that imports `internal/...` must live under `internal/` itself.** A
+  `main.go` in the scratchpad cannot compile against it at all.
 
-**FR74's marker: right, and its other half is not.** The marker is exactly what
-was designed - `1920x4` amber at `+0+0`, present while a fullscreen window has
-focus, gone within a beat of leaving it. The strip does not step aside, though,
-so a film gets the 620x62 card as well as the line. Not the arithmetic:
-`planMark` returns `step: true` on one monitor and `beat` does call
-`x.lower(strip)`. The strip is a NOTIFICATION type window with
-`_NET_WM_STATE_ABOVE`, and Mutter layers notifications above a fullscreen window
-whatever the stacking order says. **Boris decided: leave it, it is the safe
-direction** - the guarantee is over-kept, not broken, and hiding the strip risks
-taking the keyboard back on the remap.
+## What was verified on the real desktop
 
-**The `xdg-open` fallback, finally exercised.** Never reached before because this
-machine has `goland` on PATH. Run against four real PATHs rather than a stubbed
-one: `goland`, then `subl` when only `/usr/bin` is visible, then `xdg-open` with
-no line in the argv, then the honest *"no editor found; set editor.command"*. The
-fallback's own launch was then run the way `editor.Start` runs it, through
-`systemd-run --user --scope --collect`: this desktop hands a `.go` file to Zed,
-which opened at `1:1`. `zed` is itself in the known table, so the line survives on
-a machine where its binary is on PATH; only the desktop-handler route drops it.
+Not read off the diff. Captures are in the scratchpad listed under Live state.
+
+- **A parked drive.** `drive_desktop` sent through a fresh `agentbox mcp` child
+  held **21.45s** with the pointer frozen at `1228,85`, then ran both steps on
+  resume and landed on `900,640` exactly, returning `{"steps": 2}`.
+- **The hotkey**, after the fix: one press paused a live run, the next resumed it.
+- **Three strip states**, captured: amber `HANDS OFF` + Pause, green
+  `PAUSED - YOURS` at `0s` with the italic frozen line, amber `AGENT WAITING` at
+  `2m 12s`.
+- **The idle latch**: `PAUSED - YOURS` / "nothing is driving; agents are held off
+  until you release it" / **Allow agents**, and the strip comes down on resume.
+- **The second agent.** A `request_control` from another identity blocked **23
+  seconds** across the pause and was granted the instant of the resume.
+- **The three-minute card** - see Live state, this was still in flight when the
+  handoff was written.
+
+> **The defect only the screen could find.** At `2m 50s` with the run released,
+> the strip read `AGENT WAITING` over the line "nothing is driving" - the
+> escalation firing with nobody to escalate about. One line (`warm` now requires
+> `!idle`), and it is the second time in three sessions that a surface passed
+> every test and lied on screen.
+
+> **A mock on his screen is HIS.** Driving the FR94 mock to check it worked while
+> Boris was clicking in it cost twenty minutes of confusion - the page scrolled
+> between screenshot and click, selections changed on their own, and one stray
+> click emitted a decision he had not made. It was him, and he said so. CLAUDE.md
+> already warns never to click at a coordinate read off an earlier screenshot;
+> the missing half is that the moment a mock is in front of him, get out of it.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `35d1cf4d0e6e`. **HEAD is docs-only ahead of it** - the last code
-  change was `35d1cf4` and everything after is documentation, so a deploy is not
-  owed. `make deployed` disagreeing with `git log` is expected here, not drift.
-- **Git:** `main`, clean, pushed. Seven commits this session before this handoff,
-  oldest first: `84e19ef` `35d1cf4` `f648598` `338384a` `d8c5abf` `d1411a1`
-  `577d599`. The handoff's own commit is HEAD and is the eighth; its sha is not
-  written here because a handoff cannot know it, which is a mistake the last two
-  handoffs made and had to correct twice.
+- **Deployed:** `31da412e9df4`. Anything committed after it is docs; check
+  `make deployed` against `git log` before assuming a deploy is owed.
+- **Git:** `main`, clean. **Ahead of `origin/main` and NOT pushed** - session 49
+  left the tree pushed, this one did not, because pushing was never asked for.
+  Ask Boris, or push if he has said so since. Commits this session, oldest first:
+  `11778f1` `8b06691` `16d2e78` `eca7190` `808237f` `2c3584e` `4421863`
+  `171ba0e` `254285b` `31da412`, plus this handoff's own commit.
 - **Background jobs: none. PRs:** none, ever - Boris pushes `main`.
-- **Nothing pending, no locks held. The desktop was taken and released three
-  times** and is not held now.
-- **No AgentBox windows are open.** The deploy closed the app window and the board
-  Boris had open on #6634; he was told it would and did not stop it. Nothing is
-  lost - `agentbox app` and `agentbox walkthrough open ID` bring them back.
-- **The library holds two reviews.** `w5bd381d0590a` is this session's, written
-  for the experiment and left deliberately - it is a real review of `e511a01` and
-  Boris may want to read it. `wf649f2d212b5` is the peer session's #6634 and was
-  re-authored twice while this session ran, so **that id will not be the one you
-  find** - list rather than assume.
-- **Ghost rows on the Agents board.** Each `claude -p /usage` check leaves a
-  `detached · agentbox session (purpose not yet stated)` row behind; three checks
-  left three. Harmless, recorded under "Mechanics discovered", and
-  indistinguishable from a real session that never announced.
+- **Nothing pending, no locks held.** The desktop was taken and released several
+  times. **One pause was live when this was written** (16:56:57, with a run
+  parked, to watch the 3-minute card) - if a green or amber strip is on screen,
+  that is it: `agentbox control resume` clears it, and `agentbox control release`
+  from this session's identity ends the run behind it.
+- **The FR94 mock window was closed by a deploy.** Reopen with
+  `agentbox` if wanted; the file is committed at
+  `docs/mocks/fr94-pause-resume.html` and every decision it settled is written
+  into the FR94 entry, so nothing depends on it.
 - **Captures live in a session scratchpad** and will not survive a reboot:
-  `/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/bb7cc757-4986-4814-af41-30e1fe518d94/scratchpad/`
-  (`03-hdr.png` is the disabled control's tooltip, `18-clicked-mouse-away.png`
-  the Agents detail, `33-ring-code.png` the review's margin notes,
-  `51-topedge.png` the FR74 marker). Deliberately not committed.
-- **Usage:** session **36%**, resets 2026-08-06 18:40 Asia/Jerusalem; week (all
-  models) **20%**, resets 2026-08-12 05:00.
+  `/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/aea199b3-203e-4f55-930c-b3e14708b8e5/scratchpad/`
+  (`crop-10-driving.png`, `crop-11-paused.png`, `crop-13-warm.png`,
+  `crop-15.png` are the four strip states; `park.log` is the parked drive's
+  timing). Deliberately not committed.
+- **Usage:** session **52%** at 16:47, resets 2026-08-06 18:40 Asia/Jerusalem;
+  week (all models) **22%**, resets 2026-08-12 04:59.
 - **In-flight edits: none.**
 
 ## Blocked on you (Boris)
 
-Nothing - proceed autonomously. Three things stay yours and block nothing:
+Nothing - proceed autonomously. Four things stay yours and block nothing:
 
+- **Whether to push `main`.** Ten commits are sitting local. See Live state.
 - **FR84's other half** (a long body still pushes a form's fields below the fold)
   needs your word, because the approach that fixes it is the one you did not
   pick. Mock: [docs/mocks/fr84-form-shapes.html](docs/mocks/fr84-form-shapes.html),
   approach C.
 - **Your PostToolUse hook writes the raw Bash command as the activity line.**
-  Carried from the last three handoffs and now watched on screen rather than
-  guessed at: this session's Activity block was a column of shell fragments like
-  `SP=/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/bb7cc757-4 APP=…`,
-  with the two lines `set_activity` actually wrote buried among them. It is your
-  `~/.claude/settings.json`, so the wording is yours; the first line, or the
-  first 80 characters, would read better.
+  Carried from four handoffs now, and this session watched it on the hands-off
+  strip itself: while FR94 was being verified the strip read
+  `SP=/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/a...` instead of
+  what the agent was doing. It is your `~/.claude/settings.json`, so the wording
+  is yours; the first line, or the first 80 characters, would read better.
 - **Whether the re-record is worth scheduling** (STATUS priority 2). Unchanged.
 
 ## I can do solo (no input needed)
 
-1. **Mock FR94** and put it in front of him - the working rule says mock before
-   build, and this one has real open questions (auto-resume, an in-flight
-   `drive_desktop`, per-run versus desktop-wide).
+1. **Mock FR95** and put it in front of him - shape settled, three questions
+   open, and the working rule says mock before build.
 2. **The coverage validator** (queue item 2).
 3. **The four unseen surfaces** (queue item 3).
-4. **A JS test runner** (STATUS priority 6). It would have caught none of the CSS
-   problem session 48 paid for - that was a render, not a unit - but `parseDiff`
-   is a shared module with two callers and no test of its own.
+4. **A JS test runner** (STATUS priority 6). `parseDiff` is a shared module with
+   two callers and no test of its own.
 
 ## Facts - verified vs assumed
 
-- [verified] **The TL;DR control on both sides.** Disabled on a review with none
-  (dim, unclickable, `t` inert, legend drops the key, tooltip explains), live on
-  one that has them, and the *"shown in full"* line on a step without one.
-- [verified] **The Agents board's Activity and Signals blocks paint** with real
-  content, and re-opening a row refetches: a signal posted while the row was open
-  appeared only after closing and re-opening it.
-- [verified] **FR74's marker** at `+0+0`, `1920x4`, `srgb(189,144,60)` sampled
-  from x=200 to x=1900, present while a focused fullscreen window is up and gone
-  within a beat of leaving it.
-- [verified] **FR74's strip does NOT step aside** - the 620x62 card is on screen
-  over a focused fullscreen window, with `xwininfo -root -children` showing the
-  probe above both agentbox windows in the X order.
-- [verified] **The editor ladder, all four rungs, against real PATHs**, and the
-  fallback's real launch opening Zed at `1:1`.
-- [verified] **`make check` passes** (gofmt, vet, race) after every edit this
-  session, and the deployed binary serves the renumbered standard
-  (`agentbox docs walkthrough` ends at rule 56).
-- [verified] **The experiment's review renders**: 4-domain accordion rail, domain
-  blurbs, TL;DR mode by default, numbered margin notes beside the right lines,
-  `new` and `captured` badges on every block.
+- [verified] **FR94 end to end**, every bullet under "What was verified" above.
+- [verified] **Super combinations cannot be grabbed on GNOME/X11**, measured
+  across seven combinations.
+- [verified] **`make check` passes** (gofmt, vet, race) after every slice.
+- [verified] The session-49 set, unchanged: the TL;DR control on both sides, the
+  Agents board's Activity and Signals blocks, FR74's marker at `+0+0` and the
+  fact that its strip does NOT step aside, and the editor ladder's four rungs.
+- [assumed] **That the demoted marker in FR95 will actually be coverable.** The
+  reasoning is sound - dropping `keepOnTop` and the notification type is exactly
+  what makes a window sit above it - but nothing has been built or watched.
 - [assumed] **That the *"This session has left the board"* wording ever paints.**
-  It needs a row to vanish between the click and the reply, which is the reason
-  it has now survived two sessions unseen.
+  It needs a row to vanish between the click and the reply; unseen for three
+  sessions now.
 - [assumed] **That `speak` and `diff` read back on screen.** Migration 0012's
   columns, insert, select and wire are all tested; no item raised since has been
   opened in the inbox detail. Raise an `agentbox review` with a diff, answer it,
   then open its row.
 - [assumed] **That an agent row's Recent items block paints.** Activity and
   Signals were seen; Items needs a session that has raised something and then had
-  its row opened, and this session raised nothing until the very end.
+  its row opened. **This session raised one** (the FR94 nag card), so the staging
+  now exists.
 - [assumed] **That the demo fallback paints.** `Bridge.AgentDetail` falls back to
-  the fixture when no daemon is behind the build, and it is unit-tested, but it
-  cannot be reached on screen while a real daemon owns the session bus.
-- [assumed] **That the domain drawer animation is what Boris wants.** Unchanged
-  from the last handoff; he has not said either way.
+  the fixture when no daemon is behind the build; unit-tested, unreachable on
+  screen while a real daemon owns the session bus.
+- [assumed] **That the domain drawer animation is what Boris wants.** Unchanged.
 - [assumed] The older carried-over set, unchanged: the inbox detail's
   `found: false` path, the keyboard route to a resolved row's detail, a detail
   holding a mermaid diagram, `provisionalFor` retiring a hook-only row after ten
@@ -254,31 +236,27 @@ Nothing - proceed autonomously. Three things stay yours and block nothing:
 
 | Removed / condensed | Where its knowledge now lives |
 |---|---|
-| Session 48's queue items 0, 2 and 3 (the TL;DR control, FR74's marker, the xdg-open fallback) | All three watched this session. The results are in session 49 of [docs/history.md](docs/history.md); FR74's is also in its own entry in [docs/07-field-requests.md](docs/07-field-requests.md) and STATUS priority 1, and the editor ladder is under FR65 there |
-| Session 48's queue item 1 and both experiment prompts, verbatim | The experiment was run. The prompts have done their job and the findings replace them: session 49 of history.md, and the five fixes are in the standard itself (`84e19ef`, `35d1cf4`) |
-| Session 48's five traps and its "what shipped" section | All still true and all still in session 48 of [docs/history.md](docs/history.md). Only the two that cost THIS session time are carried above (the toggling agent row is new and is in history.md too) |
-| Session 48's capture paths | Its scratchpad is gone or going; this session's are listed fresh in Live state |
-| Rule numbers quoted in three places in the field-requests doc | Replaced by the rules' names, because the numbering has moved twice and every quoted number was already wrong. STATUS says why, under the authoring-standard bullet |
+| Session 49's queue item 1 (FR94, "mock it before building it") | Done. The mock is [docs/mocks/fr94-pause-resume.html](docs/mocks/fr94-pause-resume.html), the four decisions and their reasons are in the FR94 entry, and the build is session 50 of [docs/history.md](docs/history.md) |
+| Session 49's whole "the experiment, and what it cost the standard" section, and the five defects | All still true and all in session 49 of [docs/history.md](docs/history.md). Only the one finding still open is carried, as queue item 2 |
+| Session 49's FR74-marker and editor-ladder sections | Both closed and recorded: FR74's verdict is STATUS priority 1, the editor ladder is under FR65 in the field-requests doc |
+| Session 49's "the row TOGGLES" trap and its capture paths | The trap is in session 49 of history.md; its scratchpad is gone. This session's captures are listed fresh in Live state |
+| The rule-numbering warning | Now permanent in STATUS under the authoring-standard bullet, not something a handoff has to keep repeating |
 
 ## Map
 
 1. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in
-   commits and handoffs. **FR94 is the only open one**, filed 2026-08-06. FR74's
-   entry now carries the live look and Boris's decision; FR65's carries the four
-   editor rungs. "Mechanics discovered" gained the `claude -p` ghost row.
-2. [docs/STATUS.md](docs/STATUS.md) - current state. Priority 1 is FR74's verdict
-   and 1b is FR94; the authoring-standard bullet carries the trial and the one
-   finding still open.
+   commits and handoffs. **FR95 is the only open one**, and its shape is already
+   settled inside the entry. FR94's entry carries the four decisions. "Mechanics
+   discovered" gained the Super-grab finding and the two techniques that found it.
+2. [docs/STATUS.md](docs/STATUS.md) - current state. Priority 1 is FR74's
+   verdict, 1b is FR94 (shipped), 1c is FR95.
 3. [docs/history.md](docs/history.md) - session by session; this session is
-   "Forty-ninth".
-4. [internal/manual/walkthrough.md](internal/manual/walkthrough.md) - the
-   authoring standard, **56 contiguously numbered rules** since this session, and
-   the thing the experiment was run against.
-5. [internal/manual/agent.md](internal/manual/agent.md) - the in-binary tool
-   reference; its walkthrough section now names `tldr`, `domains` and `cmds`.
-   `docs/agent-manual.md` is the long human-facing one and already had them.
+   "Fiftieth".
+4. [docs/06-configuration.md](docs/06-configuration.md) - the new `[control]`
+   section, with the Super warning next to it.
+5. [docs/agent-manual.md](docs/agent-manual.md) - "He can pause you, and you
+   wait" under "Taking the desktop". `internal/manual/agent.md` is the in-binary
+   short form and has the same fact in one bullet.
 6. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions. **Read it before
    touching the build, the daemon, or driving the desktop.**
-7. [docs/06-configuration.md](docs/06-configuration.md) - the `[editor]` section
-   (FR65) and every other knob.
-8. [docs/09-sync.md](docs/09-sync.md) - FR83, all five slices, the chip vocabulary.
+7. [docs/09-sync.md](docs/09-sync.md) - FR83, all five slices, the chip vocabulary.
