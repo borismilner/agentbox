@@ -29,7 +29,9 @@ has not been run.
    watched. Open `wfd51b30be854` (no TL;DRs anywhere: expect TL;DR greyed out and
    unclickable) and then `w878f0c51c433` (15 of 16 steps have one: expect the
    control live). **Close any open board window first** - retargeting does not
-   reload the bundle.
+   reload the bundle. The control is
+   [frontend/src/lib/board/ModeToggle.svelte](frontend/src/lib/board/ModeToggle.svelte);
+   `anyTldr` in `frontend/src/surfaces/Board.svelte` is what decides it.
 1. **Run the walkthrough-standard experiment.** Boris asked for a prompt to give
    an agent that has just written a walkthrough, so it consults AgentBox's
    standard, reports what it had to change, and tells us where the standard is
@@ -68,8 +70,8 @@ collision older than any of it.
 The second half was three new asks arriving while that was in flight: **FR91**
 (every step gets a TL;DR and the board opens in it), **FR92** (steps group into
 domains, one shown at a time, animated), and **FR93** (Esc could not close a
-notification). All three shipped and were watched on screen. Twelve commits, all
-pushed. Nothing half-done.
+notification). All three shipped and were watched on screen. Fourteen commits,
+all pushed. Nothing half-done except the one thing named as item 0.
 
 ## The experiment Boris asked for
 
@@ -207,7 +209,8 @@ every child.
 ## Live state (volatile - verify on resume)
 
 - **Deployed:** `1cd941e1c022`, matching HEAD.
-- **Git:** clean, `main` pushed to `origin`. Thirteen commits this session,
+- **Git:** clean, `main` pushed to `origin` at `e6160e6`. Fourteen commits this
+  session,
   oldest first: `657e093` `2c22e9f` `0a456a0` `a730caf` `0bb42d7` `e511a01`
   `89dec68` `4c974ab` `655b076` `72d65cb` `35a5bd8` `e5b2473` `1cd941e`.
 - **Background jobs: none. PRs:** none, ever - Boris pushes `main`.
