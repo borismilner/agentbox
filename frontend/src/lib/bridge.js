@@ -137,6 +137,10 @@ export const bridge = {
   control: () => Call.ByName(svc("Control")),
   controlDeny: (id) => Call.ByName(svc("ControlDeny"), id ?? ""),
   controlAllow: (id) => Call.ByName(svc("ControlAllow"), id ?? ""),
+  // FR94. No agent-facing twin of these two on purpose: pausing and resuming
+  // are the human's, and a tool that could resume would make the pause advice.
+  controlPause: () => Call.ByName(svc("ControlPause")),
+  controlResume: () => Call.ByName(svc("ControlResume")),
 
   // viewer + progress. The surface asks for the document; it never names a path,
   // so it cannot read anything the daemon was not asked to show.
