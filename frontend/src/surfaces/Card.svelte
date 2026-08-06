@@ -50,6 +50,20 @@
   // Newest first is deliberate and is the opposite of the stored order: what an
   // agent said last is what its burst is currently about, and the first line of
   // a retry loop is the least interesting of the fourteen.
+  // FR84, other half. A body only folds when it is long enough to be the reason
+  // the fields are off screen; a card with two lines of context reads better with
+  // them where they have always been. 240 characters is about four lines at the
+  // card's measure, which is where the first field starts leaving the window on
+  // the default card height.
+  //
+  // A diff is never folded: its body IS the thing being judged, which is the one
+  // cost the mock named for this shape. Notify and stack have nothing to answer,
+  // so there is nothing to lift above the prose.
+  const FOLD_AT = 240;
+  let proseOpen = $state(false);
+  const proseOptional = $derived(kind !== "diff" && kind !== "notify" && kind !== "stack");
+  const foldProse = $derived(!!view?.bodyHtml && proseOptional && (item?.body ?? "").length > FOLD_AT);
+
   const STACK_PEEK = 4;
   let stackOpen = $state(false);
   const stackAll = $derived([...(item?.stack ?? [])].reverse());
@@ -115,6 +129,11 @@
       curFile = 0;
       seenFiles = new Set([0]);
       secs = [];
+      // Each card folds shut again. Leaving it open would carry one item's
+      // "I wanted the reasoning" onto the next one, which is a different
+      // question from a different agent.
+      proseOpen = false;
+      stackOpen = false;
     }
     queueMicrotask(() => field?.focus?.());
   });
@@ -243,6 +262,14 @@
       stackOpen = !stackOpen;
       return;
     }
+    // FR84: the folded reasoning, without reaching for the mouse. "?" because the
+    // question it answers is "why am I being asked this", and because every
+    // other letter on a card is already an answer to something.
+    if (foldProse && e.key === "?") {
+      e.preventDefault();
+      proseOpen = !proseOpen;
+      return;
+    }
     if (kind === "confirm" && (e.key === "y" || e.key === "n")) {
       e.preventDefault();
       bridge.confirm(item.id, e.key === "y");
@@ -321,7 +348,13 @@
 
       <h1 class="selectable">{item.title}</h1>
 
-      {#if view.bodyHtml}
+      <!-- FR84's other half. A long body used to push the fields down a
+           scrolling card, so the thing the card wants from you was the thing you
+           could not see. Approach C from the mock, picked by Boris on
+           2026-08-06: the controls come first and the reasoning folds behind one
+           line. It costs the assumption that the prose is optional - true for a
+           question, false for a diff, which is why a review is never folded. -->
+      {#if view.bodyHtml && !foldProse}
         <div class="body k-md selectable" use:markdown={view.bodyHtml}>{@html view.bodyHtml}</div>
       {/if}
 
@@ -478,6 +511,18 @@
           </div>
         {/if}
       </div>
+
+      {#if foldProse}
+        <div class="fold">
+          <button class="why" onclick={() => (proseOpen = !proseOpen)} aria-expanded={proseOpen}>
+            {proseOpen ? "hide the reasoning" : "why this is being asked"}
+            <kbd>?</kbd>
+          </button>
+          {#if proseOpen}
+            <div class="body k-md selectable" use:markdown={view.bodyHtml}>{@html view.bodyHtml}</div>
+          {/if}
+        </div>
+      {/if}
 
       <footer>
         {#if expiresIn && kind !== "veto"}<span>expires in {expiresIn}</span>{/if}
@@ -652,6 +697,29 @@
     font-style: normal;
     font-size: 0.74rem;
     color: var(--k-ink-3);
+  }
+
+  /* FR84: the folded reasoning under a question's controls. It has to read as an
+     offer rather than as a control - the card's business is above it - so it is
+     a quiet line with no border and no background until it is hovered. */
+  .fold {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .why {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    font-size: 0.78rem;
+    color: var(--k-ink-3, #8a8a8a);
+    background: none;
+    border: none;
+  }
+  .why:hover {
+    color: var(--k-ink-1, #e8e8e8);
   }
 
   /* FR30 stack card. Rows, not buttons in a row: this is a list to read down,
