@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // readBack reads a file written by a test.
@@ -220,6 +221,107 @@ func TestArgvSurvivesTheTripThroughAOneLineBox(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestArgvKeepsWhatTheFuzzerCaught pins the two defects FuzzArgvSurvivesTheBox
+// found on its first run, because a corpus file under testdata is a hash and
+// says nothing about what it is guarding.
+func TestArgvKeepsWhatTheFuzzerCaught(t *testing.T) {
+	// A tab or a newline inside a quoted argument used to come back as the letter
+	// t or n: JoinArgv borrowed StringLiteral, which spells them the TOML way,
+	// and SplitArgv read a backslash the shell way (\X means X).
+	for _, line := range []string{"\"a b\tc\"", "\"a b\nc\"", "\"a b\rc\""} {
+		argv := SplitArgv(line)
+		if len(argv) != 1 {
+			t.Fatalf("SplitArgv(%q) = %q, want one argument", line, argv)
+		}
+		if back := SplitArgv(JoinArgv(argv)); len(back) != 1 || back[0] != argv[0] {
+			t.Fatalf("%q round-tripped %q into %q", line, argv, back)
+		}
+	}
+
+	// A control character used to be written into the file raw, which TOML
+	// rejects - so Load abandoned the whole file and every unrelated knob
+	// reverted to its default. One pasted DEL was enough.
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := Write(path, []Change{
+		{Section: "sound", Key: "volume", Literal: FloatLiteral(0.4)},
+		{Section: "editor", Key: "command", Literal: ArgvLiteral([]string{"ed", "\x7f\x01"})},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c, warns, err := Load(path)
+	if err != nil || len(warns) != 0 {
+		t.Fatalf("a control character made the file unreadable: err=%v warns=%v", err, warns)
+	}
+	if len(c.Editor.Command) != 2 || c.Editor.Command[1] != "\x7f\x01" {
+		t.Fatalf("editor.command read back as %q", c.Editor.Command)
+	}
+	if c.Sound.Volume != 0.4 {
+		t.Fatalf("an unrelated knob reverted: volume=%v", c.Sound.Volume)
+	}
+}
+
+// FuzzArgvSurvivesTheBox drives the exact path a command knob takes on the
+// settings surface: the typed line is split, the argv is rendered back into the
+// box by JoinArgv and into the file by ArgvLiteral, and the next visit reads
+// both again. Two properties have to hold or a knob nobody touched rewrites
+// itself, or worse, quietly changes meaning:
+//
+//   - split(join(argv)) == argv - the box round-trips.
+//   - Load(ArgvLiteral(argv)) == argv - the file round-trips.
+//
+// Splitting twice is the honest formulation: only argvs SplitArgv can produce
+// are ever handed to Join, so the fuzzer explores lines rather than arrays.
+func FuzzArgvSurvivesTheBox(f *testing.F) {
+	for _, seed := range []string{
+		"",
+		"piper",
+		"nvim +{line} {file}",
+		`code --goto "{file}:{line}:{column}"`,
+		`"/opt/My Editor/bin/ed" {file}`,
+		"  spaced   out  ",
+		`say 'it'\''s fine'`,
+		`a\\b`,
+		`""`,
+		`a"b`,
+		"tab\tseparated",
+		`quote"unclosed`,
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, line string) {
+		argv := SplitArgv(line)
+		if !utf8.ValidString(line) {
+			// SplitArgv ranges over runes, so invalid bytes become U+FFFD and the
+			// line is not what was typed in the first place. Nothing to promise.
+			return
+		}
+		sameArgv := func(what string, got []string) {
+			t.Helper()
+			if len(got) != len(argv) {
+				t.Fatalf("%s of %q: %q, want %q", what, line, got, argv)
+			}
+			for i := range got {
+				if got[i] != argv[i] {
+					t.Fatalf("%s of %q: %q, want %q", what, line, got, argv)
+				}
+			}
+		}
+		sameArgv("box round trip", SplitArgv(JoinArgv(argv)))
+
+		path := filepath.Join(t.TempDir(), "config.toml")
+		if err := Write(path, []Change{
+			{Section: "editor", Key: "command", Literal: ArgvLiteral(argv)},
+		}); err != nil {
+			t.Fatalf("write %q: %v", argv, err)
+		}
+		c, _, err := Load(path)
+		if err != nil {
+			t.Fatalf("load after writing %q (%s): %v", argv, ArgvLiteral(argv), err)
+		}
+		sameArgv("file round trip", c.Editor.Command)
+	})
 }
 
 func TestArgvLiteralIsWhatTheFileSpells(t *testing.T) {

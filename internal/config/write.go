@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -174,19 +175,32 @@ func FloatLiteral(f float64) string {
 	return s
 }
 
+// StringLiteral renders a TOML basic string. Every control character has to be
+// escaped, not just the four with short spellings: TOML forbids a raw one, and a
+// file we cannot parse is not a corrupt setting but a corrupt config - Load gives
+// up on the whole file and every other knob silently reverts to its default. A
+// pasted DEL in one text box is enough to do it.
 func StringLiteral(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
 	for _, r := range s {
-		switch r {
-		case '"':
+		switch {
+		case r == '"':
 			b.WriteString(`\"`)
-		case '\\':
+		case r == '\\':
 			b.WriteString(`\\`)
-		case '\n':
+		case r == '\n':
 			b.WriteString(`\n`)
-		case '\t':
+		case r == '\t':
 			b.WriteString(`\t`)
+		case r == '\r':
+			b.WriteString(`\r`)
+		case r == '\b':
+			b.WriteString(`\b`)
+		case r == '\f':
+			b.WriteString(`\f`)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\u%04X`, r)
 		default:
 			b.WriteRune(r)
 		}
@@ -227,7 +241,20 @@ func SplitArgv(line string) []string {
 	for _, r := range line {
 		switch {
 		case esc:
-			cur.WriteRune(r)
+			// \n, \t and \r mean what they mean everywhere else on this line,
+			// because JoinArgv spells them that way to keep the box's contents to
+			// one printable line. Anything else after a backslash is itself, which
+			// is what makes \" \\ and \' work.
+			switch r {
+			case 'n':
+				cur.WriteByte('\n')
+			case 't':
+				cur.WriteByte('\t')
+			case 'r':
+				cur.WriteByte('\r')
+			default:
+				cur.WriteRune(r)
+			}
 			esc = false
 		case r == '\\' && quote != '\'':
 			esc = true
@@ -261,16 +288,49 @@ func SplitArgv(line string) []string {
 // JoinArgv renders an argv array back into one editable line, quoting only the
 // words that need it. It is the inverse SplitArgv sees: what comes out of the
 // box must go back in meaning the same thing.
+//
+// It deliberately does NOT reuse StringLiteral. That renders TOML, and TOML and
+// this line are two different escape languages that happen to agree on \" and
+// \\ - they part company on \n and \t, and borrowing one for the other turned a
+// tab inside an argument into the letter t on the way back in. The box gets its
+// own quoting, whose only contract is that SplitArgv reverses it.
 func JoinArgv(argv []string) string {
 	parts := make([]string, len(argv))
 	for i, a := range argv {
-		if a == "" || strings.ContainsAny(a, " \t\"'\\") {
-			parts[i] = StringLiteral(a)
+		if a == "" || strings.ContainsAny(a, " \t\n\r\"'\\") {
+			parts[i] = argvQuoted(a)
 		} else {
 			parts[i] = a
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// argvQuoted wraps one argument for the editable line. Only the backslash and
+// the quote it is wrapped in need escaping; the three whitespace characters that
+// cannot survive a one-line text box get their short spellings, and everything
+// else - including a control character somebody pasted - goes through as itself,
+// because SplitArgv hands it straight back.
+func argvQuoted(a string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range a {
+		switch r {
+		case '"', '\\':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '\r':
+			b.WriteString(`\r`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 // writeAtomic writes data to path via a temp file in the same directory and a

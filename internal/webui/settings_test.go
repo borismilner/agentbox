@@ -306,6 +306,59 @@ interval_s = 90            # I answer slowly
 	}
 }
 
+// TestSaveSurvivesAPastedControlCharacter goes down the whole save path with the
+// two things a text box can hold that TOML and the argv line disagree about. It
+// used to end with an unreadable file - which is not one bad setting but all of
+// them, because Load abandons the file and every knob falls back to its default.
+func TestSaveSurvivesAPastedControlCharacter(t *testing.T) {
+	path := tempConfig(t, "[sound]\nvolume = 0.55\n")
+	u := testUI(&fakeResolver{}, nil)
+
+	res := u.saveSettings(map[string]string{
+		"editor.command": "ed \"a\tb\" \x7f",
+		"log.level":      "debug",
+	})
+	if res.Err != "" {
+		t.Fatalf("save: %s", res.Err)
+	}
+
+	c, warns, err := config.Load(path)
+	if err != nil || len(warns) != 0 {
+		body, _ := os.ReadFile(path)
+		t.Fatalf("file unreadable after save: err=%v warns=%v\n%s", err, warns, body)
+	}
+	want := []string{"ed", "a\tb", "\x7f"}
+	if len(c.Editor.Command) != len(want) {
+		t.Fatalf("editor.command = %q, want %q", c.Editor.Command, want)
+	}
+	for i := range want {
+		if c.Editor.Command[i] != want[i] {
+			t.Fatalf("editor.command = %q, want %q", c.Editor.Command, want)
+		}
+	}
+	if c.Sound.Volume != 0.55 {
+		t.Fatalf("an unrelated knob reverted to its default: volume=%v", c.Sound.Volume)
+	}
+
+	// And the surface shows it back unchanged, so a revisit is not a fresh edit.
+	if again := u.saveSettings(map[string]string{"editor.command": valueOf(c, editorCommandKnob(t))}); len(again.Written) != 0 {
+		t.Fatalf("revisiting rewrote the knob: %v", again.Written)
+	}
+}
+
+// editorCommandKnob finds the knob under test by id, so the test does not depend
+// on where it sits in the surface.
+func editorCommandKnob(t *testing.T) knob {
+	t.Helper()
+	for _, k := range allKnobs() {
+		if k.id() == "editor.command" {
+			return k
+		}
+	}
+	t.Fatal("no editor.command knob")
+	return knob{}
+}
+
 // A typo in one field must not swallow a good change made in the same visit.
 func TestSaveRefusesOneKeyAndKeepsTheRest(t *testing.T) {
 	path := tempConfig(t, "[theme]\nmode = \"dark\"\n")
