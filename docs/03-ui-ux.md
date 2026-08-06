@@ -357,6 +357,11 @@ triaged later.
 - Fullscreen / presenting (FR29): auto-DND while a fullscreen app is
   focused; nothing pops over a presentation or screen share, secret cards
   included. The desktop's own do-not-disturb is honored as DND.
+- Recording (FR95): the hands-off strip drops to a 4px marker on the top edge
+  and the whole top-centre column goes with it - cards queue, the progress
+  window closes, urgent waits too and comes out first when it ends. The earcon
+  still plays, which is what makes this different from DND: the picture is
+  quiet, not the notification. Thirty-minute fuse, never persisted.
 - Flooded (FR30): an agent over its rate limit collapses into one stack
   card ("claude-code: 14 items") plus a single warning toast; the items
   land in inbox triage.

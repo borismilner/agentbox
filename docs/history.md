@@ -9,6 +9,72 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fifty-second session (2026-08-06): the column goes quiet with the sign, and FR95 closes
+
+The one answer session 51 left: while the hands-off sign is demoted for a
+recording, cards queue instead of appearing and drain the moment it goes loud.
+It was the biggest of the four because it was the first to touch the presentation
+path, and the gate itself turned out to be the small part.
+
+**The gate.** `displayableLocked` gained one term and lost nothing:
+`!d.quiet && d.announceableLocked(it)`, where the new `announceableLocked` is the
+old body (DND plus mute). The split is the feature: recording mode is NOT
+do-not-disturb, because DND holds the chime and this keeps it - what he asked for
+is a quiet picture, not a quiet machine. Control owns the mode and the daemon
+owns the column, so the flip arrives by callback (`SetQuietSink`), which the fuse
+needs anyway: it flips the mode from a timer inside control with no RPC in sight.
+
+**Four things the one-line answer did not contain**, each found by asking what a
+real take would look like rather than by reading the requirement again:
+
+- **The chime is for the arrival that WOULD have taken the screen.** A loud
+  desktop chimes once for a burst of five and queues four behind the first;
+  chiming for each held card makes recording mode noisier than not recording.
+  `wouldShowLocked` answers that counterfactual - urgent always yes, otherwise
+  only if nothing announceable is ahead of it.
+- **Urgent waits, and it must not lose its place.** It cannot preempt, because
+  there is nothing on screen to preempt and putting a card there is what the mode
+  exists to stop. So `enqueueLocked` inserts it at the FRONT instead, after any
+  urgent already waiting. Without that, going loud shows the oldest build
+  notification while a question an agent is parked on drains fourth.
+- **The spoken line is held; the earcon is not.** `speak` is the loudest thing
+  AgentBox does and it lands in the take, so it is said when the card reaches the
+  screen. The mode is called quiet - that is the argument.
+- **The progress window goes too.** A bar is not a card, but it is AgentBox on
+  screen, and a long task reporting through a whole take is the one window
+  guaranteed to be in the frame. One gate in `progressListLocked` covers all
+  three call sites; the report keeps running and comes back where it got to.
+
+**A card already on screen comes down with the strip.** He arms this a second
+before he hits record, and whatever is up at that second is in the first frame
+otherwise. It goes back to the head of the queue exactly the way an urgent
+arrival displaces one - unless it is inside its undo grace, which resolves itself
+in seconds and must not have its answer yanked out from under it.
+
+**The race worth the paragraph, because it has no symptom.** Two flips (a hotkey
+against the fuse) can each release control's lock and then be scheduled in the
+other order, so the daemon latches `quiet=true` while the strip says loud: every
+card held, nothing on screen to suggest it, no way back but a restart. The sink is
+now serialized by its own mutex and reads the mode at its turn instead of carrying
+the value its caller wrote, so whichever flip goes last through the gate reads the
+truth that outlived the race. It is deliberately not `c.mu`: the sink reaches into
+`d.mu`, and control's lock must never sit underneath that. The test that guards it
+runs sixty concurrent flips and asserts the two sides agree; mutating the delivery
+back to the pass-the-value shape makes it fail under `-race`.
+
+**Watched on the deployed build, not read off the diff** (`66174032f1ae`): with
+the sign demoted, three notifies left `wmctrl -l` with no AgentBox window at all
+and `agentbox control state` read `quiet: the sign is demoted for 30m0s more,
+3 cards waiting`. Going loud put the URGENT one on screen - "2 waiting" in its
+footer - which is the ordering fix visible in one screenshot. A live `agentbox
+progress` window vanished on `control quiet`, and the completion toast it raised
+while demoted drained on `control loud`.
+
+**What is deliberately not held:** a walkthrough, a document or an artifact
+window. Those are one deliberate window somebody asked for rather than an
+interruption arriving on its own, and queueing them would park an agent behind a
+thirty-minute fuse for something the human is standing there waiting to see.
+
 ## Fifty-first session (2026-08-06): FR95 mocked, settled and mostly built, and three of its four measurements lied first
 
 FR95 is "get the hands-off strip out of a screen recording". Its shape was already

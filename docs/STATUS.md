@@ -1,7 +1,16 @@
 # STATUS
 
-Updated: 2026-08-06, fifty-first session (**FR95 settled at the mock and three of
-its four answers shipped; the cards half is what remains**).
+Updated: 2026-08-06, fifty-second session (**FR95 is done: the column goes quiet
+with the sign, and nothing of AgentBox is in the frame**).
+
+Session 52 built FR95's fourth answer and closed the request. While the sign is
+demoted, cards queue instead of appearing and drain the moment it goes loud, the
+earcon still plays so he knows one arrived, and nothing is lost - the inbox has
+them from the second they arrive. Urgent waits too and comes out FIRST when the
+recording ends, rather than behind whatever queued before it. The progress window
+goes with the cards: a bar is not a card, but it is AgentBox on screen. Watched on
+the deployed build: three cards held with no AgentBox window on screen at all,
+`control state` counting them, and the urgent one first out.
 
 Session 51 measured FR95's one load-bearing mechanic before mocking it, mocked it,
 had Boris settle four questions at the mock (he took every recommendation), and
@@ -9,10 +18,7 @@ built three of the four. Recording mode exists and is deployed: `Ctrl+Alt+Q` or
 `agentbox control quiet` demotes the hands-off strip to FR74's four pixels, the
 demoted marker gives up being top-most so a fullscreen window covers it (watched
 on screen), the marker turns green while he has the desktop paused, and the mode
-dies with the daemon and expires after 30 minutes so it cannot be left on. **What
-is not built is the fourth answer: cards queueing while demoted.** FR94's own
-three-minute nag lands in the same top-centre column the strip was in, so a
-recording is clean right up to the moment an agent has something to say.
+dies with the daemon and expires after 30 minutes so it cannot be left on.
 
 Session 50 mocked FR94, had Boris settle it at the mock, and built it: he can now
 take his keyboard and mouse back mid-run with `Ctrl+Alt+Escape` or the strip's own
@@ -923,10 +929,10 @@ down a scrolling card, which is what the mock's third approach addressed and he 
 not pick.
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
-assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (FR95's cards half, now that its other three
-answers shipped on 2026-08-06); the numbered list below is the long tail behind
-it, kept for the items nothing else records.
+assignments (FR81/FR82) first, and both shipped by 2026-08-04. FR95 closed on
+2026-08-06, so **no field request is open**; [../HANDOFF.md](../HANDOFF.md)
+carries the current short order and the numbered list below is the long tail
+behind it, kept for the items nothing else records.
 
 1. **FR74's fullscreen marker was watched on 2026-08-06 and is half right.**
    Session 49 held the desktop, put a `gnome-terminal` fullscreen and looked. The
@@ -958,22 +964,24 @@ it, kept for the items nothing else records.
    ran its two steps to the exact pixel on resume. The decisions and their
    reasons are in the FR94 entry; the mock is
    [mocks/fr94-pause-resume.html](mocks/fr94-pause-resume.html).
-1c. **FR95 - get the strip out of a screen recording. THREE QUARTERS SHIPPED
-   2026-08-06, session 51.** Mocked, settled by Boris at the mock (all four
-   recommendations taken), and built except the cards. What exists and was
-   exercised on the real desktop: `Ctrl+Alt+Q` (fired end to end through XTEST)
-   and `agentbox control quiet|loud` demote the strip to a `1920x4` amber line at
-   `+0+0`; a kiosk-fullscreen window over the top edge covers it completely, with
-   the marker still mapped behind it and reappearing when the window goes; the
-   marker is `#4FB286` green while the desktop is paused; the mode is not
-   persisted and a 30-minute fuse takes it back to loud. **What is left is the
-   fourth answer: while demoted, cards queue instead of appearing and drain when
-   it goes loud** - the earcon still plays, nothing is lost, and an urgent card
-   waits. It is the biggest of the four because it is the first one to touch the
-   presentation path (`d.present`, `viewLocked`, the DND suppression beside it),
-   and the shape to copy is the existing DND hold with the chime kept. The mock is
+1c. **FR95 - get the strip out of a screen recording. SHIPPED 2026-08-06,
+   sessions 51 and 52.** Mocked, settled by Boris at the mock (all four
+   recommendations taken), and built. What exists and was exercised on the real
+   desktop: `Ctrl+Alt+Q` (fired end to end through XTEST) and `agentbox control
+   quiet|loud` demote the strip to a `1920x4` amber line at `+0+0`; a
+   kiosk-fullscreen window over the top edge covers it completely, with the
+   marker still mapped behind it and reappearing when the window goes; the marker
+   is `#4FB286` green while the desktop is paused; the mode is not persisted and
+   a 30-minute fuse takes it back to loud. **Session 52 added the fourth answer:
+   the card column goes quiet with the sign.** Cards queue and drain when it goes
+   loud, the earcon still plays (this is not DND - DND holds the chime), the
+   spoken line is held until the card is on screen, urgent waits but is first out,
+   and the progress window closes with them. Watched on the deployed build: three
+   held cards and no AgentBox window on screen, `control state` reading `3 cards
+   waiting`, the urgent one first out with "2 waiting" in its footer. The mock is
    [mocks/fr95-recording-mode.html](mocks/fr95-recording-mode.html); the entry
-   carries the four decisions and the measurements.
+   carries the four decisions, the measurements, and the silent race the delivery
+   had to be hardened against.
 2. **The re-record.** Boris has said go on a from-scratch re-record and
    re-upload (the uploaded take is missing the slide-11 progress bar AND
    wears the old brand end to end); scheduling is his call, ~21 minutes of

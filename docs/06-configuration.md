@@ -88,7 +88,12 @@ quiet_hotkey = "Ctrl+Alt+Q"  # recording mode (FR95): demotes the strip to the
                              # `agentbox control quiet|loud` is the same thing
                              # from a shell, for the line above `obs` in a
                              # recording script. Not an R: GNOME binds
-                             # Ctrl+Alt+Shift+R to its own screencast
+                             # Ctrl+Alt+Shift+R to its own screencast.
+                             # The whole top-centre column goes with the strip:
+                             # cards queue and drain when it goes loud, and the
+                             # progress window closes. The earcon still plays,
+                             # which is what makes this different from dnd -
+                             # the picture is quiet, not the notification
 
 [session]                    # the Claude child a session spawns (FR49)
 default_mode = "plan"        # plan (read-only) | full; the prompting modes are

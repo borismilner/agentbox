@@ -2833,8 +2833,53 @@ sign is demoted.
 
 **Shipped** (session 51, deployed): the mode in the daemon with its fuse and
 `agentbox control quiet|loud`, `Ctrl+Alt+Q` (fired end to end through XTEST), the
-demoted marker, and green on the marker while paused. **Not yet built:** the
-fourth answer, cards queueing while demoted and draining when it goes loud.
+demoted marker, and green on the marker while paused.
+
+**And the fourth answer with it** (session 52, deployed): the column goes quiet
+with the sign. While demoted, cards queue instead of appearing and drain the
+moment it goes loud, the earcon still plays, and nothing is lost - the inbox has
+them the whole time and their timeouts run from arrival as always.
+
+Four things fell out of building it that the one-line answer did not contain:
+
+- **The chime is for the arrival that WOULD have taken the screen**, not for
+  every held card. A loud desktop chimes once for a burst of five and queues four
+  behind the first; chiming for each would make recording mode noisier than not
+  recording, which is the wrong way round.
+- **Urgent waits, but it does not lose its place.** It cannot preempt (there is
+  nothing on screen to preempt, and putting a card there is the one thing the mode
+  exists to stop), so it is inserted at the FRONT of the queue instead. Going loud
+  then shows the question an agent is parked on rather than the oldest build
+  notification. Watched on screen: three cards held, the urgent one first out.
+- **The spoken line is held, the earcon is not.** `speak` is the loudest thing
+  AgentBox does and it lands in the take; it is said when the card reaches the
+  screen. The mode is called quiet.
+- **The progress window goes too.** A bar is not a card, but it is AgentBox on
+  screen, and a long task reporting through a whole take is the one window
+  guaranteed to be in the frame. The report keeps running underneath and comes
+  back where it got to.
+
+**The race worth knowing about, because it has no symptom.** Control owns the
+mode and the daemon owns the column, so the flip is delivered by a callback -
+and two flips (a hotkey against the fuse) can each release control's lock and
+then be scheduled in the other order. That would leave the daemon holding every
+card while the strip says loud, with nothing on screen to suggest it and no way
+back but a restart. The sink is serialized by its own mutex and reads the mode at
+its turn rather than carrying the value its caller wrote, so whichever flip goes
+last through the gate reads the truth that outlived the race. It is not `c.mu`,
+because the sink reaches into `d.mu` and control's lock must never sit under it.
+
+**Deliberately NOT held:** a walkthrough, a document or an artifact window. Those
+are one deliberate window that somebody asked for, not an interruption arriving
+on its own, and queueing them would park an agent behind a thirty-minute fuse for
+something the human is standing there waiting to see.
+
+Verified on the real desktop (session 52, deployed build `66174032f1ae`): three
+notifies during a demoted sign left `wmctrl -l` with no AgentBox window at all,
+`agentbox control state` read `quiet: the sign is demoted for 30m0s more, 3 cards
+waiting`, and going loud put the urgent one on screen with "2 waiting" in its
+footer. A live `agentbox progress` window vanished on `control quiet` and its
+completion toast, raised while demoted, drained on `control loud`.
 
 The mock is [docs/mocks/fr95-recording-mode.html](mocks/fr95-recording-mode.html):
 the stage is 1920x1200 at 40%, so 620x62 against 4px is to scale, and the panel

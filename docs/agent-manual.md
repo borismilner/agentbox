@@ -941,6 +941,34 @@ nothing on screen for the minutes you then spend driving. That gap is what makes
 a human reach for the mouse mid-run, and it killed three drive sequences in ten
 minutes before this existed.
 
+### He can be recording, and your card waits
+
+Ctrl+Alt+Q, or `agentbox control quiet`, and the hands-off strip drops to four
+amber pixels on the top edge so an internal tool is not in every frame of his
+screen recording. That part changes nothing for you: the desktop is still
+whoever's it was, `request_control` and `drive_desktop` behave exactly the same,
+and the mode expires on its own after thirty minutes.
+
+**What does change is the card column, and it is worth knowing before you park on
+a question:**
+
+- **Everything you put on screen waits.** `notify_user`, every blocking ask, and
+  the progress window: they queue instead of appearing and they all drain the
+  moment he goes loud. Urgent waits too, and it comes out first when the
+  recording ends.
+- **He still hears it arrive.** The earcon plays for the card that would have
+  taken the screen, so this is not do-not-disturb - it is the picture, not the
+  notification. The spoken `speak` line is held until the card is actually on
+  screen, because a voice reading over a take is the loudest thing AgentBox does.
+- **Nothing is lost and nothing is refused.** The item is in the inbox from the
+  second it arrives, its timeout runs from arrival exactly as it always does, and
+  `agentbox pending` lists it. A blocking call parks the way it would behind any
+  other card.
+- **So budget for the wait.** A question asked mid-recording can sit for the rest
+  of the take. If your call has a `timeout_s`, that clock is running: pick a
+  window that survives one, or check `agentbox control state` first - it says
+  `quiet: the sign is demoted for 24m more, 3 cards waiting` when the mode is on.
+
 ## CLI reference
 
 For shell/hook use. Common flags on every command: `--agent NAME`,
