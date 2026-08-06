@@ -192,6 +192,16 @@ type Config struct {
 	ActionsDisabled    bool          // FR32 kill switch, inverted so the zero value (action buttons on) is the default
 	StartInDnd         bool
 
+	// Flood control (FR30), per agent identity: FloodBurst items inside
+	// FloodWindow arrive as their own cards, and everything past that collapses
+	// into one stack card. FloodBurst = 0 is off, and it is NOT filled in by
+	// fill() for the same reason SyncWaitWarn is not - a zero the human wrote
+	// must survive, and config.Default is where the real default lives. Every
+	// daemon built by a test therefore starts with flood control off, which is
+	// what makes the existing suite mean what it used to mean.
+	FloodBurst  int
+	FloodWindow time.Duration
+
 	// Sync (FR83). SyncWaitMax bounds a PARKED MCP CALL and nothing else: the
 	// client aborts a tool call that has been silent for 1800s (measured), so a
 	// wait that promised more would be a lie the transport tells. SyncWaitWarn is
@@ -307,7 +317,11 @@ type Daemon struct {
 	// and not the earcon, which is what makes it a different thing from dnd above:
 	// during a recording he still wants to hear that something arrived, he just
 	// does not want it in the frame.
-	quiet     bool
+	quiet bool
+	// FR30 flood control, keyed by floodKey (one session, not one agent name).
+	// In memory only and on purpose: a burst is a thing happening now, and a
+	// daemon that restarts has by definition stopped showing it.
+	flood     map[string]*floodState
 	muted     map[string]bool // FR47: agents silenced in memory, cleared on restart
 	gone      map[string]bool // FR45: blocking items whose caller socket has dropped
 	dismissAt time.Time       // auto-dismiss deadline of the current toast
@@ -1129,6 +1143,12 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 	if !blocking && it.Kind != proto.KindNotify {
 		return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: "notify only carries kind notify; use agentbox.v1.ask for questions"}
 	}
+	// A stack card is agentbox's own summary of a caller flooding (FR30), so no
+	// caller may submit one. Validate accepts the kind because the daemon builds
+	// real ones; this is the door it is kept out of.
+	if it.Kind == proto.KindStack {
+		return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: "kind stack is made by agentbox when an agent floods; it cannot be submitted"}
+	}
 	it.ID = newID()
 	if it.Kind == proto.KindVeto && it.TimeoutS <= 0 {
 		it.TimeoutS = int(d.cfg.VetoWindow.Seconds()) // zero-config window (FR22, [veto] default_window_s)
@@ -1167,19 +1187,35 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 			d.expiries[it.ID] = time.Now().Add(time.Duration(it.TimeoutS) * time.Second)
 		}
 	}
-	d.enqueueLocked(&it)
-	visible := d.current != nil && d.current.ID == it.ID
+	// FR30: over its budget, this item does not become a card of its own. It is
+	// folded into the caller's stack card, and only a stack card that did not
+	// exist a moment ago is an arrival - growing one must be silent, or a flood
+	// would still chime once per item and calm would be the one thing flood
+	// control failed to deliver.
+	shown := &it
+	collapsed, fresh := d.collapseLocked(&it, time.Now())
+	switch {
+	case collapsed && fresh != nil:
+		d.enqueueLocked(fresh)
+		shown = fresh
+	case collapsed:
+		shown = nil
+	default:
+		d.enqueueLocked(&it)
+	}
+
+	visible := shown != nil && d.current != nil && d.current.ID == shown.ID
 	muted := d.muted[it.Identity.Agent]
 	// A shown card whose chime is held by idle, or a card held silent by
 	// (auto-)DND, owes one summary chime when the user returns.
 	silentIdle := visible && d.cfg.HoldWhenIdle && idle
-	suppressed := !visible && !muted && !d.breaksDndLocked(&it)
+	suppressed := shown != nil && !visible && !muted && !d.breaksDndLocked(shown)
 	// FR95: the sign is demoted for a recording, so the card waits and the earcon
 	// still plays. Only for the arrival that would have been the one on screen -
 	// the rest queue silently, the same as they would behind a card. Idle does not
 	// hold this chime the way it holds a visible card's: somebody talking to camera
 	// without touching the mouse reads as idle, and he is the least away he ever is.
-	quietHeld := d.quiet && !muted && !suppressed && d.wouldShowLocked(&it)
+	quietHeld := shown != nil && d.quiet && !muted && !suppressed && d.wouldShowLocked(shown)
 	manualDnd := d.dnd
 	if silentIdle || suppressed {
 		d.chimeHeld = true
@@ -1188,16 +1224,19 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 	d.mu.Unlock()
 	d.ui.Present(view)
 	switch {
+	case shown == nil:
+		// Folded into a card that was already there. The view still went out, because
+		// the stack card's count changed on screen; nothing sounds.
 	case visible && !silentIdle:
-		d.snd.Play(sound.ClassFor(&it))
-		d.snd.Speak(it.Speak)
+		d.snd.Play(sound.ClassFor(shown))
+		d.snd.Speak(shown.Speak)
 	case silentIdle:
 		d.log.Info("item.held_idle", "component", "daemon", "item_id", it.ID)
 	case quietHeld:
 		// The chime without the card: he knows something arrived and his recording
 		// stays clean. It drains when the sign goes loud.
 		d.log.Info("item.held_quiet", "component", "daemon", "item_id", it.ID, "waiting", view.Waiting)
-		d.snd.Play(sound.ClassFor(&it))
+		d.snd.Play(sound.ClassFor(shown))
 	case muted:
 		d.log.Info("item.held_muted", "component", "daemon", "item_id", it.ID, "agent", it.Identity.Agent)
 	case suppressed:
@@ -1760,7 +1799,25 @@ func (d *Daemon) Review(id string, approved bool, comment string) {
 	d.maybeGrace(id, store.Outcome{Approved: approved, Answer: word, Reply: comment}, text)
 }
 
-func (d *Daemon) Dismiss(id string) { d.resolve(id, store.StateDismissed, store.Outcome{}) }
+// Dismiss retires an item. Dismissing a STACK card (FR30) also retires the
+// notifications collapsed inside it - the human has read the count and said
+// enough, and leaving nine invisible toasts pending would mean a restart
+// replaying a flood he already closed. Blocking rows are deliberately spared:
+// an agent parked on a question is not answered by somebody closing a summary,
+// so those stay pending and are resolved from the inbox, which is the triage
+// route FR30 named.
+func (d *Daemon) Dismiss(id string) {
+	d.mu.Lock()
+	var collapsed []string
+	if it := d.liveStackLocked(id); it != nil && it.Kind == proto.KindStack {
+		collapsed = dismissStackLocked(it)
+	}
+	d.mu.Unlock()
+	for _, cid := range collapsed {
+		d.resolve(cid, store.StateDismissed, store.Outcome{})
+	}
+	d.resolve(id, store.StateDismissed, store.Outcome{})
+}
 
 // DismissItems retires pending items from a door that is not the mouse (FR89).
 //

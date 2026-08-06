@@ -44,6 +44,22 @@ type Config struct {
 	Actions struct {
 		Enabled bool `toml:"enabled"`
 	} `toml:"actions"`
+	// Flood is FR30's rate limit, per agent identity. Burst cards inside WindowS
+	// seconds are what an agent may put on screen back to back; past that its
+	// items collapse into one stack card instead of arriving one at a time.
+	//
+	// Per agent and not per project, which was the other candidate: the unit a
+	// human blames for noise is the session that made it, and two agents working
+	// in one repo are two callers, not one budget to fight over.
+	//
+	// Burst = 0 turns flood control off entirely. That is a real setting - it is
+	// what the daemon did for every version before FR30 - and it is spelled as a
+	// zero rather than an `enabled` flag because there is nothing to enable
+	// separately from the number.
+	Flood struct {
+		Burst   int `toml:"burst"`
+		WindowS int `toml:"window_s"`
+	} `toml:"flood"`
 	// Sync is multi-agent coordination (FR83). WaitMaxS bounds a PARKED MCP CALL
 	// and nothing else: the client aborts a tool call it has heard nothing about
 	// for 1800s, so the ceiling sits under that and a wait that hits it returns a
@@ -247,6 +263,11 @@ func Default() Config {
 	c.Presence.FullscreenAutoDnd = true
 	c.Presence.RespectDesktopDnd = true
 	c.Actions.Enabled = true
+	// Three cards in ten seconds, chosen by Boris on 2026-08-06 over a looser
+	// five-in-thirty. A retry loop trips it almost at once, which is the case
+	// FR30 exists for; two unrelated notices seconds apart do not.
+	c.Flood.Burst = 3
+	c.Flood.WindowS = 10
 	c.Sync.WaitMaxS = 1500
 	c.Sync.WaitWarnS = 600
 	c.Sync.HolderGoneGraceS = 5

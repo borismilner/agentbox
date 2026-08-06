@@ -48,6 +48,12 @@ func (b *Bridge) Undo(id string)          { b.ui.res.Undo(id) }
 func (b *Bridge) Veto(id string)          { b.ui.res.Veto(id) }
 func (b *Bridge) Secret(id, value string) { b.ui.res.Secret(id, value) }
 
+// OpenStacked opens one row of a stack card (FR30). The stack ID travels with
+// it so the daemon can refuse an ID the human is not actually looking at - the
+// surface may only reach items in the card on screen, which is the same keyhole
+// rule as the rest of this file.
+func (b *Bridge) OpenStacked(stackID, itemID string) { b.ui.res.OpenStacked(stackID, itemID) }
+
 func (b *Bridge) AnswerForm(id string, values map[string]string) { b.ui.res.AnswerForm(id, values) }
 func (b *Bridge) RunAction(id string, index int)                 { b.ui.res.RunAction(id, index) }
 func (b *Bridge) Review(id string, approved bool, comment string) {

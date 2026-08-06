@@ -1,0 +1,14 @@
+-- Flood control (FR30): the stack card an over-limit agent's burst collapses
+-- into is a real item, so its collapsed entries are a real column.
+--
+-- proto.Item grew a Stack field and the daemon can build one entirely in memory,
+-- which compiles and passes every test that never restarts the daemon. That is
+-- the same shortcut 0012 was written to undo for speak and diff: a pending item
+-- re-presented after a restart (NFR7) would come back as a stack card claiming
+-- seven notifications with nothing behind it, and every row the human could have
+-- opened to answer a blocked agent would be gone.
+--
+-- Empty string is the honest default for every item written before this: they
+-- are not stacks, and json.Unmarshal of "" is handled as no entries rather than
+-- as corruption.
+ALTER TABLE items ADD COLUMN stack TEXT NOT NULL DEFAULT '';

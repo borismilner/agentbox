@@ -212,6 +212,7 @@ type fakeResolver struct {
 	answers map[string]string
 	vetoed  []string
 	dismiss []string
+	opened  [][2]string // FR30: (stack id, item id) pairs the surface asked to open
 	events  []proto.ArtifactEvent
 }
 
@@ -230,6 +231,9 @@ func (f *fakeResolver) Veto(id string)                       { f.vetoed = append
 func (f *fakeResolver) Secret(string, string)                {}
 func (f *fakeResolver) RunAction(string, int)                {}
 func (f *fakeResolver) Review(string, bool, string)          {}
+func (f *fakeResolver) OpenStacked(stackID, itemID string) {
+	f.opened = append(f.opened, [2]string{stackID, itemID})
+}
 func (f *fakeResolver) ArtifactEvent(ev proto.ArtifactEvent) { f.events = append(f.events, ev) }
 
 // testUI is a UI with no webview behind it: enough for the encoders, the

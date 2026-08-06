@@ -362,9 +362,17 @@ triaged later.
   window closes, urgent waits too and comes out first when it ends. The earcon
   still plays, which is what makes this different from DND: the picture is
   quiet, not the notification. Thirty-minute fuse, never persisted.
-- Flooded (FR30): an agent over its rate limit collapses into one stack
-  card ("claude-code: 14 items") plus a single warning toast; the items
-  land in inbox triage.
+- Flooded (FR30): a session over its rate limit collapses into one warning-level
+  stack card ("claude: 14 notifications in 20s") listing the newest four, `e` or
+  the "… N more" row expanding to all of them. Newest first, which is the
+  opposite of the stored order: what an agent said last is what its burst is
+  currently about. Each row is a real pending item and opens as its own card -
+  by click or by the number row - so a question caught in a flood is still
+  answerable without the mouse; rows that are questions are marked "waiting on
+  you", because a burst that swallowed something an agent is parked on is the one
+  case where collapsing could cost more than it saves. Esc dismisses (it is a
+  summary, not a question) and the footer says what that costs before it is
+  pressed: the notifications go, the questions stay for inbox triage.
 - Multiple agents: queue is shared; identity chip disambiguates. No tabs in
   v1; Ctrl+L cycles.
 - DND: tray icon dims; urgent still pops.

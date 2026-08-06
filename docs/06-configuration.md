@@ -158,8 +158,10 @@ fullscreen_auto_dnd = true # nothing pops over presentations/screen shares
 respect_desktop_dnd = true # GNOME's own DND switch counts as DND
 
 [flood]
-max_pending_per_agent = 10 # beyond this, items merge into one stack card
-max_per_minute = 20        # token bucket per agent identity
+burst = 3                  # cards one session may put on screen back to back
+window_s = 10              # ...within this many seconds; the rest collapse into
+                           # one stack card. burst = 0 turns flood control off
+                           # (what every build before FR30 did)
 
 [actions]
 enabled = true             # caller-supplied action buttons (FR32);
@@ -352,8 +354,14 @@ not visible to AgentBox until M7.
   agent never notices. Forgiving answers are what make fast answering safe.
 - idle hold on, 120 s: a chime into an empty room spends the sound budget
   for nothing; the summary chime on return carries the same information.
-- flood limits 10 pending / 20 per minute: far above any sane agent, low
-  enough that a looping one cannot turn the desktop into a slot machine.
+- flood burst 3 in 10 s, per session: chosen by Boris on 2026-08-06 over a
+  looser five-in-thirty. A retry loop trips it almost at once, which is the case
+  FR30 exists for; two unrelated notices seconds apart do not. It is per SESSION
+  and not per agent name even though the setting reads "per agent" - every Claude
+  session on this machine calls itself `claude`, so a budget keyed on the name
+  would let the first looping agent collapse its innocent neighbours. The
+  numbers this section used to carry (10 pending / 20 per minute) were never read
+  by any code: FR30 was documented for months before it was built.
 - artifacts on, 640 px tall: an artifact is the M10 feature, so shipping it off
   by default would be shipping it in a drawer. The switch exists because it is
   agent-authored code and a person is entitled to say no to that on a given day,

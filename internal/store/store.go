@@ -209,6 +209,10 @@ func (s *Store) CreateItem(it *proto.Item) error {
 	if err != nil {
 		return fmt.Errorf("marshal actions: %w", err)
 	}
+	stack, err := json.Marshal(it.Stack)
+	if err != nil {
+		return fmt.Errorf("marshal stack: %w", err)
+	}
 	now := time.Now().UnixMilli()
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -217,11 +221,11 @@ func (s *Store) CreateItem(it *proto.Item) error {
 	defer tx.Rollback()
 	if _, err := tx.Exec(`INSERT INTO items
 		(id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt, agent, project, session,
-		 session_key, speak, diff, state, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 session_key, speak, diff, stack, state, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		it.ID, string(it.Kind), string(it.EffectiveLevel()), it.Title, it.Body, string(opts), string(fields),
 		string(actions), it.Cwd, it.TimeoutS, it.Default, it.Identity.Agent, it.Identity.Project, it.Identity.Session,
-		it.Identity.Key, it.Speak, it.Diff,
+		it.Identity.Key, it.Speak, it.Diff, string(stack),
 		StatePending, now); err != nil {
 		return fmt.Errorf("insert item %s: %w", it.ID, err)
 	}
@@ -288,15 +292,48 @@ func boolInt(b bool) int {
 // a restart (NFR7).
 func (s *Store) Pending() ([]StoredItem, error) {
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
-		agent, project, session, session_key, speak, diff,
+		agent, project, session, session_key, speak, diff, stack,
 		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
 		FROM items WHERE state = ? ORDER BY created_at ASC`, StatePending)
+}
+
+// Item reads one item by ID, whatever its state. Nil and no error means no such
+// row: a caller asking for an item it saw a moment ago is asking a reasonable
+// question, and an ID that has been pruned is an answer rather than a failure.
+func (s *Store) Item(id string) (*StoredItem, error) {
+	items, err := s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
+		agent, project, session, session_key, speak, diff, stack,
+		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
+		FROM items WHERE id = ?`, id)
+	if err != nil || len(items) == 0 {
+		return nil, err
+	}
+	return &items[0], nil
+}
+
+// UpdateStack rewrites a stack card's collapsed entries and its title, which
+// both grow as a burst runs (FR30). It exists because a stack card is written
+// once and then keeps collecting: without it, a daemon restart mid-burst would
+// re-present a card claiming one entry when the human had seen nine.
+func (s *Store) UpdateStack(id, title string, entries []proto.StackEntry) error {
+	blob, err := json.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("marshal stack: %w", err)
+	}
+	res, err := s.db.Exec(`UPDATE items SET stack = ?, title = ? WHERE id = ?`, string(blob), title, id)
+	if err != nil {
+		return fmt.Errorf("update stack %s: %w", id, err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Recent returns the newest items first, pending or not.
 func (s *Store) Recent(limit int) ([]StoredItem, error) {
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
-		agent, project, session, session_key, speak, diff,
+		agent, project, session, session_key, speak, diff, stack,
 		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
 		FROM items ORDER BY created_at DESC LIMIT ?`, limit)
 }
@@ -314,7 +351,7 @@ func (s *Store) RecentBySession(key string, limit int) ([]StoredItem, error) {
 		return nil, nil
 	}
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
-		agent, project, session, session_key, speak, diff,
+		agent, project, session, session_key, speak, diff, stack,
 		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
 		FROM items WHERE session_key = ? ORDER BY created_at DESC LIMIT ?`, key, limit)
 }
@@ -328,7 +365,7 @@ func (s *Store) query(q string, args ...any) ([]StoredItem, error) {
 	var out []StoredItem
 	for rows.Next() {
 		var it StoredItem
-		var opts, fields, actions string
+		var opts, fields, actions, stack string
 		var answer, reply, values sql.NullString
 		var created int64
 		var resolved sql.NullInt64
@@ -336,7 +373,7 @@ func (s *Store) query(q string, args ...any) ([]StoredItem, error) {
 		var kind, level string
 		if err := rows.Scan(&it.ID, &kind, &level, &it.Title, &it.Body, &opts, &fields, &actions, &it.Cwd, &it.TimeoutS,
 			&it.Default, &it.Identity.Agent, &it.Identity.Project, &it.Identity.Session,
-			&it.Identity.Key, &it.Speak, &it.Diff,
+			&it.Identity.Key, &it.Speak, &it.Diff, &stack,
 			&it.State, &answer, &reply, &values, &missed, &created, &resolved); err != nil {
 			return nil, err
 		}
@@ -351,6 +388,14 @@ func (s *Store) query(q string, args ...any) ([]StoredItem, error) {
 		}
 		if err := json.Unmarshal([]byte(actions), &it.Actions); err != nil {
 			return nil, fmt.Errorf("item %s has corrupt actions: %w", it.ID, err)
+		}
+		// Every item written before migration 0013 carries "", which is not JSON.
+		// It means "not a stack", so it is skipped rather than read as corruption -
+		// the alternative makes the whole read fail on a store older than FR30.
+		if stack != "" {
+			if err := json.Unmarshal([]byte(stack), &it.Stack); err != nil {
+				return nil, fmt.Errorf("item %s has corrupt stack: %w", it.ID, err)
+			}
 		}
 		it.Answer = answer.String
 		it.Reply = reply.String

@@ -89,7 +89,11 @@ beyond notifications):
   focused. Treat the desktop's own do-not-disturb as DND.
 - FR30 [must] Flood control: per-agent rate limits; an agent exceeding them
   has its items collapsed into a single stack card plus one warning toast.
-  Calm survives buggy callers.
+  Calm survives buggy callers. **Built 2026-08-06** (`internal/daemon/flood.go`,
+  kind `stack`), with one deliberate departure from the line above: the warning
+  is the stack card, which is warning-level and says why it appeared, rather
+  than a second toast beside it. A flood answered with two cards would be the
+  noise this requirement exists to remove.
 - FR31 [should] Delayed items: `--in 30m` / `--at 15:00` on notify;
   scheduled through the same queue and store.
 - FR32 [should] Action buttons: caller-supplied buttons on notify/toast

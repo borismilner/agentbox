@@ -114,10 +114,17 @@ paths to a per-name directory; clients reach a named instance the same way.
   shown items.
 - Scheduler (FR31): items with `deliver_at` sit in the store and enter the
   queue when due; they survive restarts like any pending item.
-- Flood control (FR30): token bucket per agent identity (defaults in
-  06-configuration.md); over the limit, new items merge into one stack item
-  and a single warning fires. Blocking calls held by a stack item resolve
-  individually from inbox triage.
+- Flood control (FR30, `internal/daemon/flood.go`): a sliding window per
+  session key (defaults in 06-configuration.md); over the limit, new items merge
+  into one stack item of kind `stack` and the collapse itself carries the
+  warning - it is a warning-level card that says what happened, rather than a
+  second card beside the first, because two cards for one flood is the noise
+  this feature exists to end. Nothing is dropped: every collapsed item is stored
+  and pending exactly as it would have been, and the stack card is a different
+  way of SHOWING items that all still exist. A blocking call caught in a burst
+  is opened from its row (which promotes the real item back onto the screen) or
+  from inbox triage; dismissing the stack takes the notifications with it and
+  deliberately leaves the questions pending.
 - Action exec (FR32): runs `sh -c` as the user with the item's cwd; output
   goes to the daemon log, non-zero exit raises an error toast. No new
   privilege boundary (caller and clicker are the same user); the risk

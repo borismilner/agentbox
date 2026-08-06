@@ -44,6 +44,7 @@ func (d *demoResolver) Veto(id string)                            { d.log("veto"
 func (d *demoResolver) Secret(id, value string)                   { d.log("secret", id, "***") }
 func (d *demoResolver) RunAction(id string, index int)            { d.log("action", id, index) }
 func (d *demoResolver) Review(id string, ok bool, comment string) { d.log("review", id, ok, comment) }
+func (d *demoResolver) OpenStacked(stackID, itemID string)        { d.log("open-stacked", stackID, itemID) }
 
 // The artifact channel with no daemon behind it: the demo prints what an agent
 // would have been handed, which is enough to judge that the channel works (M10).

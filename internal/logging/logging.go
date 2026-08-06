@@ -94,16 +94,22 @@ const (
 	EvItemDismissed  = "item.dismissed"
 	EvItemExpired    = "item.expired"
 	EvItemCancelled  = "item.cancelled"
-	EvIPCCall        = "ipc.call"
-	EvSoundPlayed    = "sound.played"
-	EvSoundFailed    = "sound.failed"
-	EvSpeechSpoke    = "speech.spoke"
-	EvSpeechStarted  = "speech.engine_started"
-	EvSpeechStopped  = "speech.engine_stopped"
-	EvSpeechFailed   = "speech.failed"
-	EvSpeechAloud    = "speech.aloud" // the human working the read-aloud transport
-	EvControl        = "control"      // the desktop handover strip (FR74)
-	EvRenderFailed   = "render.failed"
+	// Flood control (FR30). EvFlooded fires once per stack card - the moment a
+	// caller went over its budget - and EvItemCollapsed once per item folded into
+	// one, so the log answers both "when did agentbox start collapsing" and "what
+	// exactly did the human not see as its own card".
+	EvFlooded       = "item.flooded"
+	EvItemCollapsed = "item.collapsed"
+	EvIPCCall       = "ipc.call"
+	EvSoundPlayed   = "sound.played"
+	EvSoundFailed   = "sound.failed"
+	EvSpeechSpoke   = "speech.spoke"
+	EvSpeechStarted = "speech.engine_started"
+	EvSpeechStopped = "speech.engine_stopped"
+	EvSpeechFailed  = "speech.failed"
+	EvSpeechAloud   = "speech.aloud" // the human working the read-aloud transport
+	EvControl       = "control"      // the desktop handover strip (FR74)
+	EvRenderFailed  = "render.failed"
 	// Multi-agent coordination (FR83). One vocabulary for the whole roster
 	// lifecycle - attach, announced, detach - because the question asked of this
 	// log is always "which agents were here, and what were they each doing".

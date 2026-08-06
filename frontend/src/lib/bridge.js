@@ -20,6 +20,9 @@ export const bridge = {
   dismiss: (id) => Call.ByName(svc("Dismiss"), id),
   undo: (id) => Call.ByName(svc("Undo"), id),
   runAction: (id, index) => Call.ByName(svc("RunAction"), id, index),
+  // FR30: lift one row out of a stack card and make it a card again. The stack
+  // id travels so the daemon can refuse an item the human is not looking at.
+  openStacked: (stackId, itemId) => Call.ByName(svc("OpenStacked"), stackId, itemId),
   copy: (id) => Call.ByName(svc("Copy"), id),
 
   // session surface

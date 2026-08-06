@@ -65,6 +65,12 @@ func (l *lateResolver) Reply(id, text string) {
 	}
 }
 
+func (l *lateResolver) OpenStacked(stackID, itemID string) {
+	if d := l.get(); d != nil {
+		d.OpenStacked(stackID, itemID)
+	}
+}
+
 func (l *lateResolver) Dismiss(id string) {
 	if d := l.get(); d != nil {
 		d.Dismiss(id)
@@ -136,6 +142,11 @@ func daemonConfig(cfg config.Config) daemon.Config {
 		DndBlocksUrgent:    !cfg.Dnd.UrgentBreaksThrough,
 		ActionsDisabled:    !cfg.Actions.Enabled,
 		StartInDnd:         cfg.Dnd.StartInDnd,
+		// Flood control (FR30). Passed through as written: burst = 0 is the human
+		// saying "never collapse", and defaulting it here would make that
+		// unsayable.
+		FloodBurst:  cfg.Flood.Burst,
+		FloodWindow: time.Duration(cfg.Flood.WindowS) * time.Second,
 		// Sync (FR83). WaitMax bounds a parked MCP call; the other two are the lock
 		// table's clock. wait_warn_s = 0 means never warn and is passed through as
 		// the zero it is: config.Default supplies the real default, so nothing

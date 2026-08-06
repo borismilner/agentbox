@@ -42,6 +42,21 @@
   const diffMulti = $derived(diffModel.files.length > 1);
   const diffStat = $derived(`+${diffModel.add} −${diffModel.del}`);
 
+  // A stack card (FR30) collapses a flooding agent's burst. Collapsed it shows
+  // the newest few, because the point of the card is that the human does NOT
+  // have to read all fourteen; expanded it shows everything, because "nothing
+  // was dropped" is only a claim until he can see them.
+  //
+  // Newest first is deliberate and is the opposite of the stored order: what an
+  // agent said last is what its burst is currently about, and the first line of
+  // a retry loop is the least interesting of the fourteen.
+  const STACK_PEEK = 4;
+  let stackOpen = $state(false);
+  const stackAll = $derived([...(item?.stack ?? [])].reverse());
+  const shownStack = $derived(stackOpen ? stackAll : stackAll.slice(0, STACK_PEEK));
+  const stackHidden = $derived(stackAll.length - shownStack.length);
+  const stackAsks = $derived(stackAll.filter((e) => e.blocking).length);
+
   const baseOf = (p) => p.split("/").pop();
   const dirOf = (p) => p.slice(0, p.length - baseOf(p).length);
 
@@ -171,7 +186,12 @@
       //
       // ⇧Esc still forces dismiss on every kind, because a question you want off
       // the queue without answering it needs a key too.
-      if (e.shiftKey || kind === "notify") bridge.dismiss(item.id);
+      //
+      // A stack card (FR30) goes with notify: it is a summary of a burst and not
+      // a question, so deferring it would put a card nobody can answer back in
+      // the queue. Dismissing takes the notifications inside it with it and
+      // leaves the questions pending - the daemon's rule, not this surface's.
+      if (e.shiftKey || kind === "notify" || kind === "stack") bridge.dismiss(item.id);
       else bridge.defer(item.id);
       return;
     }
@@ -203,6 +223,21 @@
     if (kind === "choice" && /^[1-9]$/.test(e.key)) {
       e.preventDefault();
       choose(Number(e.key) - 1);
+      return;
+    }
+    // A stack card's rows answer to the number row too, so a question buried in
+    // a flood is still reachable without the mouse. Only the rows on screen are
+    // numbered: pressing 4 on a collapsed list must not open something the card
+    // is not showing.
+    if (kind === "stack" && /^[1-9]$/.test(e.key)) {
+      e.preventDefault();
+      const row = shownStack[Number(e.key) - 1];
+      if (row) bridge.openStacked(item.id, row.id);
+      return;
+    }
+    if (kind === "stack" && (e.key === "e" || e.key === "E")) {
+      e.preventDefault();
+      stackOpen = !stackOpen;
       return;
     }
     if (kind === "confirm" && (e.key === "y" || e.key === "n")) {
@@ -274,7 +309,7 @@
              else it defers and ⇧Esc is the way off the queue. Only "Esc defer"
              was ever written down, and on a notify that was the one key that
              could not end the thing. -->
-        {#if kind === "notify"}
+        {#if kind === "notify" || kind === "stack"}
           <span class="hint"><kbd>Esc</kbd> dismiss</span>
         {:else}
           <span class="hint"><kbd>Esc</kbd> defer · <kbd>⇧Esc</kbd> dismiss</span>
@@ -395,6 +430,27 @@
             </p>
             <div class="row"><span class="spacer"></span><button class="go" onclick={send}>Send</button></div>
           </div>
+        {:else if kind === "stack"}
+          <!-- FR30. Every row is a real pending item; clicking one puts it back
+               on screen as its own card. A row that is a QUESTION says so, and
+               says it in the strongest thing on the card, because a burst that
+               swallowed something an agent is parked on is the one case where
+               the collapse could cost more than it saves. -->
+          <div class="stack">
+            {#each shownStack as e, i}
+              <button class="srow" class:ask={e.blocking} onclick={() => bridge.openStacked(item.id, e.id)}>
+                <kbd>{i + 1}</kbd>
+                <span class="sdot" style="--sev: var(--k-{e.level || 'info'}, var(--k-info))"></span>
+                <span class="slbl">{e.title}</span>
+                {#if e.blocking}<span class="sask">waiting on you</span>{/if}
+              </button>
+            {/each}
+            {#if stackHidden > 0}
+              <button class="smore" onclick={() => (stackOpen = true)}>… {stackHidden} more <kbd>e</kbd></button>
+            {:else if stackAll.length > STACK_PEEK}
+              <button class="smore" onclick={() => (stackOpen = false)}>show fewer <kbd>e</kbd></button>
+            {/if}
+          </div>
         {:else if kind === "notify"}
           {#if view.actionsEnabled && item.actions?.length}
             <div class="opts">
@@ -424,6 +480,15 @@
         {#if expiresIn && kind !== "veto"}<span>expires in {expiresIn}</span>{/if}
         {#if item.default}<span>default: {item.default}</span>{/if}
         {#if canReply && !replying}<span><kbd>/</kbd> reply</span>{/if}
+        <!-- What Esc costs on a stack card, said before it is pressed: the
+             notifications go, the questions do not. Without it, dismissing a
+             card that says "14 notifications" looks like abandoning whatever
+             agent is parked inside it. -->
+        {#if kind === "stack"}
+          <span
+            >{#if stackAsks > 0}{stackAsks} still waiting for an answer; dismissing keeps {stackAsks === 1 ? "it" : "them"}{:else}dismissing clears all of them{/if}</span
+          >
+        {/if}
         <span class="spacer"></span>
         {#if view.waiting > 0}
           <span class="waiting">
@@ -584,6 +649,69 @@
     font-style: normal;
     font-size: 0.74rem;
     color: var(--k-ink-3);
+  }
+
+  /* FR30 stack card. Rows, not buttons in a row: this is a list to read down,
+     and the burst it collapses can be fourteen long. Every var() carries a
+     fallback because a var() that resolves to nothing takes its whole
+     declaration with it, and a row that has silently lost its background still
+     reads as working to everything except the screen. */
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .srow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 9px 5px 6px;
+    border: 1px solid transparent;
+    border-radius: calc(var(--k-radius, 8px) * 0.6);
+    background: var(--k-surface-2, rgba(127, 127, 127, 0.08));
+    font-size: 0.82rem;
+    text-align: left;
+    transition: background 90ms ease, border-color 90ms ease;
+  }
+  .srow:hover {
+    background: var(--k-surface-3, rgba(127, 127, 127, 0.16));
+    border-color: color-mix(in srgb, var(--k-ink-3, #888) 45%, var(--k-edge, #444));
+  }
+  .srow .sdot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--sev, var(--k-info, #6aa9ff));
+  }
+  .srow .slbl {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* A question inside a burst is the one row that must not read like the rest:
+     an agent is parked on it right now. */
+  .srow.ask {
+    border-color: color-mix(in srgb, var(--k-warning, #d9a441) 45%, transparent);
+    background: color-mix(in srgb, var(--k-warning, #d9a441) 10%, var(--k-surface-2, rgba(127, 127, 127, 0.08)));
+  }
+  .srow .sask {
+    flex: none;
+    font-size: 0.7rem;
+    color: var(--k-warning, #d9a441);
+  }
+  .smore {
+    align-self: flex-start;
+    padding: 3px 6px;
+    font-size: 0.76rem;
+    color: var(--k-ink-3, #8a8a8a);
+    background: none;
+    border: none;
+  }
+  .smore:hover {
+    color: var(--k-ink-1, #e8e8e8);
   }
 
   .veto {

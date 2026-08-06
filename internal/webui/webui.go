@@ -40,6 +40,10 @@ type Resolver interface {
 	Secret(id, value string)
 	RunAction(id string, index int)
 	Review(id string, approved bool, c string)
+	// OpenStacked lifts one collapsed item out of a stack card and onto the
+	// screen (FR30). It is how a question caught in a flood gets answered: the
+	// stack card shows the row, this makes it a real card again.
+	OpenStacked(stackID, itemID string)
 	// ArtifactEvent is the human acting inside an artifact rather than on a card
 	// (M10): a click or a slider, on its way to whichever agent is waiting for it.
 	ArtifactEvent(ev proto.ArtifactEvent)

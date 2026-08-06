@@ -20,7 +20,25 @@ const (
 	KindVeto    Kind = "veto"   // act-unless-stopped countdown (FR22)
 	KindSecret  Kind = "secret" // masked entry; value bypasses the transcript (FR23)
 	KindDiff    Kind = "diff"   // unified diff review: approve/reject + comment (FR33)
+	// KindStack is the collapse of a flooding agent's burst (FR30). The daemon
+	// makes it and no caller may submit one: it is the only kind whose author is
+	// agentbox itself, which is why Validate accepts it (the daemon builds a real
+	// item) while the submit path rejects it by name.
+	KindStack Kind = "stack"
 )
+
+// StackEntry is one item collapsed into a stack card (FR30). It carries what a
+// row has to read and nothing more - the item itself stays in the store under
+// its own ID, and opening a row promotes that item back onto the screen, which
+// is how a blocking call inside a burst still gets answered.
+type StackEntry struct {
+	ID       string `json:"id"`
+	Kind     Kind   `json:"kind"`
+	Level    Level  `json:"level,omitempty"`
+	Title    string `json:"title"`
+	Blocking bool   `json:"blocking,omitempty"`
+	AtMS     int64  `json:"at_ms"` // arrival, so the card can say "7 notifications in 20s"
+}
 
 type FieldType string
 
@@ -168,6 +186,9 @@ type Item struct {
 	Actions   []Action `json:"actions,omitempty"`   // notify items: caller-supplied buttons (FR32)
 	Cwd       string   `json:"cwd,omitempty"`       // working directory the daemon runs an action's Exec in (FR32)
 	Diff      string   `json:"diff,omitempty"`      // diff items: the unified diff to review (FR33)
+	// Stack is the burst a stack item collapses (FR30), oldest first. Only kind
+	// stack carries it.
+	Stack []StackEntry `json:"stack,omitempty"`
 	// Speak is a line read out loud when the item announces itself, just after its
 	// earcon. It is the agent's own sentence and never the title: agentbox does not
 	// read a screen aloud, so what is heard is what an agent decided was worth
@@ -235,6 +256,10 @@ func (it *Item) Validate() error {
 	case KindDiff:
 		if it.Diff == "" {
 			return errors.New("diff items need a diff (the unified diff to review)")
+		}
+	case KindStack:
+		if len(it.Stack) == 0 {
+			return errors.New("stack items need at least 1 collapsed entry")
 		}
 	case KindForm:
 		if len(it.Fields) == 0 {
@@ -367,9 +392,12 @@ func (it *Item) EffectiveLevel() Level {
 	return LevelInfo
 }
 
-// Blocking reports whether the caller waits for a user response.
+// Blocking reports whether the caller waits for a user response. A stack card
+// has no caller of its own - it is agentbox's own summary of a burst, and the
+// blocking calls inside it wait on their own items - so it belongs with notify
+// rather than with the questions.
 func (it *Item) Blocking() bool {
-	return it.Kind != KindNotify
+	return it.Kind != KindNotify && it.Kind != KindStack
 }
 
 // ClipboardText renders the item for pasting into an agent conversation
