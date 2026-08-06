@@ -623,6 +623,18 @@ build does with a committed dist. There is still no automated *visual* check
 (see "Known gaps"); what a surface is *allowed to do* is tested, and so is the
 HTML Go hands it.
 
+`FuzzParse` (internal/change) is the first fuzz target, and it earned its keep
+on the first run: a hunk header with twenty digits overflowed the hand-rolled
+atoi and came back as a NEGATIVE line number, which then flowed into every span
+and slice built from the geometry. Clamped, and the failing input is committed
+as the corpus so `go test` replays it. **The frontend parser has the same lie
+told to it and reads it differently:** a count that large is not negative in JS,
+it is merely enormous, so it swallows every following file into one body and the
+reader loses them with nothing on screen to say why. Fixing that means ending a
+hunk when a body line is not a body line at all, which changes the render path -
+and it is not worth doing blind, so it waits for a session that can look at the
+screen.
+
 - **Policy** (`internal/webui/policy_test.go`): one invariant over every
   surface at once - nothing AgentBox hands a webview fetches from a host on its
   own - by running one hostile document (remote images; raw HTML using

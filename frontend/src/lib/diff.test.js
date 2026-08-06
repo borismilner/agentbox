@@ -206,3 +206,4 @@ test("every line is data, never markup", () => {
   }
   assert.equal(m.files[0].lines[1].text, "-<script>alert(1)</script>");
 });
+

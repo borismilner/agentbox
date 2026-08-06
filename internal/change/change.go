@@ -65,13 +65,24 @@ func strip(p string) string {
 	return p
 }
 
+// maxLine bounds what a hunk header may claim. The digits in `@@ -1,2 +3,4 @@`
+// are unbounded and the text is agent-authored: twenty of them overflow int and
+// come back NEGATIVE, and that negative then flows into every span, every slice
+// and every loop built from the geometry. No file has two billion lines, so
+// clamping is the honest answer - found by FuzzParse, which is the only way this
+// was ever going to be found.
+const maxLine = 1 << 31
+
 func atoi(s string, def int) int {
 	if s == "" {
 		return def
 	}
 	n := 0
-	for _, c := range s {
+	for _, c := range s { // the caller's regexp guarantees digits
 		n = n*10 + int(c-'0')
+		if n > maxLine {
+			return maxLine
+		}
 	}
 	return n
 }

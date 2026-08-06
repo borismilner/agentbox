@@ -154,3 +154,35 @@ func TestNilFileHelpers(t *testing.T) {
 		t.Error("nil *File helpers must return nil")
 	}
 }
+
+// FuzzParse is the guard on a parser that reads agent-authored text. Every
+// walkthrough create runs a diff through it, and now every walkthrough READ does
+// too (the coverage arithmetic), so a panic here is a review that cannot be
+// opened rather than one that fails to be written. The corpus is the shapes that
+// have historically confused unified-diff parsers: counts that lie, headers with
+// no body, bodies that look like headers.
+func FuzzParse(f *testing.F) {
+	f.Add("")
+	f.Add("@@ -1 +1 @@\n-a\n+b\n")
+	f.Add("@@ -1,99 +1,99 @@\n+one\n") // counts far past the body
+	f.Add("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -0,0 +1,2 @@\n+--- not a header\n+++ also not\n")
+	f.Add("--- /dev/null\n+++ b/new\n@@ -0,0 +1 @@\n+hello\n")
+	f.Add("diff --git a/a b/b\nrename to b\n")
+	f.Add("@@ -1,2 +0,0 @@\n-gone\n-gone\n")
+	f.Add("\\ No newline at end of file\n")
+	f.Add("@@@ -1,1 -1,1 +1,1 @@@\n++combined\n") // a combined (merge) diff header
+
+	f.Fuzz(func(t *testing.T, raw string) {
+		set := Parse(raw)
+		for _, file := range set.Files {
+			for _, h := range file.Hunks {
+				// The invariant the rest of the tree relies on: a hunk's declared
+				// counts are never negative, so a span built from them cannot
+				// invert and a slice built from them cannot panic.
+				if h.NewN < 0 || h.OldN < 0 || h.NewFrom < 0 || h.OldFrom < 0 {
+					t.Fatalf("negative geometry in %q: %+v", file.Path, h)
+				}
+			}
+		}
+	})
+}
