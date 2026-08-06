@@ -144,6 +144,15 @@ Claude Code) can call these tools. Run `agentbox docs setup` for a paste-ready
   `release_control` -> give the desktop back and take the strip down, the moment
   you stop driving. Presence is the signal, so a card or a spoken line cannot
   replace these
+- **The human can pause you mid-run** (FR94), from a hotkey or the strip itself,
+  because sometimes he needs his own keyboard back with no warning. When he
+  does, your `drive_desktop` stops at the end of its current step (inside a
+  `type`, between characters) and BLOCKS - it does not fail and it does not
+  queue. Your run keeps its place and your `set_activity` line keeps painting.
+  Nothing you can call resumes it: waiting is the correct behaviour, and it
+  waits up to ten minutes before telling you the desktop is still his, with the
+  run still yours. `request_control` waits the same way, so a paused desktop is
+  never handed to the next agent in the queue while he is using it
 - `report_progress` -> a live progress bar (non-blocking). Omit `id` and set
   `title` to start; pass the returned `id` on every later call to update
   `percent` (or `indeterminate`); call `done` (with `error` to fail). Prefer

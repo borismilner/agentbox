@@ -86,6 +86,7 @@ auto-spawns the daemon; nothing else to start.
 | Take the desktop for a while (hands off) | `request_control` | `agentbox control request` | yes |
 | Say what you are doing while you hold it | `set_activity` | `agentbox control activity` | no |
 | Give the desktop back | `release_control` | `agentbox control release` | no |
+| Take it back mid-run (the human only) | - | `agentbox control pause` / `resume` | no |
 
 Picking between the close ones:
 
@@ -885,6 +886,13 @@ agentbox control release                                                # when d
 agentbox control state                                                  # who holds it
 ```
 
+And two the human has that you do not (FR94):
+
+```bash
+agentbox control pause     # take the keyboard and mouse back, mid-run
+agentbox control resume    # hand them on again
+```
+
 One always-on-top strip appears at the top centre and stays there for the whole
 run: first asking (your reason, a countdown, Deny and Now), then driving (the
 activity line and how long it has been that way). **Presence is the entire
@@ -899,6 +907,34 @@ Requesting blocks. Silence for `window_s` seconds counts as consent (default 20;
 so a second requester is refused with the holder's name rather than queued -
 `held_by` (CLI exit 3) means wait and ask again, not drive anyway. A queue would
 be worse: it would hand you the wheel at a moment you had stopped watching for it.
+
+### He can pause you, and you wait
+
+Ctrl+Alt+Escape, or the Pause button on the strip, and the desktop is his again
+without your run ending. This exists because the alternative was him reaching for
+the mouse anyway, which is the collision the strip was built to prevent.
+
+What it looks like from your side:
+
+- **The strip inverts rather than vanishing.** Same window, green instead of
+  amber, `PAUSED - YOURS`, your activity line still there in italic so he can see
+  what he is resuming into. Past two minutes it turns amber and reads
+  `AGENT WAITING`, because by then the message is about you, not about him.
+- **`drive_desktop` parks.** It stops at the end of the step it is on - inside a
+  `type`, between characters, so a whole word never lands in whatever he just
+  switched to - and then blocks. It does not fail, and it does not queue: a queue
+  that drained on resume would be a burst of clicks into his work.
+- **So does `request_control`.** A paused desktop is not handed to the next agent
+  when the parked run releases. The latch is on the desktop, not on the run.
+- **Waiting is correct.** After ten minutes you are told the desktop is still his
+  and your run is still yours - not that you lost it. Wait again, or go and do
+  something that does not need a screen.
+- **Nothing you can call resumes it.** There is deliberately no MCP verb, because
+  a pause an agent can undo is a suggestion.
+
+Your `set_activity` still writes the strip while parked, and it is worth using:
+"waiting to finish the settings walkthrough" is what tells him what resuming
+costs him.
 
 Why not `confirm_action` for this: a card is answered and gone, which leaves
 nothing on screen for the minutes you then spend driving. That gap is what makes

@@ -75,10 +75,14 @@
   // with it: the message has genuinely changed, and a counter quietly climbing
   // is not a thing anybody reads.
   const heldMs = $derived(base.held + elapsed);
-  const warm = $derived(paused && heldMs > 120000);
   // Paused with nobody behind it: he latched an idle desktop, or the agent gave
   // up while he held it. Different sentence, different button.
   const idle = $derived(paused && !run?.waiting);
+  // And no escalation at all in that case. The warm state's whole content is
+  // "somebody is blocked on you", so with nobody parked it says a thing that is
+  // not true - which is how it read on screen at 2m50s with the run released:
+  // an amber AGENT WAITING over a line explaining that nothing is driving.
+  const warm = $derived(paused && !idle && heldMs > 120000);
 
   function deny() {
     bridge.controlDeny(run?.id ?? "").catch(() => {});
