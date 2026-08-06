@@ -106,7 +106,11 @@ focused fullscreen window above the ABOVE layer, not above the notification
 layer. Left unfixed on purpose and put to Boris, because the failure is in the
 safe direction (the guarantee is over-kept, not broken) and the fix - hide the
 strip rather than lower it - risks taking the keyboard back on the remap, which
-would be worse than a card over a film.
+would be worse than a card over a film. **Boris: "leave it, it's the safe
+direction."** What he asked for instead is FR94: a way to pause a hands-off run
+and resume it, for the moments he suddenly needs the mouse. A run is binary
+today, so the only thing he can do is reach for it anyway - which is the
+collision FR74 exists to prevent.
 
 **The `xdg-open` fallback, exercised.** Never seen before because this machine
 has `goland` on PATH. Run against four real PATHs rather than a stubbed one:

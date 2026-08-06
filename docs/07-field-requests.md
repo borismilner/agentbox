@@ -2649,6 +2649,55 @@ is never written down is a control that does not exist.
 
 ---
 
+## FR94 [field] Take the keyboard back mid-run, without ending the run
+
+**Session.** 2026-08-06, session 49, straight after watching FR74's marker.
+Boris: *"during hands-off I must be able to pause the hands-off and resume it
+when I suddenly need the keyboard or mouse urgently."*
+
+**What AgentBox cannot do.** A run is binary. An agent holds the desktop from
+`request_control` to `release_control`, and for that whole stretch its
+`drive_desktop` calls own the pointer and the keyboard. There is no way for
+Boris to take them back for thirty seconds and hand them straight back. The
+strip says HANDS OFF and means it.
+
+**What he does instead.** Reaches for the mouse anyway, which is the failure
+the whole feature exists to prevent: his click and the agent's click interleave
+and neither of them knows. The alternative is worse - waiting for a run he did
+not schedule, or killing it and losing whatever multi-step sequence was half
+done.
+
+**The shape.** A run gains a third state between held and released:
+
+- **Paused is instant and reachable while an agent is typing.** That rules out
+  anything needing focus. A global X11 hotkey grab (`XGrabKey` on the root
+  window) is the obvious candidate, and the strip itself is the other - it is
+  always on screen and always on top, so a click on it is a target that exists
+  by construction. Probably both.
+- **Paused must actually stop the input**, not just ask nicely. `drive_desktop`
+  blocks (or refuses with a retryable error saying paused) rather than queuing,
+  because a queue that drains on resume is a burst of clicks into whatever he
+  left on screen.
+- **The agent has to learn it, and wait rather than fail.** The natural shape is
+  the one `acquire_lock` already has: block until it can proceed, with a timeout,
+  and say who is holding it. A run that dies because its human needed the mouse
+  is a worse outcome than a run that waits.
+- **The strip says which state it is in**, and the paused wording has to be the
+  one Boris reads at a glance - the sign's whole job is that the desktop's owner
+  is never ambiguous. Amber for held, something else for paused.
+- **Resume is his**, and only his. An agent must not be able to un-pause itself,
+  or the pause is a suggestion.
+
+**Open questions for the mock.** Whether a pause auto-resumes after some
+idle period (a pause he forgets about strands the agent), what happens to a
+`drive_desktop` already in flight when the hotkey fires, and whether pause is
+per-run or a desktop-wide state that any waiting agent respects.
+
+Related: FR74 (the strip and its guarantee), and `internal/webui/control.go`
+plus the desktop lock in the daemon are where a run's state lives today.
+
+---
+
 ## Mechanics discovered
 
 Verified facts from field sessions, kept so a later session does not re-derive

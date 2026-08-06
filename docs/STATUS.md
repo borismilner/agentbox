@@ -914,7 +914,15 @@ items nothing else records.
    FR74): the failure is in the safe direction - the guarantee is over-kept, not
    broken - and the fix is to hide the strip rather than lower it, which risks
    taking the keyboard back on the remap. That would be a worse defect than a
-   card over a film.
+   card over a film. **Boris decided on 2026-08-06: leave it, it is the safe
+   direction.** What he asked for instead is FR94.
+1b. **FR94 - take the keyboard back mid-run.** Filed 2026-08-06, the only open
+   field request. A run is binary today, so there is no way for Boris to
+   interrupt a hands-off run for thirty seconds when he urgently needs the
+   mouse, and short of killing the run he reaches for it anyway - the exact
+   collision FR74 exists to prevent. Needs a mock first (the working rule at the
+   top of [07-field-requests.md](07-field-requests.md)); the shape and the open
+   questions are in the FR94 entry.
 2. **The re-record.** Boris has said go on a from-scratch re-record and
    re-upload (the uploaded take is missing the slide-11 progress bar AND
    wears the old brand end to end); scheduling is his call, ~21 minutes of
