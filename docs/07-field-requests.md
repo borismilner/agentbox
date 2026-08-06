@@ -1087,6 +1087,18 @@ the other place a surface reaches out of agentbox.
    covers GUI launchers and `xdg-open` is the last resort (which loses the line
    and says so). A terminal editor is still reachable by writing the terminal
    into the template: `["kitty", "-e", "nvim", "+{line}", "{file}"]`.
+
+   **All four rungs exercised against real PATHs, 2026-08-06** (session 49; until
+   then only the first two had ever run, because this machine has `goland` on
+   PATH and detection stopped there). With `/usr/bin` alone visible the second
+   rung picks `subl`; with only `xdg-open` reachable the argv comes back as
+   `["xdg-open", FILE]` with no line in it; with nothing at all it is the honest
+   `no editor found; set editor.command in config.toml`. The fallback's own
+   launch was then run the way `editor.Start` runs it - through `systemd-run
+   --user --scope --collect` - and this desktop hands a `.go` file to Zed, which
+   opened at `1:1`. Note that `zed` is itself in the known table, so the line
+   survives on a machine where its binary is on PATH; only the desktop-handler
+   route drops it.
 3. **Opening a project the IDE does not already have raises a modal.** GoLand
    asks "This Window / New Window / Attach" before it does anything, so the first
    open into a cold project is two clicks and the file lands in a background tab

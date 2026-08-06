@@ -563,7 +563,18 @@ agentbox webui-demo panel                  # the drop-down console with a canned
 - **The authoring standard** an agent reads before writing one is
   `internal/manual/walkthrough.md`, embedded and served three ways (MCP resource
   `agentbox://standards/walkthrough`, the `walkthrough_standard` prompt, and
-  `agentbox docs walkthrough`).
+  `agentbox docs walkthrough`). 56 rules, contiguously numbered since session 49.
+  It was tested against a real change that session - authored blind, then audited
+  rule by rule - and five defects came out of it: a hole where rules 13-16 used to
+  be, a rule demanding fields it never named, `tldr` and `domains` missing from
+  every field reference an agent reaches, a domain count that said two things, and
+  an instruction ("say what you did not verify next to the gate") the validator
+  refuses. All five are fixed; the review that found them is `w5bd381d0590a`, and
+  session 49 of [history.md](history.md) has the list. **Two findings are still
+  open:** nothing verifies the completeness claim rule 49 demands (the capture log
+  counts citations and never compares them against the diff's changed set), and
+  nothing in the standard says what changes when the reader is the code's own
+  author, which is the normal case in this repo.
 
 ## Tests
 
