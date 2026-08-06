@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -622,4 +623,30 @@ func TestResumingBeforeTheNagCancelsIt(t *testing.T) {
 		t.Error("a card was raised for a pause that had already ended")
 	case <-time.After(50 * time.Millisecond):
 	}
+}
+
+func TestTheNagDoesNotRaceTheActivityLineItQuotes(t *testing.T) {
+	// The card quotes what the run was doing, and `activity` is the one field of
+	// a run that changes after it is built - the agent keeps rewriting it while
+	// parked. Under -race this fails if nag reads it outside the lock.
+	c, _ := newTestControl()
+	c.SetNag(func(string, string, []proto.Action) {})
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	c.Pause("the hotkey")
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := range 200 {
+			c.Activity(agentA, "step "+strconv.Itoa(i))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range 200 {
+			c.nag()
+		}
+	}()
+	wg.Wait()
 }

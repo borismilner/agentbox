@@ -384,18 +384,27 @@ func (c *control) SetNag(fn func(title, body string, actions []proto.Action)) {
 // forgotten, and a card telling him an agent is waiting when none is would be
 // the same lie the strip's warm state was caught telling.
 func (c *control) nag() {
+	// Everything the card needs is copied out under the lock, activity included.
+	// It is the one field of a run that changes after construction - the agent
+	// rewrites it through Activity while parked - so reading it from the timer's
+	// goroutine afterwards would be a genuine race, unlike identity, which never
+	// moves.
 	c.mu.Lock()
 	paused, run, with := c.paused, c.run, c.nagWith
 	held := time.Since(c.pausedAt)
 	c.nagTimer = nil
+	agentName, activity := "", ""
+	if run != nil {
+		agentName, activity = run.identity.Agent, run.activity
+	}
 	c.mu.Unlock()
 	if !paused || run == nil || with == nil {
 		return
 	}
 
-	agent := nameOr(run.identity.Agent, "an agent")
+	agent := nameOr(agentName, "an agent")
 	c.log.Info(logging.EvControl, "component", "daemon", "control", "nagged",
-		"agent", run.identity.Agent, "paused_s", int(held.Seconds()))
+		"agent", agentName, "paused_s", int(held.Seconds()))
 	// One button, and it is the one that undoes this. There is deliberately no
 	// "end the run" here: the agent gives up on its own at pauseWait and is told
 	// its run survived, which is a gentler end than cutting it off mid-sequence,
@@ -406,7 +415,7 @@ func (c *control) nag() {
 		fmt.Sprintf("It is waiting on your desktop, part way through a run%s. "+
 			"It gives up on its own in %s - the run survives, it just stops waiting. "+
 			"Resume whenever you are done; nothing resumes it but you.",
-			activitySuffix(run.activity), roundDur(pauseWait-held)),
+			activitySuffix(activity), roundDur(pauseWait-held)),
 		[]proto.Action{{Label: "Resume now", Exec: "agentbox control resume"}},
 	)
 }
