@@ -1,0 +1,1029 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>FR95 - get the strip out of a screen recording</title>
+<style>
+  :root {
+    --ground: #0f1116;
+    --surface: #161920;
+    --surface2: #1c2028;
+    --surface3: #22262f;
+    --edge: #272c36;
+    --edge-soft: #1f242c;
+    --ink: #e5e8ee;
+    --ink2: #98a0ad;
+    --ink3: #69717e;
+    --accent: #7c8cf8;
+    --success: #4fb286;
+    --warning: #d9a441;
+    --error: #e05c5c;
+    --info: #4fa3e3;
+    --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+    --r: 10px;
+    font-family: "Cantarell", "Ubuntu Sans", system-ui, sans-serif;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    padding: 18px 22px 48px;
+    background: var(--ground);
+    color: var(--ink);
+    font-size: 14px;
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  h2 {
+    margin: 30px 0 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink3);
+  }
+  .lede {
+    margin: 0 0 6px;
+    color: var(--ink2);
+    max-width: 92ch;
+    line-height: 1.55;
+  }
+  .lede b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    color: var(--ink);
+    background: var(--surface2);
+    border: 1px solid var(--edge-soft);
+    border-radius: 4px;
+    padding: 0 4px;
+  }
+
+  /* ---------- layout ---------- */
+  .cols {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .cap {
+    font-size: 11px;
+    color: var(--ink3);
+    margin: 6px 0 0;
+  }
+  .cap b {
+    color: var(--ink2);
+    font-weight: 600;
+  }
+
+  /* ---------- the screen, at exactly 40% of 1920x1200 ---------- */
+  .stage {
+    width: 768px;
+    flex: none;
+  }
+  .screen {
+    position: relative;
+    width: 768px;
+    height: 480px;
+    overflow: hidden;
+    border-radius: 6px;
+    border: 1px solid var(--edge);
+    background: #0b0d12;
+  }
+  .scr .wall {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background:
+      radial-gradient(circle at 26% 34%, rgba(124, 140, 248, 0.12), transparent 52%),
+      radial-gradient(circle at 78% 74%, rgba(79, 178, 134, 0.09), transparent 55%),
+      linear-gradient(155deg, #10141d, #0c0f16);
+  }
+  /* GNOME's own top bar, 32 real px. It is here because the demoted marker's
+     first open question was whether it is even visible against this. */
+  .scr .topbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 13px;
+    z-index: 3;
+    background: #222;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 7px;
+    color: #cfd3da;
+  }
+  .scr .topbar .recdot {
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--error);
+  }
+  /* the window the agent is driving */
+  .scr .app {
+    position: absolute;
+    left: 96px;
+    top: 96px;
+    width: 520px;
+    height: 300px;
+    z-index: 2;
+    background: var(--surface);
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.85);
+    overflow: hidden;
+  }
+  .scr .app .bar {
+    height: 16px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px;
+    font-size: 8px;
+    color: var(--ink3);
+    background: var(--surface2);
+    border-bottom: 1px solid var(--edge);
+  }
+  .scr .app .bar i {
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--edge);
+  }
+  .scr .app .body {
+    padding: 7px 8px;
+    font-family: var(--mono);
+    font-size: 7.5px;
+    line-height: 1.7;
+    color: var(--ink2);
+  }
+  /* the fullscreen window: a film, a slide deck, the thing being recorded */
+  .scr .fsapp {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: linear-gradient(160deg, #131a2c, #0d1220 60%, #161d31);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink3);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+  /* the marker. 4 real pixels, drawn at 2 because this stage is at 40%. */
+  .scr .mark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--warning);
+    animation: breathe 2.6s ease-in-out infinite;
+  }
+  /* Demoted is the whole point: BELOW the fullscreen window (z 5), above the top
+     bar (z 3), which is exactly what today's measurement says is possible. Integers
+     only - a fractional z-index is dropped, and the layering IS the argument. */
+  .scr .mark.demoted {
+    z-index: 4;
+  }
+  /* And loud is today's marker, with the notification type still on it: above
+     everything, which is why session 49 could never make a fullscreen window
+     cover it. */
+  .scr .mark.loud {
+    z-index: 7;
+  }
+  .scr .mark.paused {
+    background: var(--success);
+  }
+  @keyframes breathe {
+    50% {
+      opacity: 0.45;
+    }
+  }
+  /* the strip, 620x62 real */
+  .scr .strip {
+    position: absolute;
+    z-index: 9;
+    top: 17px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 248px;
+    height: 25px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 6px;
+    font-size: 7px;
+    border-radius: 4px;
+    background: var(--surface);
+    border: 1px solid var(--warning);
+    border-left: 2px solid var(--warning);
+    color: var(--ink);
+  }
+  .scr .strip .dot {
+    width: 4px;
+    height: 4px;
+    flex: none;
+    border-radius: 999px;
+    background: var(--warning);
+  }
+  .scr .strip .lbl {
+    flex: none;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--warning);
+  }
+  .scr .strip .what {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink2);
+  }
+  .scr .strip .bt {
+    flex: none;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: var(--ink2);
+  }
+  .scr .strip.paused {
+    border-color: var(--success);
+    border-left-color: var(--success);
+    background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  }
+  .scr .strip.paused .dot,
+  .scr .strip.paused .lbl {
+    color: var(--success);
+    background: none;
+  }
+  .scr .strip.paused .dot {
+    background: var(--success);
+  }
+  .scr .strip.paused .bt {
+    border-color: var(--success);
+    background: var(--success);
+    color: #0d1018;
+    font-weight: 700;
+  }
+  .scr .strip.paused .what {
+    font-style: italic;
+    color: var(--ink3);
+  }
+  /* FR94's three-minute card, in the same column the strip sits in */
+  .scr .nag {
+    position: absolute;
+    z-index: 8;
+    top: 46px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    padding: 5px 7px;
+    border-radius: 4px;
+    font-size: 7px;
+    background: var(--surface2);
+    border: 1px solid var(--warning);
+    border-left: 2px solid var(--warning);
+  }
+  .scr .nag b {
+    color: var(--warning);
+    font-size: 6.5px;
+    letter-spacing: 0.07em;
+  }
+  .scr .nag .row {
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--ink2);
+  }
+  .scr .nag .bt {
+    margin-left: auto;
+    border: 1px solid var(--warning);
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: var(--warning);
+  }
+
+  /* ---------- the exported frame ---------- */
+  /* recside, not rec: the badge modifier is .tag.rec, and a bare .rec here put
+     this column's width:320px onto every RECOMMENDED badge on the page. Two
+     unrelated things wearing one class name, and only the screen showed it. */
+  .recside {
+    flex: none;
+    width: 320px;
+  }
+  .recframe {
+    position: relative;
+    width: 307px;
+    height: 192px;
+    overflow: hidden;
+    border-radius: 4px;
+    border: 1px solid var(--error);
+  }
+  .recframe .inner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 768px;
+    height: 480px;
+    transform: scale(0.4);
+    transform-origin: top left;
+  }
+  .recframe .badge {
+    position: absolute;
+    z-index: 20;
+    right: 4px;
+    bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 8px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+  }
+  .recframe .badge i {
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--error);
+  }
+  .verdict {
+    margin-top: 8px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    padding: 7px 9px;
+    border-radius: 7px;
+    background: var(--surface);
+    border: 1px solid var(--edge);
+    color: var(--ink2);
+  }
+  .verdict.bad {
+    border-color: var(--error);
+  }
+  .verdict.good {
+    border-color: var(--success);
+  }
+  .verdict b {
+    color: var(--ink);
+  }
+
+  /* ---------- stage bar ---------- */
+  .stagebar {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+  }
+  button.act {
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 11px;
+    border-radius: 7px;
+    background: var(--surface2);
+    border: 1px solid var(--edge);
+    color: var(--ink);
+  }
+  button.act:hover {
+    border-color: var(--ink3);
+  }
+  button.act.hot {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  button.act.on {
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface2));
+    border-color: var(--accent);
+    color: var(--ink);
+  }
+  .hint {
+    font-size: 11.5px;
+    color: var(--ink3);
+  }
+
+  /* ---------- measured facts ---------- */
+  .facts {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-width: 104ch;
+  }
+  .facts li {
+    display: flex;
+    gap: 9px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--edge-soft);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink2);
+  }
+  .facts li:last-child {
+    border-bottom: 0;
+  }
+  .facts .k {
+    flex: none;
+    width: 78px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    padding-top: 2px;
+  }
+  .facts .k.yes {
+    color: var(--success);
+  }
+  .facts .k.no {
+    color: var(--error);
+  }
+  .facts .k.open {
+    color: var(--warning);
+  }
+  .facts b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* ---------- decisions ---------- */
+  .q {
+    margin-bottom: 18px;
+  }
+  .q.moot {
+    opacity: 0.45;
+  }
+  .q > .qh {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+  .q > .qs {
+    font-size: 12px;
+    color: var(--ink2);
+    margin-bottom: 8px;
+    max-width: 92ch;
+    line-height: 1.5;
+  }
+  .q > .qs em {
+    color: var(--warning);
+    font-style: normal;
+  }
+  .opts {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .opt {
+    width: 258px;
+    flex: none;
+    cursor: pointer;
+    padding: 9px 11px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--edge);
+  }
+  .opt:hover {
+    border-color: var(--ink3);
+  }
+  .opt.on {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  }
+  /* Plain inline layout, deliberately not flex. As a flex row this header put the
+     title in a 41px column one word per line: the tag's base size came out at
+     320px inside the card and 89px anywhere else, the title had the only
+     flex-shrink in the row, and it lost. Text and a badge flowing as text cannot
+     collapse like that, and the header needs nothing flex was buying. */
+  .opt .oh {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .opt .tick {
+    display: inline-block;
+    vertical-align: -1px;
+    width: 11px;
+    height: 11px;
+    margin-right: 6px;
+    border-radius: 999px;
+    border: 1px solid var(--ink3);
+  }
+  .opt.on .tick {
+    border-color: var(--accent);
+    background: var(--accent);
+    box-shadow: inset 0 0 0 2.5px var(--surface);
+  }
+  .opt .oc {
+    margin-top: 5px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--ink2);
+  }
+  .opt .oc b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .tag {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    padding: 1px 5px;
+    border-radius: 999px;
+  }
+  .tag.rec {
+    color: var(--success);
+    border: 1px solid var(--success);
+  }
+  .tag.new {
+    color: var(--info);
+    border: 1px solid var(--info);
+  }
+
+  .settle {
+    margin-top: 22px;
+    max-width: 1100px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .settle textarea {
+    flex: 1 1 420px;
+    min-height: 54px;
+    resize: vertical;
+    font: inherit;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--edge);
+    color: var(--ink);
+  }
+  button.send {
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 20px;
+    border-radius: 8px;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #0d1018;
+  }
+  .sent {
+    color: var(--success);
+    font-size: 12px;
+  }
+  .foot {
+    margin-top: 26px;
+    padding-top: 14px;
+    border-top: 1px solid var(--edge-soft);
+    color: var(--ink3);
+    font-size: 11.5px;
+    line-height: 1.6;
+    max-width: 100ch;
+  }
+</style>
+
+<h1>FR95 - get the strip out of a screen recording</h1>
+<p class="lede">
+  You asked for the hands-off panel to be hidable while recording, and settled the
+  shape the same day: <b>demoted, not hidden</b>, down to FR74's four-pixel marker,
+  and the demoted marker gives up being top-most so a window can cover it.
+  <b>Drive the stage.</b> The frame on the right is what the recording exports.
+  Four questions at the bottom; the fourth is one this mock turned up. Nothing here
+  is built.
+</p>
+
+<h2>The stage</h2>
+<div class="cols">
+  <div class="stage">
+    <div class="screen scr" id="screen"></div>
+    <div class="stagebar">
+      <button class="act hot" id="demote">Demote to the marker</button>
+      <button class="act" id="fs">Go fullscreen</button>
+      <button class="act" id="pause">Pause the desktop</button>
+      <button class="act" id="nag">Agent has waited 3 min</button>
+      <button class="act" id="reset">Reset</button>
+    </div>
+    <p class="cap">
+      <b>This stage is 1920x1200 at 40%</b>, so everything is to scale: the strip is
+      620x62, GNOME's top bar is 32, and the marker's four pixels are drawn as two.
+      That is the argument, at the size the argument actually happens.
+    </p>
+  </div>
+
+  <div class="recside">
+    <div class="recframe">
+      <div class="inner scr" id="recinner"></div>
+      <div class="badge"><i></i> REC 00:41</div>
+    </div>
+    <div class="verdict" id="verdict"></div>
+    <p class="cap" id="queued"></p>
+  </div>
+</div>
+
+<h2>Measured on your desktop today, not assumed</h2>
+<ul class="facts">
+  <li>
+    <span class="k yes">VISIBLE</span>
+    <span
+      >A frameless 4px window at <code>+0+0</code> <b>is visible over GNOME's top
+      bar</b> with no notification type and no <code>_NET_WM_STATE_ABOVE</code> at
+      all. This was the risk that could have killed the whole shape: if the shell's
+      own bar drew over it, a demoted marker would be no sign at all, which is the
+      one wrong answer FR74 names.</span
+    >
+  </li>
+  <li>
+    <span class="k no">NEVER</span>
+    <span
+      >Today's marker keeps the <b>notification type</b>, and session 49 already
+      proved a notification window cannot be pushed under a fullscreen one
+      (<code>x.lower()</code> is called and Mutter ignores it). Re-measured today
+      and unchanged. So <b>the only way to make the sign coverable is to give up
+      that window type</b>, which is exactly the relaxation you asked for.</span
+    >
+  </li>
+  <li>
+    <span class="k open">OPEN</span>
+    <span
+      >Whether AgentBox's own marker window, with the type dropped, is then covered
+      by a fullscreen window. A bare probe window would not go under one however it
+      was hinted, so the probe is not a faithful stand-in for the real Wails window:
+      this gets answered <b>by building it and watching it</b>, at the top of the
+      build, before anything is designed around it.</span
+    >
+  </li>
+  <li>
+    <span class="k no">TRAP</span>
+    <span
+      >Two ways this measurement lies, both hit today.
+      <code>import -window root</code> <b>cannot see a fullscreen window at all</b>
+      (Mutter unredirects it, so the root pixmap still holds what is underneath) -
+      use <code>gnome-screenshot</code>. And while an agent holds the desktop, a
+      fullscreen window makes <b>AgentBox open its own marker at +0+0</b>, so
+      anything measured at the top edge mid-run is measuring AgentBox.</span
+    >
+  </li>
+</ul>
+
+<h2>The four questions</h2>
+<div id="questions"></div>
+
+<div class="settle">
+  <textarea id="note" placeholder="Anything the options miss (optional)"></textarea>
+  <button class="send" id="send">Settle it</button>
+  <span class="sent" id="sentmsg"></span>
+</div>
+
+<div class="foot">
+  <b>Where this lands if it is built.</b> Small, and that is the point of reusing
+  FR74's answer. <code>internal/webui/control.go</code> already has
+  <code>openMark</code>, the keeper and the step-aside rule in
+  <code>planMark</code>; demoted mode is a second reason to open the marker and a
+  flag that says "map it and leave it alone" (no <code>prepare(xid, true)</code>,
+  no <code>above</code>, no <code>raise</code> on the beat).
+  <code>internal/daemon/control.go</code> holds the mode beside FR94's latch so
+  both can be true at once. <code>frontend/src/surfaces/Mark.svelte</code> gains
+  the paused colour. <b>What FR74 already does for free:</b> whenever the focused
+  window is fullscreen the strip steps aside to the marker today, with no
+  recording mode at all. What FR95 adds is the marker <i>without</i> fullscreen,
+  and a marker that a fullscreen window can cover.
+</div>
+
+<script>
+  const S = {
+    mode: "loud", // loud | demoted
+    fs: false,
+    paused: false,
+    nag: false,
+    trigger: "hotkey",
+    persist: "fuse",
+    pausecol: "colour",
+    cards: "queue",
+  };
+
+  const ACT = "typing the descriptor table into settings.go";
+
+  // ---------- the screen ----------
+  // One renderer for the desktop and for the exported frame, because the whole
+  // question is whether those two differ.
+  function screenHTML() {
+    const demoted = S.mode === "demoted";
+    // FR74 today: a fullscreen window already sends the strip away and puts the
+    // marker up. So the strip is on screen only when nothing is fullscreen AND we
+    // are not demoted - except under the un-demote answer to the pause question.
+    const undemoted = S.paused && S.pausecol === "undemote";
+    const showStrip = (!demoted || undemoted) && !S.fs;
+    const showMark = !showStrip && !(demoted && S.paused && S.pausecol === "nothing");
+    // Demoted gives up the fight. Loud keeps the notification type, which is what
+    // no fullscreen window has ever been able to cover.
+    const markClass = demoted && !undemoted ? "demoted" : "loud";
+    const cardsOK = S.cards === "unaffected" || !demoted || S.cards === "urgent";
+
+    let h = '<div class="wall"></div>';
+    if (!S.fs) {
+      h += `<div class="topbar"><span class="recdot"></span>17:41</div>
+        <div class="app">
+          <div class="bar"><i></i><i></i><i></i> settings.go - agentbox</div>
+          <div class="body">
+            // the knobs the recording mode would add<br />
+            descriptors := []knob{<br />
+            &nbsp;&nbsp;{key: "control.recording", kind: kindBool},<br />
+            &nbsp;&nbsp;{key: "control.pause_hotkey", kind: kindKeys},<br />
+            &nbsp;&nbsp;{key: "control.quiet_hotkey", kind: kindKeys},<br />
+            }<br /><br />
+            func (c *control) demote() {<br />
+            &nbsp;&nbsp;// map it and leave it alone: no prepare,<br />
+            &nbsp;&nbsp;// no above, no raise on the beat<br />
+            &nbsp;&nbsp;c.openMark(c.stripMon())<br />
+            }
+          </div>
+        </div>`;
+    } else {
+      h += '<div class="fsapp">a fullscreen window: the thing being recorded</div>';
+    }
+    if (showMark)
+      h += `<div class="mark ${markClass}${S.paused && S.pausecol === "colour" ? " paused" : ""}"></div>`;
+    if (showStrip) {
+      const p = S.paused;
+      h += `<div class="strip${p ? " paused" : ""}">
+        <span class="dot"></span>
+        <span class="lbl">${p ? "PAUSED - YOURS" : "HANDS OFF"}</span>
+        <span class="what">${p ? ACT : ACT}</span>
+        <span class="bt">${p ? "Resume" : "Pause"}</span>
+      </div>`;
+    }
+    if (S.nag && cardsOK)
+      h += `<div class="nag"><b>AGENTBOX</b>
+        <div class="row">claude has been parked for 3m0s<span class="bt">Resume now</span></div>
+      </div>`;
+    return h;
+  }
+
+  function render() {
+    const h = screenHTML();
+    document.getElementById("screen").innerHTML = h;
+    document.getElementById("recinner").innerHTML = h;
+
+    const demoted = S.mode === "demoted";
+    const undemoted = S.paused && S.pausecol === "undemote";
+    const stripInShot = (!demoted || undemoted) && !S.fs;
+    const markInShot =
+      !stripInShot && !(demoted && S.paused && S.pausecol === "nothing")
+        ? !(demoted && !undemoted && S.fs)
+        : false;
+    const nagInShot = S.nag && (S.cards === "unaffected" || !demoted || S.cards === "urgent");
+
+    const v = document.getElementById("verdict");
+    if (stripInShot || nagInShot) {
+      v.className = "verdict bad";
+      v.innerHTML = stripInShot
+        ? "<b>620x62 of AgentBox in every frame.</b> This is what you record today, and why you either pin a card over the top of the shot or do not run an agent while recording."
+        : "<b>A card in the frame.</b> The strip is gone but the queue is not: FR94's own nag lands in the same column the strip was in.";
+    } else if (markInShot) {
+      v.className = "verdict";
+      v.innerHTML =
+        "<b>Four pixels, top edge.</b> Crops out of most recordings and reads as a window-manager accent in the rest. The sign has not lapsed: an agent IS driving, and a viewer of this recording arguably needs to know it more than you do.";
+    } else if (demoted && S.fs) {
+      v.className = "verdict good";
+      v.innerHTML =
+        "<b>Nothing of AgentBox in the frame.</b> The demoted marker stopped fighting for the top, so the fullscreen window covers it. This is the case the guarantee is deliberately weaker in, because you asked for it to be.";
+    } else {
+      // The one case that is clean for the wrong reason: no marker anywhere,
+      // nothing covering it, and an agent parked behind the latch.
+      v.className = "verdict bad";
+      v.innerHTML =
+        "<b>No sign at all - and nothing is covering it.</b> The frame is clean because there is nothing to see, on your screen either, while an agent is parked waiting for you. That is the answer FR74 names as the wrong one; it is on the table only because a pause is your own doing.";
+    }
+
+    const q = document.getElementById("queued");
+    q.textContent =
+      S.nag && !nagInShot
+        ? "1 card held back while demoted. It appears the moment you go loud again."
+        : "";
+
+    document.getElementById("demote").textContent = demoted ? "Restore the strip" : "Demote to the marker";
+    document.getElementById("demote").classList.toggle("on", demoted);
+    document.getElementById("fs").classList.toggle("on", S.fs);
+    document.getElementById("pause").classList.toggle("on", S.paused);
+    document.getElementById("nag").classList.toggle("on", S.nag);
+    renderQs();
+  }
+
+  // ---------- questions ----------
+  const QS = [
+    {
+      key: "trigger",
+      head: "What turns recording mode on?",
+      sub:
+        "It has to be reachable a second before you hit record, and it has to come back off. Nothing here needs a new mechanism except the last one.",
+      opts: [
+        {
+          id: "hotkey",
+          name: "A hotkey, and the same verb in the shell",
+          rec: true,
+          copy:
+            "<code>agentbox control quiet</code> / <code>loud</code>, plus a key in the <code>Ctrl+Alt</code> family (no Super: GNOME swallows every Super combination silently). Works in both directions, works with no window focused, and it is one line in a recording script. Its one weakness is being left on, which is what the next question is for.",
+        },
+        {
+          id: "strip",
+          name: "A button on the strip",
+          copy:
+            "Discoverable, and the strip is the one target that always exists while a run is live - the same argument that put FR94's Pause button there. But it is one-way: once demoted there is no strip left to click, so this needs the hotkey anyway to get back.",
+        },
+        {
+          id: "knob",
+          name: "A config knob",
+          copy:
+            "<code>[control] recording = true</code>. Greppable and explicit, and it survives everything - including the recording it was set for. A knob you set for one demo is a knob that is still set next week.",
+        },
+        {
+          id: "auto",
+          name: "By itself, when a recorder is running",
+          copy:
+            "Nothing to remember in either direction. GNOME's own recorder announces itself on D-Bus so that half is exact; OBS and <code>ffmpeg</code> do not, so the rest is process-name guessing that misses whatever you use next. And it takes the choice away in the one case where you WANT the strip in the shot: recording a walkthrough of AgentBox itself.",
+        },
+      ],
+    },
+    {
+      key: "persist",
+      head: "Does it survive a restart?",
+      sub:
+        "A recording mode left on after the recording is a hands-off sign nobody can see. <em>Sharper now that the marker can be covered: forgotten-on means no visible sign at all, not a thin one.</em>",
+      opts: [
+        {
+          id: "fuse",
+          name: "No, and it expires on its own",
+          rec: true,
+          copy:
+            "It lives in the daemon, dies with it, and additionally times out back to loud after <b>30 minutes</b>. Two independent ways for a forgotten mode to heal, and neither needs you to remember anything. A recording longer than half an hour re-arms with one key.",
+        },
+        {
+          id: "session",
+          name: "No, but no timer either",
+          copy:
+            "Dies with the daemon and with nothing else. The daemon runs for days at a time, so a mode set on Monday is still on on Friday - which is the failure this question exists to avoid.",
+        },
+        {
+          id: "config",
+          name: "Yes, it is a knob in the config",
+          copy:
+            "Survives restarts by construction. Right for a machine that is always recording, wrong for a laptop that records once a fortnight.",
+        },
+      ],
+    },
+    {
+      key: "pausecol",
+      head: "A paused, recording desktop has two things to say in four pixels.",
+      sub:
+        "FR94 added a second state the sign has to carry. Amber means an agent is driving; paused means you took the desktop back and an agent is parked behind the latch.",
+      opts: [
+        {
+          id: "colour",
+          name: "Colour carries it",
+          rec: true,
+          copy:
+            "Amber driving, <b>green paused</b>, accent while an agent is still asking. The marker already switches to accent for asking, so this is one more case of a rule that is there. Four pixels of green is still four pixels: nothing changes about the recording.",
+        },
+        {
+          id: "nothing",
+          name: "Nothing at all while paused",
+          copy:
+            "The desktop is yours, by your own action, so there is nothing to warn you off. Defensible - and it drops the only visible trace that an agent is parked. FR94's nag card is then the sole reminder, and the next question decides whether that card is even allowed on screen.",
+        },
+        {
+          id: "undemote",
+          name: "Pausing brings the strip back",
+          copy:
+            "You took the desktop, so the sign can afford to be loud again. It puts 620x62 back in the shot at the exact moment you paused to say something to camera, which is the collision this feature exists to remove.",
+        },
+      ],
+    },
+    {
+      key: "cards",
+      head: "The strip is not the only thing AgentBox puts over a recording.",
+      sub:
+        "Found while mocking this. FR94's three-minute nag is a card in the same top-centre column, and so is every notify_user. Demoting the strip and leaving the column alone means the recording is clean until the moment an agent has something to say.",
+      isNew: true,
+      opts: [
+        {
+          id: "queue",
+          name: "Demoting silences the column too",
+          rec: true,
+          copy:
+            "Cards queue instead of appearing, and drain the moment you go loud. Nothing is lost, the inbox still has them, and the earcon still plays so you know one arrived. Cost: an urgent card waits for you rather than interrupting.",
+        },
+        {
+          id: "urgent",
+          name: "Only urgent gets through",
+          copy:
+            "The levels are already there. But urgent is the one level that also speaks out loud, so a recording with audio gets it anyway - and the card is in the shot for its whole life.",
+        },
+        {
+          id: "unaffected",
+          name: "Cards are unaffected",
+          copy:
+            "Recording mode is about the strip, and nothing else changes. Simplest to build and to explain, and it means a long demo has an even chance of an AgentBox toast in it.",
+        },
+      ],
+    },
+  ];
+
+  function renderQs() {
+    const host = document.getElementById("questions");
+    host.innerHTML = QS.map((q) => {
+      // The trigger answers this one: a mode that follows the recorder cannot be
+      // left on, so persistence stops being a question at all.
+      const moot = q.key === "persist" && S.trigger === "auto";
+      return `
+      <div class="q ${moot ? "moot" : ""}">
+        <div class="qh">${q.head}${q.isNew ? ' <span class="tag new">mock found it</span>' : ""}</div>
+        <div class="qs">${
+          moot
+            ? "Answered by the trigger above: a mode that follows the recorder goes off when the recorder does, and there is nothing to forget."
+            : q.sub
+        }</div>
+        <div class="opts">
+          ${q.opts
+            .map(
+              (o) => `
+            <div class="opt ${S[q.key] === o.id ? "on" : ""}" data-q="${q.key}" data-o="${o.id}">
+              <div class="oh"><span class="tick"></span><span class="nm">${o.name}</span>
+                ${o.rec ? '<span class="tag rec">recommended</span>' : ""}</div>
+              <div class="oc">${o.copy}</div>
+            </div>`,
+            )
+            .join("")}
+        </div>
+      </div>`;
+    }).join("");
+    host.querySelectorAll(".opt").forEach((el) => {
+      el.onclick = () => {
+        S[el.dataset.q] = el.dataset.o;
+        render();
+      };
+    });
+  }
+
+  // ---------- stage ----------
+  document.getElementById("demote").onclick = () => {
+    S.mode = S.mode === "loud" ? "demoted" : "loud";
+    render();
+  };
+  document.getElementById("fs").onclick = () => {
+    S.fs = !S.fs;
+    render();
+  };
+  document.getElementById("pause").onclick = () => {
+    S.paused = !S.paused;
+    render();
+  };
+  document.getElementById("nag").onclick = () => {
+    S.nag = !S.nag;
+    render();
+  };
+  document.getElementById("reset").onclick = () => {
+    S.mode = "loud";
+    S.fs = false;
+    S.paused = false;
+    S.nag = false;
+    render();
+  };
+
+  document.getElementById("send").onclick = () => {
+    const payload = {
+      trigger: S.trigger,
+      persist: S.trigger === "auto" ? "follows the recorder" : S.persist,
+      paused_marker: S.pausecol,
+      cards: S.cards,
+      note: document.getElementById("note").value.trim(),
+    };
+    try {
+      window.agentbox && window.agentbox.emit("decide", payload);
+    } catch (err) {
+      /* a plain browser has no bridge; the page still works */
+    }
+    document.getElementById("sentmsg").textContent =
+      "Sent: " +
+      [payload.trigger, payload.persist, payload.paused_marker, payload.cards].join(", ") +
+      ".";
+  };
+
+  render();
+</script>
