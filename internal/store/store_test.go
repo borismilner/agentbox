@@ -474,3 +474,64 @@ func TestReplyStoredSeparately(t *testing.T) {
 		t.Fatalf("got answer=%q reply=%q", recent[0].Answer, recent[0].Reply)
 	}
 }
+
+// Migration 0012's three columns. Speak and diff were written into FR73's
+// read-back and taken out again when the insert turned out not to name them;
+// session_key is the only identity that names one session.
+func TestItemKeepsSessionKeySpeakAndDiff(t *testing.T) {
+	s := openTemp(t)
+	it := proto.Item{
+		ID: "k000000000000001", Kind: proto.KindDiff, Title: "apply this?",
+		Diff:     "--- a/f.go\n+++ b/f.go\n@@ -1 +1 @@\n-old\n+new\n",
+		Speak:    "a patch is waiting for you",
+		Identity: proto.Identity{Agent: "claude", Project: "agentbox", Key: "sk-one"},
+	}
+	if err := s.CreateItem(&it); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("recent = %d items", len(got))
+	}
+	if got[0].Diff != it.Diff {
+		t.Fatalf("diff came back %q", got[0].Diff)
+	}
+	if got[0].Speak != it.Speak {
+		t.Fatalf("speak came back %q", got[0].Speak)
+	}
+	if got[0].Identity.Key != "sk-one" {
+		t.Fatalf("session key came back %q", got[0].Identity.Key)
+	}
+}
+
+func TestRecentBySessionSeesOnlyThatSession(t *testing.T) {
+	s := openTemp(t)
+	mk := func(id, key string) {
+		it := proto.Item{ID: id, Kind: proto.KindNotify, Title: id,
+			Identity: proto.Identity{Agent: "claude", Key: key}}
+		if err := s.CreateItem(&it); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("k000000000000001", "sk-one")
+	mk("k000000000000002", "sk-two")
+	mk("k000000000000003", "sk-one")
+	mk("k000000000000004", "") // pre-0012 shape: no author recorded
+
+	got, err := s.RecentBySession("sk-one", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d items for sk-one, want 2", len(got))
+	}
+	// An empty key is not a wildcard: the rows with no recorded author belong to
+	// no row on the board, and returning them would put them on every row.
+	blank, err := s.RecentBySession("", 10)
+	if err != nil || len(blank) != 0 {
+		t.Fatalf("empty key returned %d items (err %v), want none", len(blank), err)
+	}
+}

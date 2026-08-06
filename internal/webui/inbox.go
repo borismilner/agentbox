@@ -123,14 +123,18 @@ type wireDetail struct {
 	// taken is marked rather than left to a string comparison in the surface.
 	Options []wireDetailOption `json:"options,omitempty"`
 
-	// Two things an agent said are deliberately NOT here, because they are not
-	// there to read: the store's items table carries id, kind, level, title, body,
-	// options, fields, actions, cwd, timeout_s, dflt, identity, state and
-	// created_at, and neither `speak` nor `diff` is a column. A resolved review's
-	// diff and a spoken line are gone with the card, and adding fields for them
-	// here would only promise something the read behind them cannot deliver. FR73
-	// is a reader; persisting them is a schema change and its own field request
-	// (docs/STATUS.md, known gaps).
+	// The two things FR73 had to leave out. They were written into this struct and
+	// taken straight back out, because proto.Item had both fields and the items
+	// table had neither column - a reader promising what the read behind it could
+	// not deliver. Migration 0012 added them, so a resolved review's diff and the
+	// line an agent had spoken are readable now. Items raised before that
+	// migration still have neither, which is honest: the surface omits a block it
+	// has nothing for rather than showing an empty one.
+	Speak string `json:"speak,omitempty"`
+	// Diff is the unified diff a review offered, sent raw. It is not run through
+	// RenderMarkdown: a diff is not markdown, and the surface has a diff renderer
+	// of its own that the card already used.
+	Diff string `json:"diff,omitempty"`
 }
 
 // wireFieldValue is one answered form field: the label it was asked under, not
@@ -295,6 +299,8 @@ func encodeDetail(it store.StoredItem, muted, dark bool) wireDetail {
 		CreatedMS: ms(it.CreatedAt),
 		Answer:    it.Answer,
 		Reply:     it.Reply,
+		Speak:     it.Speak,
+		Diff:      it.Diff,
 	}
 	if !it.ResolvedAt.IsZero() {
 		d.ResolvedAt = clockText(it.ResolvedAt)

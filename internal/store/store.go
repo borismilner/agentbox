@@ -216,10 +216,12 @@ func (s *Store) CreateItem(it *proto.Item) error {
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`INSERT INTO items
-		(id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt, agent, project, session, state, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt, agent, project, session,
+		 session_key, speak, diff, state, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		it.ID, string(it.Kind), string(it.EffectiveLevel()), it.Title, it.Body, string(opts), string(fields),
 		string(actions), it.Cwd, it.TimeoutS, it.Default, it.Identity.Agent, it.Identity.Project, it.Identity.Session,
+		it.Identity.Key, it.Speak, it.Diff,
 		StatePending, now); err != nil {
 		return fmt.Errorf("insert item %s: %w", it.ID, err)
 	}
@@ -286,15 +288,35 @@ func boolInt(b bool) int {
 // a restart (NFR7).
 func (s *Store) Pending() ([]StoredItem, error) {
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
-		agent, project, session, state, answer, reply, form_values, missed_while_away, created_at, resolved_at
+		agent, project, session, session_key, speak, diff,
+		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
 		FROM items WHERE state = ? ORDER BY created_at ASC`, StatePending)
 }
 
 // Recent returns the newest items first, pending or not.
 func (s *Store) Recent(limit int) ([]StoredItem, error) {
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
-		agent, project, session, state, answer, reply, form_values, missed_while_away, created_at, resolved_at
+		agent, project, session, session_key, speak, diff,
+		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
 		FROM items ORDER BY created_at DESC LIMIT ?`, limit)
+}
+
+// RecentBySession returns the newest items one session raised, for the Agents
+// board's opened row. The key is the session key and nothing else will do: the
+// agent/project/session triple is shared by every Claude session in a repo, so
+// matching on it would show a row its neighbour's work.
+//
+// An empty key returns nothing rather than everything. Every item written before
+// migration 0012 carries ”, so a blank key is not a wildcard - it is the rows
+// whose author was never recorded, and they belong to no row on the board.
+func (s *Store) RecentBySession(key string, limit int) ([]StoredItem, error) {
+	if strings.TrimSpace(key) == "" {
+		return nil, nil
+	}
+	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
+		agent, project, session, session_key, speak, diff,
+		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
+		FROM items WHERE session_key = ? ORDER BY created_at DESC LIMIT ?`, key, limit)
 }
 
 func (s *Store) query(q string, args ...any) ([]StoredItem, error) {
@@ -314,6 +336,7 @@ func (s *Store) query(q string, args ...any) ([]StoredItem, error) {
 		var kind, level string
 		if err := rows.Scan(&it.ID, &kind, &level, &it.Title, &it.Body, &opts, &fields, &actions, &it.Cwd, &it.TimeoutS,
 			&it.Default, &it.Identity.Agent, &it.Identity.Project, &it.Identity.Session,
+			&it.Identity.Key, &it.Speak, &it.Diff,
 			&it.State, &answer, &reply, &values, &missed, &created, &resolved); err != nil {
 			return nil, err
 		}

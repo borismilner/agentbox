@@ -2,6 +2,7 @@
   import { bridge } from "../lib/bridge.js";
   import { ticker } from "../lib/clock.svelte.js";
   import { markdown } from "../lib/markdown.svelte.js";
+  import { parseDiff } from "../lib/diff.js";
 
   // The inbox (FR10): everything still waiting, then everything recent. Its
   // real job is triage (FR34) - after a meeting the backlog has to clear in
@@ -33,6 +34,14 @@
   let detFor = $state(null); // the id `det` describes, so a stale reply is dropped
 
   const clock = ticker();
+
+  // A resolved review's diff, parsed only when there is one. null rather than an
+  // empty model so the template can ask one question: an item with no diff and a
+  // diff that parsed to nothing both mean "no block here".
+  const diffModel = $derived.by(() => {
+    const m = det?.diff ? parseDiff(det.diff) : null;
+    return m && m.files.length ? m : null;
+  });
 
   const items = $derived(filter(inbox?.items ?? [], query));
   const pending = $derived(items.filter((i) => i.pending));
@@ -279,6 +288,41 @@
                   <div class="mdbody k-md selectable" use:markdown={det.bodyHtml}>{@html det.bodyHtml}</div>
                 {:else}
                   <p class="none">This one was a title on its own; there was no body.</p>
+                {/if}
+
+                <!-- The diff a review asked about, parsed by the same lib/diff.js
+                     the card used, so the change reads the way it read on screen.
+                     No rail and no keyboard walk: this is a record being read
+                     back, not a review being taken. Items raised before migration
+                     0012 have no diff stored and simply show no block. -->
+                {#if diffModel}
+                  <div class="block">
+                    <span class="label">The change it asked about <em class="stat">+{diffModel.add} −{diffModel.del}</em></span>
+                    <div class="diff mono selectable">
+                      {#each diffModel.files as f}
+                        <div class="dfile">
+                          <span class="dname">{f.name || "(unnamed)"}</span>
+                          {#if f.badge}<em class="flag">{f.badge}</em>{/if}
+                        </div>
+                        {#each f.shown as l}
+                          <div class="dline {l.cls}">{l.text}</div>
+                        {/each}
+                        {#if f.more > 0}
+                          <div class="dline meta">… {f.more} more lines in this file</div>
+                        {/if}
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+
+                {#if det.speak}
+                  <!-- What was said out loud when it arrived. Worth reading back
+                       on its own: a reader who was in the room heard this and not
+                       the title, and a reader who was not never had it at all. -->
+                  <div class="block">
+                    <span class="label">Said out loud</span>
+                    <p class="gave spoken selectable">{det.speak}</p>
+                  </div>
                 {/if}
 
                 {#if det.options?.length}
@@ -663,6 +707,68 @@
     border-left: 2px solid var(--k-edge);
     white-space: pre-wrap;
     color: var(--k-ink-2);
+  }
+  /* Marked as a quotation because it is one: these were words, not a value the
+     reader chose. */
+  .gave.spoken {
+    padding-left: 10px;
+    border-left: 2px solid color-mix(in srgb, var(--k-accent) 45%, transparent);
+    font-style: italic;
+    color: var(--k-ink-2);
+  }
+
+  /* The read-back diff. Scrolls in its own box on both axes: a detail sits inside
+     a row in a list, and a long line of code must not widen the whole surface. */
+  .diff {
+    max-height: 22em;
+    overflow: auto;
+    border: 1px solid var(--k-edge);
+    border-radius: 6px;
+    background: var(--k-surface-2);
+    font-size: 0.78rem;
+    line-height: 1.5;
+  }
+  .stat {
+    margin-left: 6px;
+    font-style: normal;
+    font-family: var(--k-font-mono);
+    font-size: 0.9em;
+    color: var(--k-ink-3);
+  }
+  .dfile {
+    position: sticky;
+    top: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--k-surface);
+    border-bottom: 1px solid var(--k-edge);
+    color: var(--k-ink-2);
+  }
+  .dname {
+    overflow-wrap: anywhere;
+  }
+  .dline {
+    padding: 0 10px;
+    white-space: pre;
+    color: var(--k-ink-2);
+  }
+  .dline.add {
+    background: color-mix(in srgb, var(--k-success) 12%, transparent);
+    color: var(--k-ink);
+  }
+  .dline.del {
+    background: color-mix(in srgb, var(--k-error) 12%, transparent);
+    color: var(--k-ink);
+  }
+  .dline.hunk {
+    color: var(--k-accent);
+    background: color-mix(in srgb, var(--k-accent) 8%, transparent);
+  }
+  .dline.meta {
+    color: var(--k-ink-3);
+    font-style: italic;
   }
 
   .opts {

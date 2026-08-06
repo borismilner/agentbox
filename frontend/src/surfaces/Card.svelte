@@ -3,6 +3,7 @@
   import { bridge, on } from "../lib/bridge.js";
   import { markdown } from "../lib/markdown.svelte.js";
   import { ticker, remaining } from "../lib/clock.svelte.js";
+  import { parseDiff } from "../lib/diff.js";
 
   // The card is the product (03-ui-ux.md): one blocking item, answerable in
   // under two seconds without the mouse. Everything here serves that.
@@ -33,125 +34,13 @@
   const graceIn = $derived(remaining(view?.graceUntilMs, clock.now));
   const canReply = $derived(!item?.strict && (kind === "choice" || kind === "confirm"));
 
-  // A diff is read before it is approved, so it is rendered rather than dumped -
-  // and a unified diff already carries the structure a reader wants: files, then
-  // hunks, then lines. The parser rebuilds that structure (headers become file
-  // sections, a rail lists them once there is more than one) instead of painting
-  // every line the same. Deliberately NOT {@html} - a diff is agent-authored text
-  // and the surfaces' rule is that the only escape from a text node is an
-  // allowlisted field (frontend/policy_test.go).
-  //
-  // Hunk headers carry line counts, and consuming them is what keeps a content
-  // line that happens to start with "---" or "+++" from being read as a file
-  // header - the classic unified-diff ambiguity.
-  const DIFF_CAP = 400;
+  // A diff is read before it is approved, so it is rendered rather than dumped:
+  // headers become file sections and a rail lists them once there is more than
+  // one. The parser lives in lib/diff.js because the inbox detail reads a
+  // resolved review back with the same one - see the note there.
   const diffModel = $derived.by(() => parseDiff((item?.kind === "diff" && item?.diff) || ""));
   const diffMulti = $derived(diffModel.files.length > 1);
   const diffStat = $derived(`+${diffModel.add} −${diffModel.del}`);
-
-  function parseDiff(raw) {
-    const model = { files: [], add: 0, del: 0 };
-    if (!raw.trim()) return model;
-    let cur = null;
-    let remOld = 0,
-      remNew = 0; // unconsumed body lines of the open hunk
-    const open = (name) => {
-      cur = { name, badge: "", add: 0, del: 0, lines: [] };
-      model.files.push(cur);
-      return cur;
-    };
-    const put = (text, cls) => {
-      if (!cur) open("");
-      cur.lines.push({ text: text === "" ? " " : text, cls });
-    };
-    const strip = (p) => p.replace(/^[ab]\//, "").split("\t")[0]; // plain diffs put "\tTIMESTAMP" after the path
-    for (const t of raw.replace(/\n$/, "").split("\n")) {
-      if (remOld > 0 || remNew > 0) {
-        if (t.startsWith("+")) {
-          remNew--;
-          cur.add++;
-          model.add++;
-          put(t, "add");
-        } else if (t.startsWith("-")) {
-          remOld--;
-          cur.del++;
-          model.del++;
-          put(t, "del");
-        } else if (t.startsWith("\\")) {
-          put(t, "meta"); // "\ No newline at end of file" - worth seeing
-        } else {
-          remOld--;
-          remNew--;
-          put(t, "ctx");
-        }
-        continue;
-      }
-      const hunk = t.match(/^@@+ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/);
-      if (hunk) {
-        remOld = hunk[1] === undefined ? 1 : Number(hunk[1]);
-        remNew = hunk[2] === undefined ? 1 : Number(hunk[2]);
-        put(t, "hunk");
-        continue;
-      }
-      if (t.startsWith("diff --git ")) {
-        const m = t.match(/^diff --git a\/(.*) b\/(.*)$/);
-        open(m ? m[2] : "");
-        continue;
-      }
-      if (t.startsWith("--- ")) {
-        // Opens a file in plain `diff -u` output; inside a git section (no
-        // body yet) it only refines the name.
-        if (!cur || cur.lines.length) open("");
-        if (!cur.name && t !== "--- /dev/null") cur.name = strip(t.slice(4));
-        continue;
-      }
-      if (t.startsWith("+++ ")) {
-        if (!cur) open("");
-        if (t === "+++ /dev/null") cur.badge = "deleted";
-        else cur.name = strip(t.slice(4));
-        continue;
-      }
-      if (t.startsWith("new file mode")) {
-        if (cur) cur.badge = "new";
-        continue;
-      }
-      if (t.startsWith("deleted file mode")) {
-        if (cur) cur.badge = "deleted";
-        continue;
-      }
-      if (t.startsWith("rename to ")) {
-        if (cur) {
-          cur.badge = "renamed";
-          cur.name = t.slice(10);
-        }
-        continue;
-      }
-      if (/^(index |old mode|new mode|similarity|dissimilarity|rename from|copy )/.test(t)) continue;
-      // Malformed or hand-written diffs land here: classify by first character
-      // so they still render - and still count - just without the structure.
-      if (t.startsWith("+")) {
-        if (!cur) open("");
-        cur.add++;
-        model.add++;
-        put(t, "add");
-      } else if (t.startsWith("-")) {
-        if (!cur) open("");
-        cur.del++;
-        model.del++;
-        put(t, "del");
-      } else if (t.startsWith(" ") || t === "") put(t, "ctx");
-      else put(t, "meta");
-    }
-    // The cap is on diff lines, not structure: every file keeps its header so
-    // the rail can always jump somewhere, and a truncated file says so.
-    let budget = DIFF_CAP;
-    for (const f of model.files) {
-      f.shown = f.lines.slice(0, Math.max(0, budget));
-      f.more = f.lines.length - f.shown.length;
-      budget -= f.shown.length;
-    }
-    return model;
-  }
 
   const baseOf = (p) => p.split("/").pop();
   const dirOf = (p) => p.slice(0, p.length - baseOf(p).length);
