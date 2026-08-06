@@ -9,6 +9,98 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Forty-ninth session (2026-08-06): the standard was tested on a real change, and it failed in five places
+
+Resumed from session 48's handoff with nothing in flight. Three things it had
+left unwatched were watched, and the experiment Boris asked for was run.
+
+**The TL;DR control, on screen at last.** `1cd941e` shipped on a reading of the
+diff. The review it was written for (`wfd51b30be854`) had been deleted from the
+board a minute before this session started, so the disabled case needed a new
+subject: a two-step probe review of only `ground` and `none` steps, which are
+the two kinds the spec allows no `tldr` on. Confirmed - the TL;DR half renders
+dim, `t` does nothing, a click does nothing, the legend drops the key, and the
+hover title says *"no step in this review has a TL;DR - it was written before
+they existed, or its author left them out"*. On a review that HAS them the
+control is live and the board opens in TL;DR, and a step without one says *"No
+TL;DR was written for this step, so it is shown in full"*.
+
+**The Agents board's three detail blocks paint.** The largest untested thing
+session 48 shipped. An opened row shows the meta list, an Activity block of the
+lines the session has moved past, and a Signals block with direction arrows and
+clipped payloads. The detail is fetched once per open, so a signal posted while
+a row is open appears only after closing and re-opening it - which is the
+documented design and is now observed rather than assumed.
+
+> **The trap that cost twenty minutes:** the row toggles. Clicking it twice
+> across two attempts opens and closes it, and a screenshot taken after the
+> second click shows a surface that looks broken. The row's `.row.open`
+> background is the same colour as `:hover`, so the state is invisible while the
+> pointer is on it. Move the mouse away before judging: the row that stays lit
+> is open.
+
+**The walkthrough-standard experiment.** A review of `e511a01` (the Agents
+detail work) was authored WITHOUT reading the standard, then audited against it
+rule by rule, rewritten, and created: `w5bd381d0590a`, 12 steps, 4 domains, 30
+citations, 0 missed, no warnings. Fourteen divergences, of which the ones worth
+recording are these.
+
+- **Prose carried the explanation and the margins were empty.** The standard's
+  own preamble to the channels section names this as the most common way a good
+  review reads badly. The first draft had 6 notes; the rewrite has 30.
+- **No reading order, no handoffs, no `close` on any step.** Three rules
+  (finish with a reading order; end by handing off; the takeaway goes under the
+  code) that a competent author does not invent unprompted.
+- **A command that matched nothing.** `go test ./internal/daemon/ -run
+  AgentDetail` returns *"no tests to run"* and exits 0 - the daemon's tests are
+  named for the rings, not the call. The rule that says to record only what you
+  actually ran is what caught it.
+- **No traversal.** Seven changed files no thematic step stood on, including
+  both test files and every line of wiring.
+- **`p: true` missing on seven paragraph-starting segments**, each of which
+  would have rendered as a wall fused across the seam.
+
+**What the standard got wrong, and what was fixed.** This is the point of the
+exercise, and it found five things (`84e19ef`, `35d1cf4`):
+
+1. **Rules 13-16 did not exist.** The "order the code" section was renumbered to
+   29-32 when domains and the TL;DR were inserted, and the old numbers were
+   never reused: 55 rules numbered up to 59, with a hole an auditing agent has
+   to stop and account for. Renumbered contiguously, 1-56.
+2. **The standard never named the fields it demands.** Rule 52 asks for "the
+   command, the result to expect, and the date that expectation last held" and
+   does not say they are `cmd`, `expect` and `recorded`. The first spec written
+   against the standard was refused for an unknown field.
+3. **`tldr` and `domains` appeared in no field reference an agent reaches.**
+   The in-binary manual listed four easy-to-miss fields and named neither; the
+   `create_walkthrough` schema description omitted both. An agent that read the
+   standard and went looking for the shape found nothing.
+4. **"Two to four domains. Six is the cap"** in one rule, with no way to tell
+   which was the instruction.
+5. **"Say what you did not verify next to the gate" is impossible as written.**
+   A check step has no code blocks, and a step with no code blocks is refused a
+   `close`. It goes in prose, and the standard now says so - along with the fact
+   that ending with a gate AND giving doubts their own step means two check
+   steps in a row, which reads as a duplicate until somebody says it is not.
+
+Two more things the standard still does not cover, left as findings rather than
+fixed: **nothing verifies rule 49's completeness claim** (`walkthrough.captured`
+counts citations, and nothing compares the cited set against the diff's changed
+set - the rule that most needs a validator has none), and **nothing says what
+changes when the reader is the code's own author**, which is the normal case
+here. A paragraph now says the rules assume the other reader.
+
+**The `xdg-open` fallback, exercised.** Never seen before because this machine
+has `goland` on PATH. Run against four real PATHs rather than a stubbed one:
+`goland` (config absent, JetBrains first), `subl` (a lower-priority known
+launcher, when only `/usr/bin` is visible), `xdg-open` with the line dropped
+from the argv, and the honest *"no editor found; set editor.command"* when even
+that is absent. Then the fallback's own launch was run the way `editor.Start`
+runs it, through `systemd-run --user --scope --collect`: this desktop hands a
+`.go` file to Zed (`dev.zed.Zed.desktop`), which opened at `1:1`. Worth knowing
+that `zed` IS in the known table, so on a machine where its binary is on PATH
+the line survives; it is only the desktop-handler route that loses it.
+
 ## Forty-eighth session (2026-08-06): a citation opens in the editor, and then the review learns two ways to be read
 
 Resumed from session 47's handoff with nothing in flight and FR65 at the head of
