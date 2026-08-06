@@ -15,7 +15,29 @@
     pend = $bindable(),
     onVerdict, onNote, onReveal, onComment, onCommentEdit, onCommentDelete, onNav,
     onAloud, readingRegion = null, onTerm = null, onTermHover = null, onOpen = null,
+    brief = false, onBrief = null,
   } = $props();
+
+  // Two reading modes, one step. `brief` shows the TL;DR and nothing under it;
+  // the full version is one key away and says so. The mode belongs to the board
+  // rather than to the step - a reader skimming is skimming the review, not this
+  // page - so it arrives as a prop and the toggle goes back up.
+  //
+  // A step written before tldr existed has none. It renders in full whatever the
+  // mode says and states why, because a blank pane under a "TL;DR" heading reads
+  // as a surface that failed rather than as a review that predates the feature.
+  const hasTldr = $derived(Boolean(step.tldr?.bottom));
+  const short = $derived(brief && hasTldr);
+  const hidden = $derived.by(() => {
+    const bits = [];
+    const blocks = (step.codes ?? []).length;
+    const notes = (step.codes ?? []).reduce((n, b) => n + (b.notes ?? []).length, 0);
+    const checks = (step.checks ?? []).length;
+    if (blocks) bits.push(blocks === 1 ? "1 code block" : blocks + " code blocks");
+    if (notes) bits.push(notes === 1 ? "1 note" : notes + " notes");
+    if (checks) bits.push(checks === 1 ? "1 check" : checks + " checks");
+    return bits.join(", ");
+  });
 
   // Prose arrives as inline segments, because a bound phrase has to sit
   // mid-sentence. `p` on a segment starts a new paragraph at it; grouping
@@ -140,6 +162,40 @@
     {/each}
   {/snippet}
 
+  <!-- The TL;DR sits above the prose and stays visible in both modes: in brief
+       it is the step, and in full it is the sentence that says what the next
+       screen of text is going to establish. Hiding it in full would make the
+       toggle a swap rather than an expansion, and the reader would lose the
+       summary exactly when they committed to the detail. -->
+  {#if hasTldr}
+    <div class="tldr" class:only={short}>
+      <span class="tldr-tag" data-agentbox-find-exclude>TL;DR</span>
+      <p class="bottom">{step.tldr.bottom}</p>
+      {#if step.tldr.points?.length}
+        <ul class="points">
+          {#each step.tldr.points as pt, pi (pi)}
+            <li>{pt}</li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  {/if}
+
+  {#if short}
+    <button class="expand" onclick={() => onBrief?.(false)} data-agentbox-find-exclude>
+      Read it in full{hidden ? ` — ${hidden}` : ""}
+      <kbd>t</kbd>
+    </button>
+  {:else if brief && !hasTldr}
+    <!-- Brief was asked for and this step cannot answer. Saying so beats an
+         empty pane, and beats silently ignoring the mode on one step out of ten
+         with no explanation. -->
+    <p class="nobrief" data-agentbox-find-exclude>
+      No TL;DR was written for this step, so it is shown in full.
+    </p>
+  {/if}
+
+  {#if !short}
   {#each paras as segs, pi (pi)}{@render paragraph(segs, "")}{/each}
 
   {#each step.codes ?? [] as blk, bi (bi)}
@@ -264,6 +320,8 @@
     </section>
   {/if}
 
+  {/if}
+
   <VerdictBox
     kind={step.kind}
     {mark}
@@ -328,6 +386,95 @@
     background: color-mix(in srgb, var(--k-success) 15%, transparent);
     color: var(--k-success);
     white-space: nowrap;
+  }
+  /* The TL;DR pane. It reads as a card rather than as a paragraph on purpose:
+     the reader it is for is scanning, and a block with an edge and a tag is
+     something the eye lands on instead of something it starts reading. Bigger
+     than the prose beneath it, not smaller - this is not a footnote to the step,
+     for most readers it IS the step. */
+  .tldr {
+    max-width: 68ch;
+    margin: 0 0 24px;
+    padding: 16px 20px 18px;
+    border-left: 3px solid var(--k-accent);
+    border-radius: 0 10px 10px 0;
+    background: color-mix(in srgb, var(--k-accent) 7%, transparent);
+  }
+  .tldr-tag {
+    display: block;
+    margin-bottom: 8px;
+    font-family: var(--k-font-mono);
+    font-size: 0.72em;
+    letter-spacing: 0.08em;
+    color: color-mix(in srgb, var(--k-accent) 70%, var(--k-ink-2));
+  }
+  /* The one sentence that has to survive, so it gets the weight. */
+  .tldr .bottom {
+    margin: 0;
+    font-family: var(--k-font-read);
+    font-size: 1.2em;
+    line-height: 1.55;
+    color: var(--k-ink);
+    text-wrap: pretty;
+  }
+  /* Each point stands alone and can be stopped at, so they are spaced to be
+     read in glances rather than as a list to work through. */
+  .tldr .points {
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tldr .points li {
+    position: relative;
+    padding-left: 18px;
+    font-family: var(--k-font-read);
+    font-size: 1.05em;
+    line-height: 1.5;
+    color: var(--k-ink-2);
+    text-wrap: pretty;
+  }
+  .tldr .points li::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 0.62em;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--k-accent) 60%, transparent);
+  }
+  /* In brief mode it is the whole page, so it gets the room the prose had. */
+  .tldr.only {
+    margin-bottom: 20px;
+  }
+  .tldr.only .bottom {
+    font-size: 1.35em;
+  }
+  .expand {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px var(--k-edge);
+    color: var(--k-ink-2);
+    font-size: 0.9em;
+  }
+  .expand:hover,
+  .expand:focus-visible {
+    color: var(--k-ink);
+    box-shadow: inset 0 0 0 1px var(--k-ink-3);
+  }
+  .nobrief {
+    max-width: 68ch;
+    margin: 0 0 20px;
+    font-size: 0.88em;
+    color: var(--k-ink-3);
   }
   .purpose {
     color: var(--k-ink-2);

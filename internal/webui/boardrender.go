@@ -48,17 +48,37 @@ type wireBoard struct {
 }
 
 type wireStep struct {
-	ID      string           `json:"id"`
-	Kind    string           `json:"kind"`
-	Title   string           `json:"title"`
-	Purpose string           `json:"purpose,omitempty"`
-	Prose   []wireProse      `json:"prose"`
-	AllNew  bool             `json:"allNew,omitempty"`
-	Codes   []wireCode       `json:"codes,omitempty"`
-	Close   []wireProse      `json:"close,omitempty"`
-	Binds   map[string][]int `json:"binds,omitempty"` // name -> [block, from, to]
-	Checks  []wireCheck      `json:"checks,omitempty"`
-	Cmds    []wireCmd        `json:"cmds,omitempty"`
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
+	Title   string `json:"title"`
+	Purpose string `json:"purpose,omitempty"`
+	// TLDR is the step laid out for glancing rather than reading: not the lossy
+	// version, the same mastery in a shape a short attention span can hold. The
+	// board opens in it, so for most readers this IS the step and the full text is
+	// one key away. Walkthroughs stored before it existed have none, and the
+	// surface says so rather than showing an empty pane.
+	TLDR   *wireTLDR        `json:"tldr,omitempty"`
+	Prose  []wireProse      `json:"prose"`
+	AllNew bool             `json:"allNew,omitempty"`
+	Codes  []wireCode       `json:"codes,omitempty"`
+	Close  []wireProse      `json:"close,omitempty"`
+	Binds  map[string][]int `json:"binds,omitempty"` // name -> [block, from, to]
+	Checks []wireCheck      `json:"checks,omitempty"`
+	Cmds   []wireCmd        `json:"cmds,omitempty"`
+}
+
+// wireTLDR is the glance version of a step: the sentence that must survive, and
+// the facts that stand on their own beneath it.
+type wireTLDR struct {
+	Bottom string   `json:"bottom"`
+	Points []string `json:"points,omitempty"`
+}
+
+func tldrOf(t *walkthrough.TLDR) *wireTLDR {
+	if t == nil {
+		return nil
+	}
+	return &wireTLDR{Bottom: t.Bottom, Points: t.Points}
 }
 
 // wireProse is one prose segment. T always carries the whole text - find and
@@ -190,6 +210,7 @@ func renderSteps(specJSON, diff, root string, pinned []store.Excerpt, renderMiss
 			Kind:    st.Kind,
 			Title:   st.Title,
 			Purpose: st.Purpose,
+			TLDR:    tldrOf(st.TLDR),
 		}
 		// One memory per step: a term is marked the first time this step
 		// says it, and stays plain text afterwards. The three text channels

@@ -25,7 +25,11 @@ func captureSpec(root string) map[string]any {
 		"steps": []map[string]any{
 			{"id": "s1", "kind": "code", "title": "The line",
 				"purpose": "Serves: a test. Decided by: the test.",
-				"prose":   []map[string]any{{"t": "the line in question"}},
+				"tldr": map[string]any{
+					"bottom": "One cited line, so the capture has something to capture.",
+					"points": []string{"The range is two lines, which is enough to tell a repair from a re-read."},
+				},
+				"prose": []map[string]any{{"t": "the line in question"}},
 				"code": []map[string]any{
 					{"path": "a.go", "lines": []int{2, 3}}}},
 		},

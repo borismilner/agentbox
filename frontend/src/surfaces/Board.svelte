@@ -133,6 +133,15 @@
   // review, which no failed click deserves.
   const onOpen = (path, line) => bridge.boardOpenInEditor(review.id, path, line);
 
+  // Two reading modes for the whole review, not per step: a reader skimming is
+  // skimming the review. It OPENS in brief, because the TL;DR is not the lossy
+  // version - it is the same mastery laid out to be glanced at - so starting in
+  // the full text makes every reader pay the long way in before they know
+  // whether they need it. The choice lives for the window's life; it is a
+  // reading posture, not an annotation, and nothing about it belongs in the
+  // store beside the verdicts.
+  let brief = $state(true);
+
   let noteFocus = $state(0); // bumped to ask the verdict box to focus the note
   let stepComposer = $state(0); // bumped to open the step-level composer
   let submit = $state(false); // the submit modal
@@ -318,6 +327,7 @@
       // the regions have their own buttons, because a key that walks between them
       // would be a position, and a position is what FR72 removed.
       case "a": aloud(readingRegion ?? "intro"); e.preventDefault(); break;
+      case "t": brief = !brief; e.preventDefault(); break;
       case "g": toggleGlossary(); e.preventDefault(); break;
       case "l": bridge.showLibrary().catch(() => {}); e.preventDefault(); break;
       // Esc already means "close the thing that is open"; a reading is one of
@@ -365,6 +375,17 @@
           <span class="n">{review.glossary.length}</span>
         </button>
       {/if}
+      <!-- The reading mode, said as which one you are IN rather than as a verb:
+           a reader who opened straight into TL;DR has to be told that is what
+           they are looking at before being offered a way out of it. -->
+      <button
+        class="chip mode"
+        class:on={brief}
+        onclick={() => (brief = !brief)}
+        title={brief ? "reading the TL;DR - switch to the full text (t)" : "reading the full text - switch to the TL;DR (t)"}
+      >
+        {brief ? "TL;DR" : "full text"}
+      </button>
       <div class="pips">
         {#each counted as s (s.id)}
           <span
@@ -454,6 +475,8 @@
             onTerm={hasGlossary ? openTerm : null}
             {onTermHover}
             {onOpen}
+            {brief}
+            onBrief={(v) => (brief = v)}
           />
         {/key}
       </div>
@@ -463,7 +486,7 @@
     </div>
 
     <footer data-agentbox-find-exclude>
-      ← → step · u understood · x unclear · Enter next unread · n note · c comment · select code to comment · a read the opening aloud{#if hasGlossary} · g glossary{/if} · l library · s submit · q close
+      ← → step · u understood · x unclear · Enter next unread · n note · c comment · select code to comment · a read the opening aloud · t {brief ? "full text" : "TL;DR"}{#if hasGlossary} · g glossary{/if} · l library · s submit · q close
     </footer>
 
     {#if tip}
@@ -535,7 +558,20 @@
     }
   }
   @media (max-width: 820px) {
-    .pips {
+    /* Lit while brief, because that is the mode the board opens in and a control
+     that looks the same in both is a control the reader never notices they are
+     inside of. */
+  .chip.mode {
+    font-family: var(--k-font-mono);
+    font-size: 0.78em;
+    letter-spacing: 0.02em;
+  }
+  .chip.mode.on {
+    color: var(--k-accent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-accent) 55%, transparent);
+    background: color-mix(in srgb, var(--k-accent) 10%, transparent);
+  }
+  .pips {
       display: none;
     }
     .count {

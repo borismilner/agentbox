@@ -18,6 +18,13 @@ func good() map[string]any {
 				"id": "xkb", "kind": "code",
 				"title":   "The per-stroke group lock",
 				"purpose": "Serves: typed text must be the planned text.",
+				"tldr": map[string]any{
+					"bottom": "Typing sets the keyboard group per stroke, so the desktop cannot swap it out from under a planned key.",
+					"points": []string{
+						"The desktop reverts the group within 1ms, which is why the lock is per press and not per call.",
+						"Without it a planned key produced whatever layout happened to be live.",
+					},
+				},
 				"prose": []map[string]any{
 					{"t": "The fix is a guard that locks the "},
 					{"t": "planned group", "bind": "planned"},
@@ -338,5 +345,85 @@ func TestGlossaryReachableFromLeadAndClose(t *testing.T) {
 				t.Errorf("term is reachable from %s but agentbox warned: %v", where, warnings)
 			}
 		})
+	}
+}
+
+// The TL;DR (2026-08-06). The board opens in it, so a step without one shows
+// the reader nothing until they switch - which is the opposite of the point.
+func TestTLDRRequiredOnCodeAndCheckSteps(t *testing.T) {
+	for _, kind := range []string{"code", "check"} {
+		m := good()
+		st := m["steps"].([]map[string]any)[0]
+		st["kind"] = kind
+		if kind == "check" {
+			delete(st, "code")
+		}
+		delete(st, "tldr")
+		_, _, err := Parse(mustRaw(t, m))
+		if err == nil {
+			t.Fatalf("a %s step with no tldr was accepted", kind)
+		}
+		// A teaching error: the caller is a model that retries, and "tldr is
+		// required" alone produces a summary of the summary.
+		for _, want := range []string{"NOT the shortened version", "bottom", "points"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("error does not teach %q: %v", want, err)
+			}
+		}
+	}
+}
+
+func TestTLDRIsOptionalOnAGroundStep(t *testing.T) {
+	m := good()
+	st := m["steps"].([]map[string]any)[0]
+	st["kind"] = "ground"
+	delete(st, "code")
+	delete(st, "binds")
+	delete(st, "checks")
+	delete(st, "tldr")
+	st["prose"] = []map[string]any{{"t": "where we are before any of it"}}
+	if _, _, err := Parse(mustRaw(t, m)); err != nil {
+		t.Fatalf("a ground step without a tldr was refused: %v", err)
+	}
+}
+
+func TestTLDRShapeIsEnforced(t *testing.T) {
+	cases := []struct {
+		name  string
+		tldr  map[string]any
+		wants string
+	}{
+		{"no bottom line", map[string]any{"points": []string{"a fact"}}, "bottom is required"},
+		{"bottom over the cap", map[string]any{"bottom": strings.Repeat("x", MaxTLDRBottom+1), "points": []string{"a fact"}}, "one sentence"},
+		{"too many points", map[string]any{"bottom": "b", "points": make([]string, MaxTLDRPoints+1)}, "the cap is"},
+		{"an empty point", map[string]any{"bottom": "b", "points": []string{"a fact", "  "}}, "is empty"},
+		{"a point over the cap", map[string]any{"bottom": "b", "points": []string{strings.Repeat("x", MaxTLDRPoint+1)}}, "paragraph wearing a bullet"},
+		// A code step with a bottom line and nothing under it is the paragraph
+		// summary this shape exists to refuse.
+		{"no points at all", map[string]any{"bottom": "b"}, "at least one point"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := good()
+			m["steps"].([]map[string]any)[0]["tldr"] = c.tldr
+			_, _, err := Parse(mustRaw(t, m))
+			if err == nil {
+				t.Fatal("accepted")
+			}
+			if !strings.Contains(err.Error(), c.wants) {
+				t.Fatalf("got %v, want it to say %q", err, c.wants)
+			}
+		})
+	}
+}
+
+func TestTLDRSurvivesTheRoundTrip(t *testing.T) {
+	s, _, err := Parse(mustRaw(t, good()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s.Step("xkb")
+	if got.TLDR == nil || !strings.HasPrefix(got.TLDR.Bottom, "Typing sets") || len(got.TLDR.Points) != 2 {
+		t.Fatalf("tldr = %+v", got.TLDR)
 	}
 }

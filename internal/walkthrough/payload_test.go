@@ -15,13 +15,16 @@ func payloadSpec(t *testing.T) *Spec {
 		"steps": [
 			{"id": "ground", "kind": "ground", "title": "Ground", "prose": [{"t": "context"}]},
 			{"id": "one", "kind": "code", "title": "First", "purpose": "Serves: x.",
+			 "tldr": {"bottom": "The one line that survives.", "points": ["A fact that stands alone."]},
 			 "prose": [{"t": "read this"}],
 			 "code": [{"path": "a/b.go", "lines": [1, 5]}],
 			 "checks": [{"q": "why?", "a": "because"}, {"q": "how?", "a": "so"}]},
 			{"id": "two", "kind": "code", "title": "Second", "purpose": "Serves: y.",
+			 "tldr": {"bottom": "The one line that survives.", "points": ["A fact that stands alone."]},
 			 "prose": [{"t": "then this"}],
 			 "code": [{"path": "a/c.go", "lines": [10, 20]}]},
 			{"id": "three", "kind": "code", "title": "Third", "purpose": "Serves: z.",
+			 "tldr": {"bottom": "The one line that survives.", "points": ["A fact that stands alone."]},
 			 "prose": [{"t": "finally"}],
 			 "code": [{"path": "a/d.go", "lines": [3, 9]}]}
 		]

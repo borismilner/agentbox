@@ -18,7 +18,11 @@ func wtSpec() map[string]any {
 		"steps": []map[string]any{
 			{"id": "xkb", "kind": "code", "title": "The guard",
 				"purpose": "Serves: typed text is planned text.",
-				"prose":   []map[string]any{{"t": "the guard locks the group"}},
+				"tldr": map[string]any{
+					"bottom": "The group is locked per stroke, so a planned key cannot be typed under a swapped layout.",
+					"points": []string{"The desktop reverts within 1ms, so per call is not often enough."},
+				},
+				"prose": []map[string]any{{"t": "the guard locks the group"}},
 				"code": []map[string]any{
 					{"path": "internal/hand/xkb.go", "lines": []int{118, 145}}}},
 		},

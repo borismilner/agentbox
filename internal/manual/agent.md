@@ -155,7 +155,11 @@ Claude Code) can call these tools. Run `agentbox docs setup` for a paste-ready
 - `read_artifact_events` -> take what they have done already, without blocking;
   repeats of one name are coalesced to the newest
 - `create_walkthrough` -> a durable, step-by-step code review on the review
-  board. Non-blocking; returns a `walkthrough_id`
+  board. Non-blocking; returns a `walkthrough_id`. Every code and check step
+  needs a `tldr` ({`bottom`, `points`}) and **the board opens in it**: it is not
+  the shortened step but the same mastery restructured for a reader with a very
+  short attention span. Read `agentbox://standards/walkthrough` before authoring
+  one
 - `await_walkthrough` -> BLOCK until the human submits that review; the whole
   handback arrives in one turn, unclear steps first
 - `read_walkthrough` / `list_walkthroughs` / `delete_walkthrough` -> the stored

@@ -646,6 +646,8 @@ The spec, in short:
  "out_of_scope": [{"paths": "glob", "reason": "..."}],
  "steps": [{"id": "kebab-id", "kind": "ground|code|none|check",
    "title": "...", "purpose": "Serves: which requirement. Decided by: what.",
+   "tldr": {"bottom": "the one sentence that has to survive",
+            "points": ["a load-bearing fact that stands on its own", "..."]},
    "prose": [{"t": "text"}, {"t": "a bound phrase", "bind": "name"}, {"code": "chip"}],
    "code": [{"path": "repo/relative.go", "lines": [10, 40],
              "notes": [{"at": [12, 14], "text": "why this matters"}]}],
@@ -653,6 +655,15 @@ The spec, in short:
    "checks": [{"q": "...", "a": "hidden until revealed"}],
    "cmds": [{"cmd": "make check", "expect": "...", "recorded": "YYYY-MM-DD"}]}]}
 ```
+
+`tldr` is required on `code` and `check` steps, and **the board opens in it**.
+It is not the shortened version of the step: the reader it serves has a very
+short attention span and must still come away with mastery of what matters most
+here, so nothing important is cut and what changes is the structure. `bottom` is
+one sentence (up to 220 characters), `points` are up to six facts that each
+stand alone and in any order (280 each). `t` on the board switches between the
+TL;DR and the full text. Write it last, from the finished step - a TL;DR written
+first summarises what you meant to say.
 
 A prose segment carries `"p": true` to start a new paragraph at it. Segments
 are inline by necessity - a bound phrase sits mid-sentence - so without it a

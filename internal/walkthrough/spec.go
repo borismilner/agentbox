@@ -32,6 +32,13 @@ const (
 	MaxBlockLines = 400
 	MaxTerms      = 48
 	MaxAliases    = 6
+	// The TL;DR's shape. Bottom is one sentence and Points are up to six, each one
+	// a fact that stands alone. The bound is on the SHAPE, not on the total: this
+	// is not the lossy version of a step, it is the same mastery laid out to be
+	// glanced at, and squeezing it would defeat the purpose it was asked for.
+	MaxTLDRBottom = 220
+	MaxTLDRPoint  = 280
+	MaxTLDRPoints = 6
 )
 
 // Spec is the version-1 walkthrough: what is being reviewed, the change
@@ -80,16 +87,37 @@ type Scope struct {
 // Close is the paragraph after the last block: the takeaway, which belongs
 // under the code it is about rather than three blocks above it (FR69).
 type Step struct {
-	ID      string          `json:"id"`
-	Kind    string          `json:"kind"` // ground | code | none | check
-	Title   string          `json:"title"`
-	Purpose string          `json:"purpose,omitempty"`
-	Prose   []Seg           `json:"prose"`
-	Code    []Block         `json:"code,omitempty"`
-	Close   []Seg           `json:"close,omitempty"`
-	Binds   map[string]Bind `json:"binds,omitempty"`
-	Checks  []Check         `json:"checks,omitempty"`
-	Cmds    []Cmd           `json:"cmds,omitempty"`
+	ID      string `json:"id"`
+	Kind    string `json:"kind"` // ground | code | none | check
+	Title   string `json:"title"`
+	Purpose string `json:"purpose,omitempty"`
+	// TLDR is the step restructured for a reader with a very short attention span.
+	// It is NOT the lossy version: it has to leave that reader with mastery of what
+	// matters most here, which is why it is a shape rather than a string. Prose
+	// asks to be read from the start; this asks to be glanced at, and a free-text
+	// field would come back as the paragraph it exists to replace.
+	//
+	// Required on the steps that carry substance, because the board opens in it.
+	TLDR   *TLDR           `json:"tldr,omitempty"`
+	Prose  []Seg           `json:"prose"`
+	Code   []Block         `json:"code,omitempty"`
+	Close  []Seg           `json:"close,omitempty"`
+	Binds  map[string]Bind `json:"binds,omitempty"`
+	Checks []Check         `json:"checks,omitempty"`
+	Cmds   []Cmd           `json:"cmds,omitempty"`
+}
+
+// TLDR is one step laid out for glancing. Bottom is the single sentence that has
+// to survive if nothing else does; Points are the load-bearing facts, each one
+// standing on its own so they can be read in any order and stopped at any time.
+//
+// The caps are per point rather than over the whole, which is the difference
+// between "be brief" and "be structured": six sharp points are the goal, one
+// paragraph chopped into six pieces is not, and a point that runs past its cap is
+// a paragraph wearing a bullet.
+type TLDR struct {
+	Bottom string   `json:"bottom"`
+	Points []string `json:"points,omitempty"`
 }
 
 // Seg is one prose segment: plain text, a bound phrase (text that lights a
@@ -362,6 +390,13 @@ func (st *Step) validate() error {
 	if len(st.Purpose) > 500 {
 		return fail("purpose is over 500 characters")
 	}
+	// Required on the steps that carry the substance, because the board opens in
+	// TL;DR: a step without one shows the reader nothing until they switch, which
+	// is the opposite of what the mode is for. Ground and none may skip it - they
+	// are already short - but may have one.
+	if err := st.validateTLDR(fail); err != nil {
+		return err
+	}
 	if len(st.Prose) == 0 || len(st.Prose) > MaxProseSegs {
 		return fail("prose must hold 1-%d segments", MaxProseSegs)
 	}
@@ -438,6 +473,41 @@ func (st *Step) validate() error {
 		if c.Cmd == "" {
 			return fail("cmds[%d] has no command", i)
 		}
+	}
+	return nil
+}
+
+// validateTLDR teaches the shape rather than just refusing it: the caller is a
+// model that reads the message and retries (vision principle 9), and "tldr is
+// required" without saying what a good one is produces a summary of the summary.
+func (st *Step) validateTLDR(fail func(string, ...any) error) error {
+	needs := st.Kind == "code" || st.Kind == "check"
+	if st.TLDR == nil {
+		if needs {
+			return fail("tldr is required on %s steps. It is NOT the shortened version - it is this step restructured for a reader with a very short attention span who must still come away with mastery of what matters most. Give it as {\"bottom\": the one sentence that has to survive, \"points\": [up to %d facts, each standing on its own]}. The board opens in it, so for most readers this IS the step", st.Kind, MaxTLDRPoints)
+		}
+		return nil
+	}
+	bottom := strings.TrimSpace(st.TLDR.Bottom)
+	if bottom == "" {
+		return fail("tldr.bottom is required - the one sentence that has to survive if the reader reads nothing else on this step")
+	}
+	if len(bottom) > MaxTLDRBottom {
+		return fail("tldr.bottom is %d characters; the cap is %d. It is one sentence; everything that does not fit is a point", len(bottom), MaxTLDRBottom)
+	}
+	if len(st.TLDR.Points) > MaxTLDRPoints {
+		return fail("tldr has %d points; the cap is %d - past that it is the step again in a different shape, and the reader it was written for has already stopped", len(st.TLDR.Points), MaxTLDRPoints)
+	}
+	for i, p := range st.TLDR.Points {
+		if strings.TrimSpace(p) == "" {
+			return fail("tldr.points[%d] is empty", i)
+		}
+		if len(p) > MaxTLDRPoint {
+			return fail("tldr.points[%d] is %d characters; the cap is %d. A point that runs past it is a paragraph wearing a bullet - split it, or move it to the prose", i, len(p), MaxTLDRPoint)
+		}
+	}
+	if needs && len(st.TLDR.Points) == 0 {
+		return fail("tldr on a %s step needs at least one point beside its bottom line: a step with substance in it has more than one thing worth mastering, and if it truly does not, it is a ground step", st.Kind)
 	}
 	return nil
 }
