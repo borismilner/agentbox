@@ -24,6 +24,12 @@ has not been run.
 
 ### The queue, in order
 
+0. **Look at `1cd941e` on screen** - the disabled TL;DR control on a review that
+   has none. It is the only change this session that shipped without being
+   watched. Open `wfd51b30be854` (no TL;DRs anywhere: expect TL;DR greyed out and
+   unclickable) and then `w878f0c51c433` (15 of 16 steps have one: expect the
+   control live). **Close any open board window first** - retargeting does not
+   reload the bundle.
 1. **Run the walkthrough-standard experiment.** Boris asked for a prompt to give
    an agent that has just written a walkthrough, so it consults AgentBox's
    standard, reports what it had to change, and tells us where the standard is
@@ -92,6 +98,34 @@ The standard is being tested, not you.
 The standard is `internal/manual/walkthrough.md` (59 numbered rules now). It
 reaches an agent three ways: the MCP resource above, the `walkthrough_standard`
 MCP prompt, and `agentbox docs walkthrough`.
+
+**The second prompt**, for an agent whose walkthrough is already stored and
+predates today's rules. Boris asked for this one after finding a stored review
+with no domains and, in the older case, no TL;DRs:
+
+```
+The walkthrough standard changed today and your stored walkthrough predates it.
+Bring it fully up to the current rules - not a patch, a re-author.
+
+1. Read `agentbox docs walkthrough` in full. Two sections are new: "Group the
+   steps into domains when there is more than one subject", and "The TL;DR:
+   write it for the reader who will not read the step". Read the numbered rules
+   in both, not the headings.
+2. Read your stored spec back with `read_walkthrough` so you are working from
+   what is actually stored rather than from what you remember writing.
+3. Re-author it against every rule. In particular:
+   - every code and check step needs a `tldr` ({bottom, points}), and the board
+     OPENS in it, so for most readers that IS your review;
+   - if the change has more than one subject, declare `domains` and give every
+     step one - a domain's steps must be consecutive;
+   - the TL;DR is NOT the shortened version. Same mastery of what matters most,
+     restructured so it survives being stopped anywhere.
+4. `amend_walkthrough` refuses in this build. Create the new one, check it on
+   the board, then delete the old id.
+5. Report what you had to change, which rules were ambiguous against real
+   content, and anything the standard does not cover that you had to decide
+   yourself. Point 5 is the purpose - the standard is being tested, not you.
+```
 
 ## What this session shipped, and what each cost
 
@@ -172,14 +206,10 @@ every child.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `35a5bd8ed0df` - **older than HEAD (`e5b2473`) on purpose.**
-  Everything after it is markdown (`docs/`, `CLAUDE.md`), so the binary's
-  behaviour is current. Not redeployed because `make deploy` restarts the daemon
-  and a peer session reaches Boris through it. Redeploy freely at the start of a
-  session, when nobody is mid-question.
-- **Git:** clean, `main` pushed to `origin` at `e5b2473`. Twelve commits this
-  session, oldest first: `657e093` `2c22e9f` `0a456a0` `a730caf` `0bb42d7`
-  `e511a01` `89dec68` `4c974ab` `655b076` `72d65cb` `35a5bd8` `e5b2473`.
+- **Deployed:** `1cd941e1c022`, matching HEAD.
+- **Git:** clean, `main` pushed to `origin`. Thirteen commits this session,
+  oldest first: `657e093` `2c22e9f` `0a456a0` `a730caf` `0bb42d7` `e511a01`
+  `89dec68` `4c974ab` `655b076` `72d65cb` `35a5bd8` `e5b2473` `1cd941e`.
 - **Background jobs: none. PRs:** none, ever - Boris pushes `main`.
 - **Nothing pending, no locks held.** The fixture walkthrough this session created
   (`w4568642ae564`) was deleted. Two of Boris's own remain in the library and were
@@ -265,9 +295,15 @@ blocking anything:
   insert, the select and the wire are tested; no item raised since the migration
   has been opened in the inbox detail to look at. Raise a `agentbox review` with a
   diff, answer it, then open its row.
-- [assumed] **That a step with no `tldr` renders its "shown in full" line.** Built
-  and reasoned about; every fixture this session had one. Boris's two stored
-  walkthroughs predate the field and are the natural test.
+- [verified] **A review with no TL;DR anywhere used to lie about it.** Boris
+  opened `wfd51b30be854`, which predates the field, and the header sat lit on
+  TL;DR over a screen of code. The control is now disabled with a title saying
+  why, `t` does nothing and the legend drops the key (`1cd941e`). **The fix
+  itself was NOT watched on screen** - it is the one change today that shipped on
+  a read of the diff, because the session ended here. Look at it first.
+- [assumed] **That a step with no `tldr` renders its "shown in full" line** on a
+  review where OTHER steps have one. `w878f0c51c433` is exactly that case: 15 of
+  its 16 steps carry a TL;DR and its ground step does not.
 - [assumed] The older carried-over set, all unchanged from session 47: the
   inbox detail's `found: false` path, the keyboard route to a resolved row's
   detail, a detail holding a mermaid diagram, `provisionalFor` retiring a
