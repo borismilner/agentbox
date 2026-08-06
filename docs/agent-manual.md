@@ -963,7 +963,10 @@ a question:**
 - **Nothing is lost and nothing is refused.** The item is in the inbox from the
   second it arrives, its timeout runs from arrival exactly as it always does, and
   `agentbox pending` lists it. A blocking call parks the way it would behind any
-  other card.
+  other card. One consequence to be deliberate about: an `act_unless_stopped`
+  window elapses while the card is held, so the action proceeds unseen - the same
+  as under do-not-disturb, and the reason a veto is the wrong shape for anything
+  you would not want done unwatched.
 - **So budget for the wait.** A question asked mid-recording can sit for the rest
   of the take. If your call has a `timeout_s`, that clock is running: pick a
   window that survives one, or check `agentbox control state` first - it says

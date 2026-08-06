@@ -2869,6 +2869,12 @@ its turn rather than carrying the value its caller wrote, so whichever flip goes
 last through the gate reads the truth that outlived the race. It is not `c.mu`,
 because the sink reaches into `d.mu` and control's lock must never sit under it.
 
+**Two things a held card does not stop, both inherited from DND rather than new
+here.** A question's timeout is arrival-anchored, so it expires on schedule while
+it waits, and an `act_unless_stopped` window elapses and proceeds unseen. Toasts
+are the other side of it: a held toast's auto-dismiss clock only starts when it
+reaches the screen, so a long take ends in a run of them rather than in silence.
+
 **Deliberately NOT held:** a walkthrough, a document or an artifact window. Those
 are one deliberate window that somebody asked for, not an interruption arriving
 on its own, and queueing them would park an agent behind a thirty-minute fuse for
