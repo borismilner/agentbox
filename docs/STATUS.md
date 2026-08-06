@@ -940,6 +940,27 @@ sessions had missed by reading a recipe instead of installing it. That is the
 pattern worth carrying to the next feature, and slice 5 is its sharpest form: **a
 door nobody has walked through is not a door.**
 
+**The opened-row detail was watched on 2026-08-06 (session 53), and two of its
+three empty answers turn out to be unreachable by ordinary use.** Recent items
+paints as designed: twelve rows at the `agentDetailItems` cap, newest first, each
+with kind, state and age, and the Signals block above it on both a real row and a
+hook-only one. The other two are correct defensive code that no session will meet.
+*"This session has left the board"* needs `found: false`, but `Agents.svelte`
+closes the detail the instant the roster stops listing the row, so the daemon's
+answer can only be seen in the sub-second race between the surface's roster copy
+and the daemon's map, or when the bridge call itself throws. *"Nothing behind it
+yet"* needs a row with no timeline, no signals and no items - and every row on the
+board got there by announcing, which posts the signal that fills the block. Both
+were tried; the hook-only row showed its meta and its one announce, as it should.
+
+**What the same sitting showed is that the activity line is the problem, not the
+blocks under it.** Boris's PostToolUse hook writes the raw Bash command, so one
+opened row rendered a heredoc'd Go test file as a single wrapping activity line
+and a whole commit message as another, and Recent items sat two screens below the
+fold. Six handoffs have carried this as a wording preference; it is a legibility
+defect in the surface's most detailed view. The fix is his - it is his
+`~/.claude/settings.json` - and first line, or first 80 characters, is enough.
+
 **The field defects this feature turned up are all closed.** FR86 (a project named
 after whatever directory the agent stood in) and FR85 (two identity hues that
 disagreed) were fixed together in session 46, which is also where a third
