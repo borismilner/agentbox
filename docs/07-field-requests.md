@@ -2792,6 +2792,36 @@ Open questions for the mock:
 - **How it interacts with FR94's pause.** A paused, recording desktop has two
   things to say in four pixels. The colour can carry one of them.
 
+And a fourth the mock turned up, which is not about the strip at all:
+**the strip is not the only thing AgentBox puts over a recording.** FR94's
+three-minute nag is a card in the same top-centre column, and so is every
+`notify_user`. Demoting the strip and leaving the column alone means a recording
+is clean right up to the moment an agent has something to say. Either demoting
+silences the column (cards queue and drain when it goes loud), or it does not and
+a long demo has an even chance of a toast in it.
+
+**Measured before mocking it** (session 51, GNOME 46 on X11, one 1920x1200
+monitor), because the whole shape rested on the first of these:
+
+- **A frameless 4px window at `+0+0` is visible over GNOME Shell's top bar** with
+  no notification type and no `_NET_WM_STATE_ABOVE` at all. This was the risk
+  that could have killed the shape: if the shell's own bar drew over it, a
+  demoted marker would be no sign at all on a normal desktop, which is the one
+  wrong answer FR74 names. It does not.
+- **A notification-type window still cannot be pushed under a fullscreen one.**
+  Session 49's finding, re-measured and unchanged. So giving up that window type
+  is the only route to a coverable sign, which is exactly the relaxation Boris
+  asked for.
+- **Still open, on purpose:** whether AgentBox's own marker window, with the type
+  dropped, is then covered. A bare probe window stayed above a fullscreen window
+  however it was hinted, so the probe is not a faithful stand-in for the Wails
+  window. This gets watched at the top of the build, before anything is designed
+  around it.
+
+The mock is [docs/mocks/fr95-recording-mode.html](mocks/fr95-recording-mode.html):
+the stage is 1920x1200 at 40%, so 620x62 against 4px is to scale, and the panel
+beside it is what the recording exports.
+
 Related: FR74 (the strip, its guarantee and the fullscreen marker it already
 steps aside for), FR94 (the pause latch, which added a second thing the strip
 has to say). Both live in `internal/webui/control.go`; the marker's own window
@@ -2803,6 +2833,28 @@ is `openMark` there.
 
 Verified facts from field sessions, kept so a later session does not re-derive
 them.
+
+**Two ways a screenshot lies about the hands-off sign** (measured 2026-08-06,
+session 51, while answering FR95's top-edge question). Both were hit inside ten
+minutes, and both produce a plausible wrong answer rather than an error:
+
+- **`import -window root` cannot see a fullscreen window at all.** Mutter
+  unredirects one for direct scanout, so the X root pixmap still holds whatever
+  is underneath and the capture comes back as if the window were not there. Use
+  `gnome-screenshot -f`, which goes through the shell's own capture and sees the
+  composited output. This one reversed a conclusion: the same probe read
+  "fullscreen covers the marker" and "it does not" depending only on the tool.
+- **While an agent holds the desktop, a fullscreen window makes AgentBox open its
+  OWN marker at `+0+0`.** That is FR74 working correctly, and it means any
+  measurement of the top edge taken mid-run is measuring AgentBox, not the thing
+  under test. Measure a candidate window somewhere else on the screen, or release
+  the desktop first.
+
+And one about the probe itself: **Mutter decorates a bare X11 window**, so a 4px
+window comes back roughly 30px tall with a title bar, and the first set of
+measurements read that title bar. A notification-type window is undecorated by
+spec, which is why the two treatments cannot be compared until the candidate is
+told to be frameless too (`_MOTIF_WM_HINTS`, decorations 0).
 
 **GNOME Shell swallows every `Super` combination before a core X11 passive grab
 can see it, and does it silently** (measured 2026-08-06, session 50, GNOME on
