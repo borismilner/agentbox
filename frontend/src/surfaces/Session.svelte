@@ -502,13 +502,19 @@
   /* The panel shares the composer's column, so the question, its answers and the
    * reply box all line up on the same measure.
    *
-   * min-height: 0 is what lets it give way. A flex item's automatic minimum is
-   * its content, so without this the panel keeps its full height whatever the
-   * window does, the transcript goes to nothing, and the overflow comes off the
-   * bottom - which is the composer. A long question would leave the human
-   * looking at it with nowhere to type. The panel yields instead (its body
-   * scrolls; see AskPanel), because a question you can still answer beats a
-   * question you can read all of. */
+   * The flex chain down to the panel's body is what lets it give way, and it has
+   * to be unbroken: a flex item's automatic minimum is its CONTENT, and a plain
+   * block in the middle of the chain reports its full height. That is what used
+   * to happen - the panel kept its whole height whatever the window did, the
+   * transcript went to nothing, and the overflow came off the bottom, which is
+   * the composer. A long question could be read with nowhere to type an answer.
+   *
+   * These two carry min-height: 0 and the panel itself deliberately does not.
+   * That is where the floor comes from: the panel keeps its automatic minimum,
+   * which is its content's - and since its body is the one part allowed to
+   * shrink to nothing, that minimum works out to head, title, controls and
+   * hint. Put min-height: 0 on the panel too and the floor goes with it; at 22pt
+   * in a 900x560 window the controls end up painted over the composer. */
   .askwrap {
     padding: 0 28px 10px;
     display: flex;

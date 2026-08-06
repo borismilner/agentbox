@@ -117,10 +117,16 @@
     flex-direction: column;
     gap: 7px;
     animation: raise 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
-    /* Shrinkable, so a long question takes its space out of its own body rather
-     * than out of the composer below it. Everything except the body keeps its
-     * size, which is what makes the controls reachable at any window height. */
+    /* Two stages of giving way, in this order. min-height: 0 lets the panel be
+     * squeezed at all - its own min-content includes the body's text, so without
+     * this nothing shrinks and the composer goes off the window. The body then
+     * absorbs the squeeze and the controls stay put, which is the case that
+     * actually happens. overflow-y is the backstop for when even that is not
+     * enough (a large font in a small window): the panel scrolls as a unit
+     * instead of painting its controls over the composer. Everything stays
+     * reachable at every size; only how you reach it changes. */
     min-height: 0;
+    overflow-y: auto;
   }
   @keyframes raise {
     from {
@@ -170,19 +176,21 @@
     line-height: 1.3;
   }
 
-  /* The only part of the panel that gives. 260px is the cap when there is room;
-   * `flex: 0 1 auto` with min-height: 0 lets it go under that when there is not,
-   * so the head, the title, the controls and the hint are never what gets cut.
+  /* The only part of the panel that gives. min-height: 0 says so explicitly
+   * rather than leaning on the scroll container's automatic zero, so the whole
+   * squeeze lands here and the head, title, controls and hint keep their size -
+   * and the panel, which has no min-height override of its own, floors at the
+   * sum of those four. 260px is the cap when there IS room.
+   *
    * This is why the panel does not need the card's FR84 fold: the card folds
    * because a fixed-height window pushes its fields out of reach, and here the
-   * body is bounded instead - nothing is ever hidden from the reader, it just
-   * scrolls where it sits. */
+   * body is bounded instead - nothing is hidden from the reader, it scrolls
+   * where it sits, and the controls never move. */
   .body {
     font-family: var(--k-font-read);
     font-size: 0.9rem;
     line-height: 1.55;
     color: var(--k-ink-2);
-    flex: 0 1 auto;
     min-height: 0;
     max-height: 260px;
     overflow-y: auto;

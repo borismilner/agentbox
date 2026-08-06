@@ -447,9 +447,18 @@ func runWebUIDemo(args []string) {
 			time.Sleep(400 * time.Millisecond)
 			show()
 		}
+		// `webui-demo ask panel` puts the same asks in the drop-down panel instead
+		// of the app window. The session surface renders in both hosts, on a
+		// different measure and a different window height, and the panel was the
+		// one no demo could reach - which is how a layout defect stayed in it.
+		inPanel := len(args) > 1 && args[1] == "panel"
 		go func() {
 			time.Sleep(300 * time.Millisecond)
-			u.ShowApp("session")
+			if inPanel {
+				u.ShowPanel()
+			} else {
+				u.ShowApp("session")
+			}
 			time.Sleep(900 * time.Millisecond)
 			show()
 		}()
