@@ -195,6 +195,84 @@ func StringLiteral(s string) string {
 	return b.String()
 }
 
+// ArgvLiteral renders an argv array the way the config file spells one:
+// ["nvim", "+{line}", "{file}"]. Empty comes out as [] rather than as a missing
+// key, because [] is what "let agentbox find one" is written as in this file and
+// the setting has to be able to say it.
+func ArgvLiteral(argv []string) string {
+	if len(argv) == 0 {
+		return "[]"
+	}
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		parts[i] = StringLiteral(a)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// SplitArgv turns one typed line into an argv array. Whitespace separates, and
+// quotes hold a word together, because these commands take paths and a path with
+// a space in it is one argument - the exact reason the setting is an array in
+// the file and not a string.
+//
+// It is deliberately not a shell: no globbing, no variables, no pipes. What is
+// typed here is exec'd directly, so pretending otherwise would promise a shell
+// that is not there.
+func SplitArgv(line string) []string {
+	var out []string
+	var cur strings.Builder
+	held := false // a word is open, even if it is empty ("" is a real argument)
+	var quote rune
+	esc := false
+	for _, r := range line {
+		switch {
+		case esc:
+			cur.WriteRune(r)
+			esc = false
+		case r == '\\' && quote != '\'':
+			esc = true
+			held = true
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			} else {
+				cur.WriteRune(r)
+			}
+		case r == '"' || r == '\'':
+			quote = r
+			held = true
+		case r == ' ' || r == '\t':
+			if held {
+				out = append(out, cur.String())
+				cur.Reset()
+				held = false
+			}
+		default:
+			cur.WriteRune(r)
+			held = true
+		}
+	}
+	if held {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
+// JoinArgv renders an argv array back into one editable line, quoting only the
+// words that need it. It is the inverse SplitArgv sees: what comes out of the
+// box must go back in meaning the same thing.
+func JoinArgv(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		if a == "" || strings.ContainsAny(a, " \t\"'\\") {
+			parts[i] = StringLiteral(a)
+		} else {
+			parts[i] = a
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // writeAtomic writes data to path via a temp file in the same directory and a
 // rename, so a reader (the Watch poller) never sees a partially written file.
 func writeAtomic(path string, data []byte) error {

@@ -181,3 +181,74 @@ func TestWriteLoadRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip values wrong: %+v", c)
 	}
 }
+
+func TestArgvSurvivesTheTripThroughAOneLineBox(t *testing.T) {
+	// The whole reason these settings are arrays and not strings: a path with a
+	// space in it is one argument, and a control that edits them as a line has to
+	// give that back unbroken.
+	cases := []struct {
+		line string
+		want []string
+	}{
+		{"", nil},
+		{"piper", []string{"piper"}},
+		{"nvim +{line} {file}", []string{"nvim", "+{line}", "{file}"}},
+		{`code --goto "{file}:{line}:{column}"`, []string{"code", "--goto", "{file}:{line}:{column}"}},
+		{`"/opt/My Editor/bin/ed" {file}`, []string{"/opt/My Editor/bin/ed", "{file}"}},
+		{"  spaced   out  ", []string{"spaced", "out"}},
+		{`say 'it'\''s fine'`, []string{"say", "it's fine"}},
+	}
+	for _, c := range cases {
+		got := SplitArgv(c.line)
+		if len(got) != len(c.want) {
+			t.Fatalf("SplitArgv(%q) = %q, want %q", c.line, got, c.want)
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Fatalf("SplitArgv(%q) = %q, want %q", c.line, got, c.want)
+			}
+		}
+		// Join then split must land on the same argv, or a knob nobody touched
+		// writes itself back on every visit to the settings surface.
+		if again := SplitArgv(JoinArgv(got)); len(again) != len(got) {
+			t.Fatalf("round trip of %q gave %q", c.line, again)
+		} else {
+			for i := range again {
+				if again[i] != got[i] {
+					t.Fatalf("round trip of %q gave %q, want %q", c.line, again, got)
+				}
+			}
+		}
+	}
+}
+
+func TestArgvLiteralIsWhatTheFileSpells(t *testing.T) {
+	if got := ArgvLiteral(nil); got != "[]" {
+		t.Fatalf("empty argv literal = %q, want []", got)
+	}
+	got := ArgvLiteral([]string{"code", "--goto", `a "b" c`})
+	want := `["code", "--goto", "a \"b\" c"]`
+	if got != want {
+		t.Fatalf("literal = %s, want %s", got, want)
+	}
+}
+
+func TestWritingAnArgvKeyReadsBackAsAnArray(t *testing.T) {
+	// The end-to-end the settings control depends on: what Write puts in the file
+	// has to come back through Load as the same argv, or the box shows one thing
+	// and the daemon runs another.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := Write(path, []Change{
+		{Section: "editor", Key: "command", Literal: ArgvLiteral([]string{"/opt/My Editor/ed", "--line", "{line}", "{file}"})},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Editor.Command) != 4 || c.Editor.Command[0] != "/opt/My Editor/ed" || c.Editor.Command[3] != "{file}" {
+		t.Fatalf("read back %q", c.Editor.Command)
+	}
+}

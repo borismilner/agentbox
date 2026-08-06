@@ -30,6 +30,11 @@ const (
 	knobEnum  = "enum"
 	knobText  = "text"
 	knobColor = "color"
+	// knobCommand is an argv array: [editor] command and [speech] command, the
+	// two settings that had no control at all because the descriptor table had no
+	// kind for a list. It is edited as one line and stored as an array, so a path
+	// with a space in it survives - which is why these are arrays in the file.
+	knobCommand = "command"
 )
 
 type knob struct {
@@ -205,6 +210,10 @@ var settingsSpec = []knobSection{
 				{section: "session", key: "show_cost", label: "Show the cost of each reply", kind: knobBool,
 					hint: "off by default: interesting once, noise every turn"},
 			}},
+			{title: "Editor", caption: "opening a cited file at its line, from the review board (FR65)", knobs: []knob{
+				{section: "editor", key: "command", label: "Editor command", kind: knobCommand,
+					hint: "{dir} {file} {line} {column} are substituted; empty falls back to xdg-open, which loses the line"},
+			}},
 		},
 	},
 	{
@@ -218,6 +227,14 @@ var settingsSpec = []knobSection{
 					min: config.VolumeMin, max: config.VolumeMax, step: 0.05},
 				{section: "sound", key: "quiet_hours", label: "Quiet hours", kind: knobText,
 					hint: "HH:MM-HH:MM, empty for none"},
+			}},
+			{title: "Voice", caption: "the engine behind `speak` and read-aloud", knobs: []knob{
+				// No restart: applySpeech runs on every config change and hands the new
+				// argv straight to the Speaker, so a different engine takes over on the
+				// next sentence. The editor's is live for the same reason - the board
+				// reads the config when the click happens, not at startup.
+				{section: "speech", key: "command", label: "Engine command", kind: knobCommand,
+					hint: "empty = find piper and a voice; e.g. piper --model /path/voice.onnx --output_raw"},
 			}},
 		},
 	},
@@ -575,6 +592,10 @@ func valueOf(c config.Config, k knob) string {
 		return c.Session.Dir
 	case "session.show_cost":
 		return boolStr(c.Session.ShowCost)
+	case "editor.command":
+		return config.JoinArgv(c.Editor.Command)
+	case "speech.command":
+		return config.JoinArgv(c.Speech.Command)
 	case "font.size_pt":
 		return floatStr(c.Font.SizePt)
 	case "font.family":
@@ -703,6 +724,10 @@ func setValue(c *config.Config, k knob, v string) error {
 		c.Session.Dir = norm
 	case "session.show_cost":
 		c.Session.ShowCost = b
+	case "editor.command":
+		c.Editor.Command = config.SplitArgv(norm)
+	case "speech.command":
+		c.Speech.Command = config.SplitArgv(norm)
 	case "font.size_pt":
 		c.Font.SizePt = f
 	case "font.family":
@@ -777,6 +802,13 @@ func parseKnob(k knob, v string) (literal, norm string, err error) {
 			return "", "", fmt.Errorf("Quiet hours: %q is not HH:MM-HH:MM", v)
 		}
 		return config.StringLiteral(v), v, nil
+
+	case knobCommand:
+		// Round-tripped through the same pair the surface shows, so the normalised
+		// form compares equal to what was read out of the file - otherwise a knob
+		// nobody touched writes itself back on every visit.
+		argv := config.SplitArgv(v)
+		return config.ArgvLiteral(argv), config.JoinArgv(argv), nil
 	}
 	return "", "", fmt.Errorf("%s: unsupported control", k.label)
 }

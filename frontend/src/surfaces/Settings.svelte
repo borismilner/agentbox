@@ -188,6 +188,22 @@
                         <button class="clear" title="Back to the theme's own accent" onclick={() => set(k.id, "")}>reset</button>
                       {/if}
                     </span>
+                  {:else if k.kind === "command"}
+                    <!-- An argv array, edited as the line you would type. Quotes
+                         hold a word together because these take paths, which is
+                         why the file stores an array and not a string. It is not
+                         a shell: no globbing, no variables, no pipes, since what
+                         is typed here is exec'd directly. -->
+                    <input
+                      type="text"
+                      class="text mono"
+                      value={values[k.id]}
+                      placeholder="empty = let AgentBox decide"
+                      spellcheck="false"
+                      autocapitalize="off"
+                      autocorrect="off"
+                      oninput={(e) => set(k.id, e.currentTarget.value)}
+                    />
                   {:else}
                     <input
                       type="text"
@@ -502,6 +518,14 @@
   }
   .text {
     width: 200px;
+  }
+  /* A command line is read a character at a time - a flag, a path, a placeholder
+     - so it gets the mono face and more room than a font name needs. */
+  .text.mono {
+    width: 320px;
+    max-width: 320px;
+    font-family: var(--k-mono, ui-monospace, monospace);
+    font-size: 0.74rem;
   }
   .text:focus,
   select:focus {

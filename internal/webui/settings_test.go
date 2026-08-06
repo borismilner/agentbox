@@ -55,8 +55,11 @@ func TestEveryKnobIsFullyWired(t *testing.T) {
 
 		// valueOf must know the id: an unknown one returns "", and no knob's
 		// default is empty except the deliberately-empty text fields.
+		// A command knob's default is deliberately empty like a text field's:
+		// empty is how "find piper yourself" and "fall back to xdg-open" are
+		// written, so it is a value rather than a gap.
 		got := valueOf(def, k)
-		if got == "" && k.kind != knobText && k.kind != knobColor {
+		if got == "" && k.kind != knobText && k.kind != knobColor && k.kind != knobCommand {
 			t.Errorf("%s: valueOf returned nothing for the default config", id)
 		}
 
