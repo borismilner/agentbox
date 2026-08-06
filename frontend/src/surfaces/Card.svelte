@@ -161,7 +161,18 @@
         replying = false;
         return;
       }
-      e.shiftKey ? bridge.dismiss(item.id) : bridge.defer(item.id);
+      // Esc DISMISSES a notification and defers everything else. Deferring is
+      // "not now, ask me again", which is the right answer to a question and a
+      // trap on a notification: there is nothing to answer, so the item stays
+      // pending and escalation raises it again - every 20 seconds at urgent.
+      // Boris, on two urgent notifies from another agent: "No matter how many
+      // times I press Esc, it pops back up." He was pressing the only key the
+      // card named, and it was the one that could not end this.
+      //
+      // ⇧Esc still forces dismiss on every kind, because a question you want off
+      // the queue without answering it needs a key too.
+      if (e.shiftKey || kind === "notify") bridge.dismiss(item.id);
+      else bridge.defer(item.id);
       return;
     }
     if (graced && (e.key === "u" || e.key === "U") && !typing) {
@@ -257,12 +268,17 @@
         <IdentityPill agent={item.identity?.agent} project={item.identity?.project} session={item.identity?.session} />
         {#if view.caller === "gone"}<span class="caller" title="the caller disconnected; your answer reaches history only">caller gone</span>{/if}
         <span class="spacer"></span>
-        <!-- Both, because only one of them was ever written down and the other
-             is the one a notification actually wants: Esc keeps the item
-             pending and it comes back, ⇧Esc takes it off the queue. A card you
-             have finished reading is dismissed, not deferred, and a reader who
-             only knows Esc has no way to say so. -->
-        <span class="hint"><kbd>Esc</kbd> defer · <kbd>⇧Esc</kbd> dismiss</span>
+        <!-- The hint says what Esc will actually do on THIS card, which is not
+             the same on all of them: on a notification it dismisses (there is
+             nothing to answer, so deferring only brings it back), on anything
+             else it defers and ⇧Esc is the way off the queue. Only "Esc defer"
+             was ever written down, and on a notify that was the one key that
+             could not end the thing. -->
+        {#if kind === "notify"}
+          <span class="hint"><kbd>Esc</kbd> dismiss</span>
+        {:else}
+          <span class="hint"><kbd>Esc</kbd> defer · <kbd>⇧Esc</kbd> dismiss</span>
+        {/if}
       </header>
 
       <h1 class="selectable">{item.title}</h1>
