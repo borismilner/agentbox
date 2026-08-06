@@ -956,8 +956,8 @@ component. Verified by reading the components, not inferred from the screen.
    `wireCode.Notes`; `frontend/src/lib/board/CodeBlock.svelte` contains no
    reference to notes at all. Forty-one notes in this review, each one the "why"
    anchored next to the lines it explains, render as nothing. This is the single
-   most costly gap, because authoring rule 9 (answer the objection in place) and
-   rule 3 (lead-in, code, takeaway) are both built on notes. An author following
+   most costly gap, because the authoring rules for answering the objection in
+   place and for lead-in / code / takeaway are both built on notes. An author following
    the standard spends most of their effort on the one channel the reader cannot
    see.
 2. **Binds do nothing.** `ws.Binds` ships name to `[block, from, to]`;
@@ -981,7 +981,7 @@ It reads acceptably and is one line to strip later, but it puts presentation
 into content, which is exactly what the spec exists to avoid. For notes and
 binds there is no workaround: the content was left in the spec (it is stored
 correctly and will light up the day the UI lands) and the load-bearing parts
-were duplicated into prose, which is what rule 7 says not to do - explanation
+were duplicated into prose, which is what the channels rule says not to do - explanation
 and annotation collapsed into one voice because only one of them renders.
 
 **What shipped (2026-07-30).** All three, plus the layout consequences.
@@ -1046,8 +1046,9 @@ tool grows one.
 **Session.** 2026-07-30, same review.
 
 **What AgentBox could not do.** A code block header offers copy-the-path and
-copy-the-anchor, and nothing else. Authoring rule 12 requires that *every* code
-reference offer both actions, copy and open in the editor, and calls an
+copy-the-anchor, and nothing else. The authoring standard as it stood then
+required that *every* code reference offer both actions, copy and open in the
+editor, and called an
 inconsistent affordance a mistake that makes the reader check whether they
 missed something. Right now the affordance is consistently absent, which is at
 least honest, but the reader still has to leave the board, paste, and find the

@@ -570,11 +570,14 @@ agentbox webui-demo panel                  # the drop-down console with a canned
   every field reference an agent reaches, a domain count that said two things, and
   an instruction ("say what you did not verify next to the gate") the validator
   refuses. All five are fixed; the review that found them is `w5bd381d0590a`, and
-  session 49 of [history.md](history.md) has the list. **Two findings are still
-  open:** nothing verifies the completeness claim rule 49 demands (the capture log
-  counts citations and never compares them against the diff's changed set), and
-  nothing in the standard says what changes when the reader is the code's own
-  author, which is the normal case in this repo.
+  session 49 of [history.md](history.md) has the list. **One finding is still
+  open:** nothing verifies the completeness claim the coverage rule demands - the
+  capture log counts citations and never compares them against the diff's changed
+  set, so the rule that most needs a validator has none. (The other finding, that
+  the standard never said what changes when the reader is the code's own author,
+  was closed the same session by a paragraph under "The job".) Rule numbers are
+  deliberately not quoted anywhere outside the standard itself: they have
+  renumbered twice and every reference to one went stale silently.
 
 ## Tests
 
