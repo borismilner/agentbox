@@ -15,29 +15,20 @@
     pend = $bindable(),
     onVerdict, onNote, onReveal, onComment, onCommentEdit, onCommentDelete, onNav,
     onAloud, readingRegion = null, onTerm = null, onTermHover = null, onOpen = null,
-    brief = false, onBrief = null,
+    brief = false,
   } = $props();
 
   // Two reading modes, one step. `brief` shows the TL;DR and nothing under it;
   // the full version is one key away and says so. The mode belongs to the board
   // rather than to the step - a reader skimming is skimming the review, not this
-  // page - so it arrives as a prop and the toggle goes back up.
+  // page - so it arrives as a prop, and the control that changes it lives in the
+  // header where it can say which of the two states you are in.
   //
   // A step written before tldr existed has none. It renders in full whatever the
   // mode says and states why, because a blank pane under a "TL;DR" heading reads
   // as a surface that failed rather than as a review that predates the feature.
   const hasTldr = $derived(Boolean(step.tldr?.bottom));
   const short = $derived(brief && hasTldr);
-  const hidden = $derived.by(() => {
-    const bits = [];
-    const blocks = (step.codes ?? []).length;
-    const notes = (step.codes ?? []).reduce((n, b) => n + (b.notes ?? []).length, 0);
-    const checks = (step.checks ?? []).length;
-    if (blocks) bits.push(blocks === 1 ? "1 code block" : blocks + " code blocks");
-    if (notes) bits.push(notes === 1 ? "1 note" : notes + " notes");
-    if (checks) bits.push(checks === 1 ? "1 check" : checks + " checks");
-    return bits.join(", ");
-  });
 
   // Prose arrives as inline segments, because a bound phrase has to sit
   // mid-sentence. `p` on a segment starts a new paragraph at it; grouping
@@ -181,12 +172,7 @@
     </div>
   {/if}
 
-  {#if short}
-    <button class="expand" onclick={() => onBrief?.(false)} data-agentbox-find-exclude>
-      Read it in full{hidden ? ` — ${hidden}` : ""}
-      <kbd>t</kbd>
-    </button>
-  {:else if brief && !hasTldr}
+  {#if brief && !hasTldr}
     <!-- Brief was asked for and this step cannot answer. Saying so beats an
          empty pane, and beats silently ignoring the mode on one step out of ten
          with no explanation. -->
@@ -452,28 +438,6 @@
   }
   .tldr.only .bottom {
     font-size: 1.35em;
-  }
-  .expand {
-    all: unset;
-    /* `all: unset` wipes the grid-column the article sets on every child, so the
-       button auto-placed into the margin column and floated off to the right of
-       the pane it belongs under. Seen on screen, not in the diff. */
-    grid-column: 1;
-    justify-self: start;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 14px;
-    border-radius: 8px;
-    box-shadow: inset 0 0 0 1px var(--k-edge);
-    color: var(--k-ink-2);
-    font-size: 0.9em;
-  }
-  .expand:hover,
-  .expand:focus-visible {
-    color: var(--k-ink);
-    box-shadow: inset 0 0 0 1px var(--k-ink-3);
   }
   .nobrief {
     max-width: 68ch;

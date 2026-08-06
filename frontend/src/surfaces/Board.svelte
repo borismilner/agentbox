@@ -11,6 +11,7 @@
   import { bridge, on } from "../lib/bridge.js";
   import Glossary from "../lib/board/Glossary.svelte";
   import Rail from "../lib/board/Rail.svelte";
+  import ModeToggle from "../lib/board/ModeToggle.svelte";
   import Step from "../lib/board/Step.svelte";
   import SubmitModal from "../lib/board/SubmitModal.svelte";
 
@@ -394,17 +395,7 @@
           <span class="n">{review.glossary.length}</span>
         </button>
       {/if}
-      <!-- The reading mode, said as which one you are IN rather than as a verb:
-           a reader who opened straight into TL;DR has to be told that is what
-           they are looking at before being offered a way out of it. -->
-      <button
-        class="chip mode"
-        class:on={brief}
-        onclick={() => (brief = !brief)}
-        title={brief ? "reading the TL;DR - switch to the full text (t)" : "reading the full text - switch to the TL;DR (t)"}
-      >
-        {brief ? "TL;DR" : "full text"}
-      </button>
+      <ModeToggle {brief} onPick={(v) => (brief = v)} />
       <div class="pips">
         {#each counted as s (s.id)}
           <span
@@ -508,7 +499,6 @@
             {onTermHover}
             {onOpen}
             {brief}
-            onBrief={(v) => (brief = v)}
           />
         {/key}
       </div>
@@ -638,20 +628,7 @@
     }
   }
   @media (max-width: 820px) {
-    /* Lit while brief, because that is the mode the board opens in and a control
-     that looks the same in both is a control the reader never notices they are
-     inside of. */
-  .chip.mode {
-    font-family: var(--k-font-mono);
-    font-size: 0.78em;
-    letter-spacing: 0.02em;
-  }
-  .chip.mode.on {
-    color: var(--k-accent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-accent) 55%, transparent);
-    background: color-mix(in srgb, var(--k-accent) 10%, transparent);
-  }
-  .pips {
+    .pips {
       display: none;
     }
     .count {
