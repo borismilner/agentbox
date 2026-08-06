@@ -75,6 +75,60 @@ window. Those are one deliberate window somebody asked for rather than an
 interruption arriving on its own, and queueing them would park an agent behind a
 thirty-minute fuse for something the human is standing there waiting to see.
 
+### Then Boris asked for robustness, and four things came out of it
+
+*"Adversarially look for opportunities to dramatically improve robustness and
+avoid different kinds of bugs and unexpected behavior."* What that turned into,
+in the order the reasoning went:
+
+**A panic on a timer's goroutine took the whole daemon down.** Every handler has
+had a recover since the beginning and every timer has had none: a toast expiring,
+an escalation replaying, an undo grace finalizing, the recording fuse, the pause
+nag and four subsystem tickers all run where there is no Handle above them.
+systemd puts the daemon back two seconds later, which does nothing for the agents
+already parked on questions. One guard now wraps the callback - **not the loop**,
+because a recover around a ticker goroutine would swallow the panic and end the
+reaper with it, trading a loud death for a silent one. The test arms the fake
+surface to blow up on the toast's expiry; without the guard it does not report a
+failure, it takes the package's whole run down with it.
+
+**The coverage rule got its validator**, which was the last open finding from the
+standard's trial in session 49 and had been carried by three handoffs. Rule 49
+asks for one traversal covering every changed line, and nothing checked it - the
+capture log counted citations and never compared them against the diff. Now every
+hunk is compared against every citation at create AND on every read (recomputed,
+never stored: the spec is the only copy of the truth). Four decisions inside it:
+overlap rather than containment, because a step citing the twenty lines around a
+three-line change has stood on it; a pure-deletion hunk's span collapses to the
+seam it left, or every review that removed code would read as incomplete; a
+deleted FILE is not counted either way, because there is nothing left to cite and
+counting it would teach an `out_of_scope` entry for every deletion; and no diff
+means uncomputed rather than clean. Watched live on the deployed build against
+this repo's own diff: *"4 of 5 hunks are not cited by any step"*, each named by
+path and line.
+
+**The frontend got a test runner**, on node's own `--test` and no framework - a
+dist committed so a machine without npm can build should not start needing npm to
+be tested, and the target says so and moves on when node is absent. `parseDiff`
+is the first module in it: shared by the review card and the inbox detail, whose
+whole promise is that the two agree, and nothing checked that either.
+
+**And the fuzz target found a real one on its first run.** `FuzzParse` over
+`internal/change`: a hunk header with twenty digits overflowed the hand-rolled
+atoi and came back as a NEGATIVE line number, which then flows into every span
+and slice built from the geometry - and the blast radius had grown that same
+morning, because the new coverage arithmetic runs on every walkthrough READ as
+well as every create. Clamped at 2^31, failing input committed as the corpus.
+The frontend parser is told the same lie and reads it differently (enormous, not
+negative, so it swallows the following files into one body); fixing that means
+changing the render path, which is not worth doing blind, so STATUS carries it.
+
+**What could not be verified this session:** the new `quiet_hotkey` settings knob
+is wired at both ends and covered by the descriptor test, but it was never seen
+on screen - the display went to sleep mid-session (`gnome-screenshot` returns
+black, `GetActive` says the screensaver is on) and waking it to look was not
+worth doing to somebody's desktop while they were away.
+
 ## Fifty-first session (2026-08-06): FR95 mocked, settled and mostly built, and three of its four measurements lied first
 
 FR95 is "get the hands-off strip out of a screen recording". Its shape was already
