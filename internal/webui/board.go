@@ -10,6 +10,7 @@ package webui
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/borismilner/agentbox/internal/editor"
 	"github.com/borismilner/agentbox/internal/proto"
 	"github.com/borismilner/agentbox/internal/store"
 	"github.com/borismilner/agentbox/internal/walkthrough"
@@ -359,6 +361,71 @@ func (b *Bridge) BoardCommentEdit(id, commentID, body string) error {
 		return errors.New("a comment needs words; delete it instead")
 	}
 	return b.boardWrite("comment_edit", src.BoardCommentEdit(id, commentID, body))
+}
+
+// BoardOpenInEditor raises the human's editor on a cited block's first line
+// (FR65). The surface names a REVIEW and a repo-relative path, never a file: the
+// root comes from the stored walkthrough on this side, so a surface cannot ask
+// for a path outside the repository it is reviewing, and rel is checked to be
+// inside that root after cleaning. This is the second place a surface can name
+// something outside agentbox (OpenURL is the first) and it launches a program, so
+// it gets the same treatment.
+//
+// The error is what the reader is shown, so each one says what to do: no editor
+// found says which key sets one, and a fallback that loses the line is reported
+// as success with a warning in the log rather than as a failure - the file did
+// open.
+func (b *Bridge) BoardOpenInEditor(id, rel string, line int) error {
+	src := b.ui.boardSrc()
+	if src == nil {
+		return errors.New("board store not wired")
+	}
+	w, _, _, err := src.BoardData(id)
+	if err != nil {
+		return err
+	}
+	root := strings.TrimRight(w.RepoRoot, "/")
+	if root == "" || !filepath.IsAbs(root) {
+		return errors.New("this review has no repository root, so there is no file to open")
+	}
+	abs, err := underRoot(root, rel)
+	if err != nil {
+		b.ui.log.Warn("board.open_editor_rejected", "component", "webui", "path", rel, "err", err.Error())
+		return err
+	}
+	argv, source, err := editor.Command(b.ui.conf().Editor.Command, editor.Target{
+		Dir: root, File: abs, Line: line, Col: 1,
+	})
+	if err != nil {
+		b.ui.log.Warn("board.open_editor_failed", "component", "webui", "err", err.Error())
+		return err
+	}
+	if _, err := editor.Start(argv); err != nil {
+		b.ui.log.Warn("board.open_editor_failed", "component", "webui", "argv", strings.Join(argv, " "), "err", err.Error())
+		return fmt.Errorf("could not start %s: %w", argv[0], err)
+	}
+	b.ui.log.Info("board.open_editor", "component", "webui", "source", source, "file", abs, "line", line)
+	return nil
+}
+
+// underRoot resolves a repo-relative citation against the review's root and
+// refuses anything that leaves it. Symlinks are deliberately not followed: the
+// path came out of a diff, the file may not exist on disk at all (a review of a
+// deleted file, a checkout on another branch), and letting the editor report
+// that is better than refusing to try.
+func underRoot(root, rel string) (string, error) {
+	rel = strings.TrimSpace(rel)
+	if rel == "" {
+		return "", errors.New("this block has no file to open")
+	}
+	if filepath.IsAbs(rel) {
+		return "", fmt.Errorf("%q is an absolute path; a citation is relative to the repository", rel)
+	}
+	abs := filepath.Clean(filepath.Join(root, rel))
+	if abs != root && !strings.HasPrefix(abs, root+string(filepath.Separator)) {
+		return "", fmt.Errorf("%q is outside the repository being reviewed", rel)
+	}
+	return abs, nil
 }
 
 func (b *Bridge) BoardCommentDelete(id, commentID string) error {

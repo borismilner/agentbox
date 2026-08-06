@@ -14,7 +14,7 @@
     step, mark, comments, root, isFirst, isLast, noteFocus, stepComposer,
     pend = $bindable(),
     onVerdict, onNote, onReveal, onComment, onCommentEdit, onCommentDelete, onNav,
-    onAloud, readingRegion = null, onTerm = null, onTermHover = null,
+    onAloud, readingRegion = null, onTerm = null, onTermHover = null, onOpen = null,
   } = $props();
 
   // Prose arrives as inline segments, because a bound phrase has to sit
@@ -166,6 +166,7 @@
       lit={lit && lit.block === bi ? lit : null}
       last={bi === (step.codes ?? []).length - 1}
       {onComment}
+      {onOpen}
     />
   {/each}
 

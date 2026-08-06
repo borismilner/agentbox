@@ -9,8 +9,9 @@
   // a comment's anchor is always a real new-file range.
   import Composer from "./Composer.svelte";
   import CopyBtn from "./CopyBtn.svelte";
+  import OpenBtn from "./OpenBtn.svelte";
 
-  let { blk, root, stepId, comments, pend = $bindable(), blockIndex, lit = null, onComment, last = false } = $props();
+  let { blk, root, stepId, comments, pend = $bindable(), blockIndex, lit = null, onComment, onOpen = null, last = false } = $props();
 
   let scroller = $state(null);
   let hovCmt = $state(null); // {key, list} - only replaced when the SET changes
@@ -128,6 +129,16 @@
       title="copy this block"
       icon
     />
+    <!-- Offered on a block whose excerpt FAILED to render too: a citation the
+         board could not show is the one the reader most wants to go and look at
+         themselves. The line falls back to the top of the file, because a block
+         with no lines has no first line to land on. -->
+    {#if blk.path && onOpen}
+      <OpenBtn
+        onOpen={() => onOpen(blk.path, blk.start || 1)}
+        title={"open " + blk.path + ":" + (blk.start || 1) + " in the editor"}
+      />
+    {/if}
   </div>
 
   {#if blk.err}
@@ -227,8 +238,11 @@
     overflow: hidden;
     margin-bottom: 20px;
   }
+  /* Wraps because a failed open puts its reason in the header, and a message
+     long enough to be useful would otherwise crush the path it belongs to. */
   .head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     padding: 8px 16px;

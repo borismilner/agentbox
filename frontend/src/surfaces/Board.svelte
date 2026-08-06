@@ -128,6 +128,11 @@
     bridge.boardCommentDelete(review.id, id).catch(() => {});
   }
 
+  // FR65. The rejection is deliberately NOT caught here: OpenBtn shows it beside
+  // the block it belongs to, and the board's own error state replaces the whole
+  // review, which no failed click deserves.
+  const onOpen = (path, line) => bridge.boardOpenInEditor(review.id, path, line);
+
   let noteFocus = $state(0); // bumped to ask the verdict box to focus the note
   let stepComposer = $state(0); // bumped to open the step-level composer
   let submit = $state(false); // the submit modal
@@ -442,6 +447,7 @@
             {readingRegion}
             onTerm={hasGlossary ? openTerm : null}
             {onTermHover}
+            {onOpen}
           />
         {/key}
       </div>

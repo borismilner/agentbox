@@ -88,6 +88,10 @@ export const bridge = {
     Call.ByName(svc("BoardCommentAdd"), id, stepId, path, side, from, to, exact, body),
   boardCommentEdit: (id, commentId, body) => Call.ByName(svc("BoardCommentEdit"), id, commentId, body),
   boardCommentDelete: (id, commentId) => Call.ByName(svc("BoardCommentDelete"), id, commentId),
+  // FR65: raise the reader's editor on a cited block. The review id and the
+  // repo-relative path, never a file path - Go owns the root and refuses
+  // anything outside it.
+  boardOpenInEditor: (id, path, line) => Call.ByName(svc("BoardOpenInEditor"), id, path, line),
   boardSubmit: (id) => Call.ByName(svc("BoardSubmit"), id),
   // the library surface (FR70): what is stored, put one on the board, remove one
   library: () => Call.ByName(svc("Library")),
