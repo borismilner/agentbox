@@ -257,7 +257,12 @@
         <IdentityPill agent={item.identity?.agent} project={item.identity?.project} session={item.identity?.session} />
         {#if view.caller === "gone"}<span class="caller" title="the caller disconnected; your answer reaches history only">caller gone</span>{/if}
         <span class="spacer"></span>
-        <span class="hint"><kbd>Esc</kbd> defer</span>
+        <!-- Both, because only one of them was ever written down and the other
+             is the one a notification actually wants: Esc keeps the item
+             pending and it comes back, ⇧Esc takes it off the queue. A card you
+             have finished reading is dismissed, not deferred, and a reader who
+             only knows Esc has no way to say so. -->
+        <span class="hint"><kbd>Esc</kbd> defer · <kbd>⇧Esc</kbd> dismiss</span>
       </header>
 
       <h1 class="selectable">{item.title}</h1>
