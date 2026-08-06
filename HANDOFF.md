@@ -160,8 +160,10 @@ Not read off the diff. Captures are in the scratchpad listed under Live state.
   `gitlab.com:fu-bar/agentbox.git`, on Boris's word at the end of the session).
   Fourteen commits, oldest first: `11778f1` `8b06691` `16d2e78` `eca7190`
   `808237f` `2c3584e` `4421863` `171ba0e` `254285b` `31da412` `12d27fe`
-  `0a3d95e` `9156e47` `b5d83c9`, plus this handoff's own commit, which is
-  written after the push and so is local until somebody pushes again.
+  `0a3d95e` `9156e47` `b5d83c9` `c70d933`, plus this handoff's own last commit.
+  A handoff cannot know its own sha or whether it got pushed, so **run
+  `git status -sb`** - that is the only truthful answer, and it was `clean, in
+  sync` at every point this session could observe.
 - **Background jobs: none. PRs:** none, ever - Boris pushes `main`.
 - **Nothing pending, no locks held, no strip on screen, nothing paused.** All
   four checked at the end (`agentbox control state` says "no run: the desktop is
