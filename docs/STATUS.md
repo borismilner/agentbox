@@ -930,7 +930,15 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
-**As of session 54 (2026-08-06) nothing is blocked on Boris and FR30 is built.**
+**As of session 55 (2026-08-06) nothing is blocked on Boris.** Session 55 took
+two items off session 54's queue: `config.SplitArgv` got the fifth fuzz target
+(it found two escaping defects, both fixed), and the inline ask panel was looked
+at on a real long body (it does not need FR84's fold, but it was pushing the
+composer off the window and now does not). What is left on that queue is living
+with `[flood]`'s defaults, and whether `tools/showcase/` gets deleted outright -
+Boris's call, and the one thing worth putting to him.
+
+**As of session 54 (2026-08-06) FR30 is built.**
 He cleared the whole queue in two exchanges at the start of that session: flood
 control's shape and threshold, FR84's other half, the argv settings control, the
 showcase dropped for good, and permission to take the daemon down for the last
@@ -1059,6 +1067,20 @@ is in two parts and the second is the one that is easy to miss - past the
 window's height the content pushes the shell out and the observer fires, but
 under it min-height pins the shell and there is nothing left to observe, so
 anything that can make the card shorter has to ask for a measurement itself.
+
+**The inline panel deliberately does NOT fold, and session 55 settled why.** The
+card folds because a fixed-height window puts its fields out of reach; the
+panel's body is bounded at 260px and its controls sit under that, so they never
+move however long the question is. Looking at one on a real long body turned up
+the opposite defect instead: `.askwrap` had no `min-height: 0`, and a flex item's
+automatic minimum is its content, so the panel held its full height whatever the
+window did. The transcript went to nothing and the overflow came off the bottom -
+which is the composer. At 1000x520 the reply box was a clipped sliver with no
+Send button, so a long question could be read and not answered. The panel now
+yields: the body is the only part that shrinks (`flex: 0 1 auto`, `min-height: 0`,
+260px still the cap when there is room) and `.composer` never shrinks at all.
+`webui-demo ask`'s second item is a long-bodied one, added so the case is looked
+at rather than reasoned about.
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. FR95 closed on

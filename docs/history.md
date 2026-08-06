@@ -9,6 +9,57 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fifty-fifth session (2026-08-06): a fuzz target and a look, both of which found something else
+
+Session 54 handed over an empty "Blocked on you" and a five-item queue to pick
+from. This session took the two cheapest and both turned out to be guarding a
+defect nobody had guessed at.
+
+**`config.SplitArgv` got the fifth fuzz target, and it failed in seven seconds.**
+`FuzzArgvSurvivesTheBox` drives the whole path a command knob makes - split the
+typed line, render it back into the box with `JoinArgv` and into the file with
+`ArgvLiteral`, read both again - and asserts both round trips. Two defects:
+
+- **A tab or a newline inside a quoted argument came back as the letter t or n.**
+  `JoinArgv` borrowed `StringLiteral`, which renders TOML, while `SplitArgv` read
+  a backslash the shell way (`\X` means X). The two languages agree on `\"` and
+  `\\` and part company on exactly the two escapes that carry whitespace, so the
+  disagreement was invisible until an argument held both a space (forcing quotes)
+  and a tab. `JoinArgv` now has its own quoting whose only contract is that
+  `SplitArgv` reverses it, and `SplitArgv` decodes `\n` `\t` `\r`.
+- **A control character was written into the file raw, which TOML rejects.** The
+  blast radius is the part worth remembering: `Load` does not lose one setting, it
+  abandons the whole file and every unrelated knob falls back to its default. One
+  pasted DEL in one text box would have silently reset Boris's config. Escaping is
+  `\b \f \r` plus `\uXXXX` for the rest.
+
+Both are pinned by name as well as by corpus hash, and both were checked against
+the old `write.go` to confirm they fail without the fix.
+
+**The inline ask panel does not need FR84's fold - it needed something else.**
+Session 54 judged the fold out of scope there and asked for a look at a real long
+body. The judgement holds, and for a reason worth writing down: the card folds
+because a fixed-height window puts its fields out of reach, while the panel's
+body is bounded at 260px with the controls under it, so they never move. The
+demo fixture had no long-bodied ask, which is exactly why nobody had seen this;
+it has one now (`webui-demo ask`, second item).
+
+What the look found instead was worse than the thing it was checking for.
+`.askwrap` had no `min-height: 0`, and a flex item's automatic minimum is its
+content, so the panel kept its full height whatever the window did. The
+transcript collapsed to nothing and the overflow came off the bottom, which is
+the composer. At 1000x520 the reply box was clipped to a sliver with no Send
+button and no hint line: the human could read the question and had nowhere to
+type the answer. The panel yields now - its body is the only part that shrinks,
+the composer never does - and it was seen at 1000x520 before and after, scrolled
+inside its own body, and re-checked at 1180x860 to confirm nothing moved where
+there was already room.
+
+The lesson is the same one session 54 wrote down, arriving from the other
+direction: neither defect was in the thing being worked on. One came from a
+property test asking a question nobody had asked in prose, the other from putting
+a real window at a size nobody had tried.
+
 ## Fifty-fourth session (2026-08-06): FR30 built, and four things only the screen said
 
 The session opened on an empty queue with everything of substance blocked on one
