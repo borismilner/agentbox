@@ -83,7 +83,10 @@
              fades in behind it so the two do not arrive at once. -->
         <div class="drawer">
           <div class="dinner">
-            {#if d.blurb}<p class="dblurb">{d.blurb}</p>{/if}
+            <!-- No blurb here. The step's own banner already carries it, and
+                 printing it twice on one screen makes the rail look like it is
+                 saying something the page is not. The rail is a route; the line
+                 that says what a domain is about belongs where the reader is. -->
             {#each steps.slice(d.from, d.to + 1) as s, k (s.id)}
               {@render station(s, d.from + k, d.from + k === d.to)}
             {/each}
@@ -305,30 +308,12 @@
   .domain.open .dinner {
     padding-top: 2px;
   }
-  /* The line the domain opens with, and the reason a domain has a blurb at all:
-     it is the moment the reader decides whether to pay attention. It arrives
-     after the drawer rather than with it, so the opening reads as one movement
-     and then a sentence. */
-  .dblurb {
-    margin: 0 0 10px;
-    font-size: 0.86em;
-    line-height: 1.5;
-    color: var(--k-ink-2);
-    text-wrap: pretty;
-    opacity: 0;
-    transition: opacity 200ms ease 120ms;
-  }
-  .domain.open .dblurb {
-    opacity: 1;
-  }
   /* Whoever asked for less motion gets none of this: the drawer still opens and
      closes, it just stops being a movement. theme.motion lands on the root as a
      data attribute (lib/tokens.js), so it is read here rather than threaded
      through as a prop that every caller would have to remember to pass. */
   :global([data-motion="reduced"]) .drawer,
   :global([data-motion="none"]) .drawer,
-  :global([data-motion="reduced"]) .dblurb,
-  :global([data-motion="none"]) .dblurb,
   :global([data-motion="reduced"]) .domain,
   :global([data-motion="none"]) .domain {
     transition: none;

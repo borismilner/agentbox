@@ -455,6 +455,11 @@
   }
   .expand {
     all: unset;
+    /* `all: unset` wipes the grid-column the article sets on every child, so the
+       button auto-placed into the margin column and floated off to the right of
+       the pane it belongs under. Seen on screen, not in the diff. */
+    grid-column: 1;
+    justify-self: start;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
