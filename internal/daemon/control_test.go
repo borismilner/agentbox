@@ -805,3 +805,254 @@ func TestLoudOnALoudDesktopIsNotAnEvent(t *testing.T) {
 		t.Error("loud repainted a strip that was already loud")
 	}
 }
+
+// --- FR95: the column goes quiet with the sign --------------------------------
+//
+// The strip is not the only thing AgentBox puts in the top-centre column, so
+// demoting the strip alone leaves every card in the recording. These are the
+// daemon half: the card waits, the earcon does not.
+
+// waitForNoItem is the opposite of waitForItem, and it needs its own wait
+// because "nothing appeared" is only true after the present that would have
+// shown it. It settles on the view rather than sleeping a fixed time.
+func waitForNoItem(t *testing.T, ui *fakeUI) {
+	t.Helper()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if it := ui.last().Item; it != nil {
+			t.Fatalf("a card took the screen while the sign was demoted: %q", it.Title)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestARecordingHoldsTheCardAndKeepsTheEarcon(t *testing.T) {
+	// Boris's fourth answer at the mock: cards queue instead of appearing and
+	// drain the moment it goes loud, the earcon still plays so he knows one
+	// arrived, and nothing is lost. Recording mode is NOT do-not-disturb - DND
+	// holds the chime and this keeps it.
+	d, ui, snd, _ := newTestDaemon(t, Config{})
+	d.Handover().Quiet("the hotkey")
+
+	callNotify(t, d, notifyItem(proto.LevelWarning))
+	waitForNoItem(t, ui)
+	if snd.count() != 1 {
+		t.Fatalf("the arrival was silent as well as invisible: %d sounds", snd.count())
+	}
+	if w := ui.last().Waiting; w != 1 {
+		t.Errorf("the held card is not in the queue: waiting=%d", w)
+	}
+
+	d.Handover().Loud("the hotkey")
+	it := waitForItem(t, ui)
+	if it.Title != "build done" {
+		t.Errorf("something else drained: %q", it.Title)
+	}
+	if snd.count() != 1 {
+		t.Errorf("the drain chimed again for a card that already chimed: %d sounds", snd.count())
+	}
+}
+
+func TestAnUrgentCardWaitsForTheRecordingRatherThanInterrupting(t *testing.T) {
+	// The one card that pierces every other hold does not pierce this one. An
+	// urgent question in the middle of a take is exactly the frame this feature
+	// exists to keep clean, and it is still heard and still answerable from the
+	// inbox.
+	d, ui, snd, _ := newTestDaemon(t, Config{})
+	d.Handover().Quiet("the command line")
+
+	urgent := askItem()
+	urgent.Level = proto.LevelUrgent
+	ch := askAsync(t, d, urgent)
+	waitForNoItem(t, ui)
+	if snd.count() == 0 {
+		t.Error("an urgent card arrived with no sound at all")
+	}
+
+	d.Handover().Loud("the command line")
+	it := waitForItem(t, ui)
+	d.Answer(it.ID, "Yes")
+	<-ch
+}
+
+func TestTheUrgentCardIsFirstOutWhenTheRecordingEnds(t *testing.T) {
+	// Waiting is not the same as losing its place. An urgent question that arrived
+	// behind three toasts would drain fourth on queue order alone, so the human
+	// goes loud and watches build notifications while an agent is blocked.
+	d, ui, _, _ := newTestDaemon(t, Config{})
+	d.Handover().Quiet("the hotkey")
+	for range 3 {
+		callNotify(t, d, notifyItem(proto.LevelWarning))
+	}
+	urgent := askItem()
+	urgent.Level = proto.LevelUrgent
+	urgent.Title = "Deploy to production?"
+	ch := askAsync(t, d, urgent)
+	waitForNoItem(t, ui)
+
+	d.Handover().Loud("the hotkey")
+	it := waitForItem(t, ui)
+	if it.Title != "Deploy to production?" {
+		t.Errorf("the drain started with %q, not the urgent card that waited", it.Title)
+	}
+	d.Answer(it.ID, "Yes")
+	<-ch
+}
+
+func TestABurstDuringARecordingChimesLikeALoudDesktopWould(t *testing.T) {
+	// On a loud desktop a burst of five is one chime and four cards queued behind
+	// the first. Chiming for every held arrival would make recording mode noisier
+	// than not recording, which is the wrong way round.
+	d, ui, snd, _ := newTestDaemon(t, Config{})
+	d.Handover().Quiet("the hotkey")
+
+	for range 5 {
+		callNotify(t, d, notifyItem(proto.LevelWarning))
+	}
+	waitForNoItem(t, ui)
+	if snd.count() != 1 {
+		t.Errorf("a burst of five during a recording played %d sounds, want 1", snd.count())
+	}
+	if w := ui.last().Waiting; w != 5 {
+		t.Errorf("waiting=%d, want all five held", w)
+	}
+}
+
+func TestGoingQuietTakesDownTheCardThatIsAlreadyUp(t *testing.T) {
+	// He arms this a second before he hits record, and whatever is on screen at
+	// that second is in the first frame unless it comes down with the strip.
+	d, ui, _, _ := newTestDaemon(t, Config{})
+	callNotify(t, d, notifyItem(proto.LevelWarning))
+	first := waitForItem(t, ui)
+
+	d.Handover().Quiet("the hotkey")
+	waitForNoItem(t, ui)
+	if w := ui.last().Waiting; w != 1 {
+		t.Errorf("the retracted card was dropped instead of queued: waiting=%d", w)
+	}
+
+	d.Handover().Loud("the hotkey")
+	back := waitForItem(t, ui)
+	if back.ID != first.ID {
+		t.Errorf("a different card came back: %q", back.Title)
+	}
+}
+
+func TestTheFuseDrainsTheColumnAsWellAsRestoringTheStrip(t *testing.T) {
+	// The fuse flips the mode from a timer inside control, which is the one path
+	// that reaches the daemon through nobody's RPC. A drain that only happened on
+	// the hotkey would leave a forgotten recording holding every card.
+	d, ui, _, _ := newTestDaemon(t, Config{})
+	d.Handover().Quiet("the hotkey")
+	callNotify(t, d, notifyItem(proto.LevelWarning))
+	waitForNoItem(t, ui)
+
+	d.Handover().Loud("the 30 minute fuse") // what the timer's func does
+	waitForItem(t, ui)
+}
+
+func TestDoNotDisturbStillHoldsTheChimeDuringARecording(t *testing.T) {
+	// Both can be on, and they hold different things. The stronger one wins the
+	// overlap: DND asked for silence and a recording did not undo that.
+	d, ui, snd, _ := newTestDaemon(t, Config{})
+	d.DndSet(true)
+	d.Handover().Quiet("the hotkey")
+
+	callNotify(t, d, notifyItem(proto.LevelWarning))
+	waitForNoItem(t, ui)
+	if snd.count() != 0 {
+		t.Errorf("recording mode gave a DND-held card its chime back: %d sounds", snd.count())
+	}
+
+	// And going loud while DND is still on reveals nothing: the other hold is
+	// still holding.
+	d.Handover().Loud("the hotkey")
+	waitForNoItem(t, ui)
+}
+
+func TestTheColumnNeverEndsUpHeldByASignThatSaysLoud(t *testing.T) {
+	// The failure this guards has no symptom: the strip is back, the state line
+	// says loud, and every card is still held with no way out but a restart. It
+	// needs two flips released from control's lock and then scheduled in the other
+	// order, which is a hotkey against the fuse - rare, silent, and permanent.
+	d, _, _, _ := newTestDaemon(t, Config{})
+	var wg sync.WaitGroup
+	for i := range 60 {
+		wg.Go(func() {
+			if i%2 == 0 {
+				d.Handover().Quiet("the hotkey")
+			} else {
+				d.Handover().Loud("the 30 minute fuse")
+			}
+		})
+	}
+	wg.Wait()
+
+	sign, _ := d.Handover().Quieted()
+	d.mu.Lock()
+	column := d.quiet
+	d.mu.Unlock()
+	if sign != column {
+		t.Fatalf("the sign says quiet=%v and the card column says quiet=%v", sign, column)
+	}
+}
+
+func TestTheProgressWindowGoesAndComesBackWithTheCards(t *testing.T) {
+	// A progress bar is not a card, but it is AgentBox on screen, and a long task
+	// reporting through a whole take is the one window guaranteed to be in the
+	// frame. The report itself keeps running - this is the window, not the work.
+	d, ui, _, _ := newTestDaemon(t, Config{})
+	res, rpcErr := d.Progress(context.Background(), proto.ProgressUpdate{
+		Title: "Migrating", Percent: 40, Identity: agentA,
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if got := ui.lastProgress(); len(got) != 1 {
+		t.Fatalf("the report never painted: %+v", got)
+	}
+
+	d.Handover().Quiet("the hotkey")
+	if got := ui.lastProgress(); len(got) != 0 {
+		t.Errorf("the progress window stayed in the recording: %+v", got)
+	}
+	// Still live underneath, and an update while demoted paints nothing either.
+	if _, rpcErr := d.Progress(context.Background(), proto.ProgressUpdate{ID: res.ID, Percent: 80}); rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if got := ui.lastProgress(); len(got) != 0 {
+		t.Errorf("an update during the recording put the window back: %+v", got)
+	}
+
+	d.Handover().Loud("the hotkey")
+	got := ui.lastProgress()
+	if len(got) != 1 || got[0].Percent != 80 {
+		t.Fatalf("the report did not come back where it got to: %+v", got)
+	}
+}
+
+func TestTheHeldCardSaysItsSpokenLineWhenItLands(t *testing.T) {
+	// The earcon is a blip and a voice reading a card aloud is a sentence over the
+	// narration, so the mode that is named quiet holds the line until the card is
+	// on screen. Nothing is lost - it is said, just not into the take.
+	d, ui, snd, _ := newTestDaemon(t, Config{})
+	d.Handover().Quiet("the hotkey")
+
+	it := notifyItem(proto.LevelWarning)
+	it.Speak = "the build is done"
+	callNotify(t, d, it)
+	waitForNoItem(t, ui)
+	if lines := snd.spokenLines(); len(lines) != 0 {
+		t.Errorf("a voice spoke into the recording: %q", lines)
+	}
+
+	d.Handover().Loud("the hotkey")
+	waitForItem(t, ui)
+	deadline := time.Now().Add(time.Second)
+	for len(snd.spokenLines()) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the held line was never said")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

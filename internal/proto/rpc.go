@@ -737,6 +737,10 @@ type ControlResult struct {
 	// and QuietLeftS is what the fuse has left before it goes loud on its own.
 	Quiet      bool `json:"quiet,omitempty"`
 	QuietLeftS int  `json:"quiet_left_s,omitempty"`
+	// QuietHeld is how many cards the demoted sign is holding back, so the state
+	// line says what going loud is about to put on screen. Only meaningful while
+	// Quiet: cards queue during a recording and drain when it ends.
+	QuietHeld int `json:"quiet_held,omitempty"`
 }
 
 // ProgressUpdate creates or updates a live progress report (FR21). An empty

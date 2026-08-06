@@ -293,14 +293,20 @@ type Daemon struct {
 	OnDndChange  func(on bool)
 	OnMuteChange func(agents []string)
 
-	mu        sync.Mutex
-	current   *proto.Item
-	queue     []*proto.Item
-	waiters   map[string]chan proto.Result
-	timers    map[string]*time.Timer
-	expiries  map[string]time.Time // timed questions' expiry deadlines, for the View countdown
-	graced    *graced
-	dnd       bool
+	mu       sync.Mutex
+	current  *proto.Item
+	queue    []*proto.Item
+	waiters  map[string]chan proto.Result
+	timers   map[string]*time.Timer
+	expiries map[string]time.Time // timed questions' expiry deadlines, for the View countdown
+	graced   *graced
+	dnd      bool
+	// quiet mirrors control's recording mode (FR95), pushed here on every flip so
+	// the display gate never has to reach into control's lock. It holds the CARD
+	// and not the earcon, which is what makes it a different thing from dnd above:
+	// during a recording he still wants to hear that something arrived, he just
+	// does not want it in the frame.
+	quiet     bool
 	muted     map[string]bool // FR47: agents silenced in memory, cleared on restart
 	gone      map[string]bool // FR45: blocking items whose caller socket has dropped
 	dismissAt time.Time       // auto-dismiss deadline of the current toast
@@ -561,6 +567,10 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	d.control.SetNag(func(title, body string, actions []proto.Action) {
 		d.surfaceNotify(proto.LevelWarning, proto.Identity{Agent: "agentbox"}, title, body, actions...)
 	})
+	// Recording mode takes the card column with it (FR95). Demoting the strip and
+	// leaving the column alone means a demo is clean right up to the moment an
+	// agent has something to say, which is the same as not being clean.
+	d.control.SetQuietSink(d.QuietSet)
 	// An attach dropping is a session dying, and its locks must not silently
 	// free the resources its work may still be using (locks.go, the orphan rule).
 	// The signal hub is told too, so a machine that has run all day is not holding
@@ -752,12 +762,17 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: `control wants {"action": "request|activity|release|state", ...}`}
 		}
 		id := req.Identity
+		// Every control answer says how many cards the recording is holding (FR95),
+		// decorated on the way out rather than inside each verb: the number is the
+		// daemon's and not control's, and the line he reads before going loud is the
+		// one place it matters.
+		var res proto.ControlResult
 		switch req.Action {
 		case proto.ControlRequest:
 			if strings.TrimSpace(req.Reason) == "" {
 				return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: "control request wants a reason: it is what the human reads before allowing it"}
 			}
-			return d.control.Request(ctx, id, req.Reason, time.Duration(req.WindowS)*time.Second), nil
+			res = d.control.Request(ctx, id, req.Reason, time.Duration(req.WindowS)*time.Second)
 		case proto.ControlActivity:
 			// One tool, two readers (FR83). set_activity already meant "say what
 			// you are doing", so it stays one tool and now writes the roster
@@ -765,28 +780,32 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			// happens to hold the desktop. An agent that is not driving used to
 			// get silence from this verb; now it gets a live line on the board.
 			d.roster.Activity(proto.SyncActivityParams{Identity: id, Activity: req.Activity})
-			return d.control.Activity(id, req.Activity), nil
+			res = d.control.Activity(id, req.Activity)
 		case proto.ControlRelease:
-			return d.control.Release(id), nil
+			res = d.control.Release(id)
 		case proto.ControlPause:
 			// No identity check, and that is the point (FR94): this verb is the
 			// human's, and it reaches the daemon from his strip, his hotkey and his
 			// shell. The socket is his own, so anything that can call this is
 			// already him.
-			return d.control.Pause(req.Reason), nil
+			res = d.control.Pause(req.Reason)
 		case proto.ControlResume:
-			return d.control.Resume(req.Reason), nil
+			res = d.control.Resume(req.Reason)
 		case proto.ControlQuiet:
 			// His verbs too (FR95), and reachable from the same three places for the
 			// same reason: the shell so a recording script can arm it, the hotkey so
 			// it is one press away, and the socket because both of those come through
 			// here.
-			return d.control.Quiet(req.Reason), nil
+			res = d.control.Quiet(req.Reason)
 		case proto.ControlLoud:
-			return d.control.Loud(req.Reason), nil
+			res = d.control.Loud(req.Reason)
 		default:
-			return d.control.State(), nil
+			res = d.control.State()
 		}
+		if res.Quiet {
+			res.QuietHeld = d.heldCount()
+		}
+		return res, nil
 	case proto.MethodDrive:
 		// The agent acting on the desktop instead of asking about it. It goes
 		// through the daemon rather than straight to X so there is one place that
@@ -1126,6 +1145,12 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 	// (auto-)DND, owes one summary chime when the user returns.
 	silentIdle := visible && d.cfg.HoldWhenIdle && idle
 	suppressed := !visible && !muted && !d.breaksDndLocked(&it)
+	// FR95: the sign is demoted for a recording, so the card waits and the earcon
+	// still plays. Only for the arrival that would have been the one on screen -
+	// the rest queue silently, the same as they would behind a card. Idle does not
+	// hold this chime the way it holds a visible card's: somebody talking to camera
+	// without touching the mouse reads as idle, and he is the least away he ever is.
+	quietHeld := d.quiet && !muted && !suppressed && d.wouldShowLocked(&it)
 	manualDnd := d.dnd
 	if silentIdle || suppressed {
 		d.chimeHeld = true
@@ -1139,6 +1164,11 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 		d.snd.Speak(it.Speak)
 	case silentIdle:
 		d.log.Info("item.held_idle", "component", "daemon", "item_id", it.ID)
+	case quietHeld:
+		// The chime without the card: he knows something arrived and his recording
+		// stays clean. It drains when the sign goes loud.
+		d.log.Info("item.held_quiet", "component", "daemon", "item_id", it.ID, "waiting", view.Waiting)
+		d.snd.Play(sound.ClassFor(&it))
 	case muted:
 		d.log.Info("item.held_muted", "component", "daemon", "item_id", it.ID, "agent", it.Identity.Agent)
 	case suppressed:
@@ -1215,8 +1245,99 @@ func (d *Daemon) breaksDndLocked(it *proto.Item) bool {
 // displayableLocked reports whether an item may take the screen right now.
 // A muted agent's items never surface (FR47): they queue silently and the
 // caller can answer from the inbox, exactly like a DND-held item.
+//
+// Recording mode holds everything, urgent included (FR95): the point of demoting
+// the sign is that AgentBox is not in the frame, and a card that pierced it would
+// undo the whole thing at the worst possible moment. It waits instead, and the
+// human hears it arrive.
 func (d *Daemon) displayableLocked(it *proto.Item) bool {
+	return !d.quiet && d.announceableLocked(it)
+}
+
+// announceableLocked is displayableLocked minus the recording-mode gate: whether
+// this item would be allowed on screen if the sign were loud. It is what decides
+// the earcon, because recording mode is not do-not-disturb - DND holds the chime
+// and this keeps it.
+func (d *Daemon) announceableLocked(it *proto.Item) bool {
 	return d.breaksDndLocked(it) && !d.muted[it.Identity.Agent]
+}
+
+// wouldShowLocked answers the counterfactual the chime needs while the column is
+// held: would this arrival be the card on screen if the sign were loud? Without
+// it a burst of five notifies is five earcons during a recording, where a loud
+// desktop would have chimed once and queued the other four behind the first.
+//
+// Urgent is always yes: on a loud desktop it preempts whatever is up, so it is
+// never the one that queues silently.
+func (d *Daemon) wouldShowLocked(it *proto.Item) bool {
+	if !d.announceableLocked(it) {
+		return false
+	}
+	if it.EffectiveLevel() == proto.LevelUrgent {
+		return true
+	}
+	if d.current != nil {
+		return false
+	}
+	for _, q := range d.queue {
+		if d.announceableLocked(q) {
+			return q.ID == it.ID
+		}
+	}
+	return false
+}
+
+// heldCount is how many cards are waiting out the recording. The whole queue,
+// because during recording mode nothing is on screen and everything in it is
+// waiting for the same thing.
+func (d *Daemon) heldCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.queue)
+}
+
+// QuietSet is told by control that recording mode flipped (FR95). Going quiet
+// takes the card column down with the sign; going loud drains it.
+func (d *Daemon) QuietSet(on bool) {
+	d.mu.Lock()
+	if d.quiet == on {
+		d.mu.Unlock()
+		return
+	}
+	d.quiet = on
+	var revealed *proto.Item
+	switch {
+	case on && d.current != nil && d.graced == nil:
+		// A card already up when he hits the hotkey is the one card the feature
+		// exists to get rid of - he is arming this a second before he starts
+		// recording, and it is on screen. Back to the head of the queue, exactly
+		// the way an urgent arrival displaces one, so nothing is lost and the
+		// toast's clock restarts when it comes back.
+		d.stopTimerLocked(d.current.ID)
+		d.cancelEscalationLocked()
+		d.dismissAt = time.Time{}
+		d.queue = append([]*proto.Item{d.current}, d.queue...)
+		d.current = nil
+	case !on && d.current == nil:
+		d.advanceLocked()
+		revealed = d.current
+	}
+	view := d.viewLocked()
+	held := len(d.queue)
+	// The progress window goes and comes back with the cards. Reading the list
+	// under the same lock is what makes the two windows agree: a report that
+	// finished while the recording ran must not be repainted by a stale slice.
+	reports := d.progressListLocked()
+	d.mu.Unlock()
+	d.log.Info("quiet.changed", "component", "daemon", "quiet", on, "waiting", held)
+	d.ui.Present(view)
+	d.ui.ShowProgress(reports)
+	if revealed != nil {
+		// It chimed when it arrived, so it does not chime again - it says its
+		// spoken line, which was the one thing held back. A voice reading a card
+		// aloud is the loudest thing AgentBox does and it lands in the take.
+		d.snd.Speak(revealed.Speak)
+	}
 }
 
 // enqueueLocked places the item: urgent preempts the current card, which
@@ -1228,6 +1349,19 @@ func (d *Daemon) enqueueLocked(it *proto.Item) {
 		d.queue = append([]*proto.Item{d.current}, d.queue...)
 		d.stopTimerLocked(d.current.ID)
 		d.setCurrentLocked(it)
+		return
+	}
+	// FR95: during a recording an urgent card cannot preempt, because nothing is on
+	// screen to preempt and putting one there is the one thing this mode exists to
+	// stop. It must not drain behind five toasts either, so it takes its place at
+	// the front of the queue instead - after any urgent already waiting, which
+	// keeps them in the order they arrived.
+	if d.quiet && it.EffectiveLevel() == proto.LevelUrgent && d.announceableLocked(it) {
+		at := 0
+		for at < len(d.queue) && d.queue[at].EffectiveLevel() == proto.LevelUrgent {
+			at++
+		}
+		d.queue = append(d.queue[:at], append([]*proto.Item{it}, d.queue[at:]...)...)
 		return
 	}
 	d.queue = append(d.queue, it)
@@ -1934,12 +2068,18 @@ func (d *Daemon) surfaceNotify(level proto.Level, id proto.Identity, title, body
 	d.mu.Lock()
 	d.enqueueLocked(it)
 	visible := d.current != nil && d.current.ID == it.ID
+	// FR95: held by recording mode, but still heard. The forgotten-pause nag comes
+	// through here, and a nag nobody hears is a nag that does not work.
+	quietHeld := !visible && d.quiet && d.wouldShowLocked(it)
 	view := d.viewLocked()
 	d.mu.Unlock()
 	d.ui.Present(view)
-	if visible {
+	switch {
+	case visible:
 		d.snd.Play(sound.ClassFor(it))
 		d.snd.Speak(it.Speak)
+	case quietHeld:
+		d.snd.Play(sound.ClassFor(it))
 	}
 }
 
@@ -2023,7 +2163,15 @@ func (d *Daemon) removeProgressLocked(id string) {
 	}
 }
 
+// progressListLocked is what the progress window is asked to paint. It comes
+// back empty during a recording (FR95): a progress bar is not a card, but it is
+// AgentBox on screen, and the mode exists so that nothing of AgentBox is in the
+// frame. The reports themselves keep running and reappear when it goes loud -
+// this hides the window, it does not stop the work.
 func (d *Daemon) progressListLocked() []ProgressState {
+	if d.quiet {
+		return nil
+	}
 	out := make([]ProgressState, 0, len(d.progOrder))
 	for _, id := range d.progOrder {
 		if e := d.progress[id]; e != nil {

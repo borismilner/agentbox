@@ -72,6 +72,19 @@ type control struct {
 	quiet      bool
 	quietAt    time.Time
 	quietTimer *time.Timer
+	// onQuiet hears every flip of the mode, so the card column can go quiet with
+	// the sign (FR95). A callback rather than the daemon reading Quieted() under
+	// its own lock: the fuse flips this from a timer inside control, so the daemon
+	// has to be told anyway, and being told is the only version that does not put
+	// control's lock underneath d.mu on every arriving item.
+	//
+	// sinkMu serializes the telling, and it is not c.mu because the sink reaches
+	// into the daemon's lock and c.mu must never sit underneath that. Without it
+	// the hotkey and the fuse can each release c.mu and then be scheduled in the
+	// other order, leaving the daemon holding every card while the sign says loud:
+	// a divergence with no symptom on screen and no way back but a restart.
+	onQuiet func(quiet bool)
+	sinkMu  sync.Mutex
 }
 
 // quietFuse is how long recording mode lasts before it goes loud on its own. Half
@@ -167,6 +180,30 @@ func (c *control) SetSurface(show func(*ControlState), hide func()) {
 	c.mu.Lock()
 	c.show, c.hide = show, hide
 	c.mu.Unlock()
+}
+
+// SetQuietSink wires who hears recording mode flip. Called outside c.mu, like
+// show and nagWith, because the daemon reaches back into its own lock.
+func (c *control) SetQuietSink(fn func(quiet bool)) {
+	c.mu.Lock()
+	c.onQuiet = fn
+	c.mu.Unlock()
+}
+
+// fireQuiet tells the sink what the mode is NOW, one caller at a time. Reading
+// the state here rather than passing the value the caller just wrote is the
+// second half of the ordering guarantee: whichever flip goes last through this
+// gate reads the truth that outlived the race, so the two sides converge instead
+// of latching whichever callback happened to be scheduled second.
+func (c *control) fireQuiet() {
+	c.sinkMu.Lock()
+	defer c.sinkMu.Unlock()
+	c.mu.Lock()
+	quiet, sink := c.quiet, c.onQuiet
+	c.mu.Unlock()
+	if sink != nil {
+		sink(quiet)
+	}
 }
 
 // Request asks for the desktop and BLOCKS until the human grants it, denies it,
@@ -426,6 +463,11 @@ func (c *control) Quiet(how string) proto.ControlResult {
 
 	c.log.Info(logging.EvControl, "component", "daemon", "control", "quiet",
 		"how", how, "fuse_s", int(quietFuse.Seconds()))
+	// Told on every press rather than only on the transition: a second press is
+	// more time and not a second demotion, so the daemon's own no-op guard is the
+	// right place to notice that, and firing unconditionally is what keeps the two
+	// sides converging if they ever disagree.
+	c.fireQuiet()
 	// Only repaint if there is something on screen to demote. With no run and no
 	// latch the screen is already empty, and show(nil) there would put a strip up
 	// to say the sign is quiet, which is the joke this feature is not.
@@ -455,6 +497,9 @@ func (c *control) Loud(how string) proto.ControlResult {
 
 	c.log.Info(logging.EvControl, "component", "daemon", "control", "loud",
 		"how", how, "quiet_s", int(was.Seconds()))
+	// Before the repaint, so whatever was held is already on its way to the screen
+	// by the time the strip comes back: one visible change, not two.
+	c.fireQuiet()
 	if show != nil && (run != nil || c.isPaused()) {
 		show(c.snapshot(run, 0))
 	}

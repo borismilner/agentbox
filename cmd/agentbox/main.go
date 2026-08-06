@@ -1225,8 +1225,26 @@ func quietSuffix(res proto.ControlResult) string {
 	if !res.Quiet {
 		return ""
 	}
-	return fmt.Sprintf(" · quiet: the sign is demoted for %s more",
+	line := fmt.Sprintf(" · quiet: the sign is demoted for %s more",
 		(time.Duration(res.QuietLeftS) * time.Second).Round(time.Minute))
+	if held := heldPhrase(res.QuietHeld); held != "" {
+		line += ", " + held
+	}
+	return line
+}
+
+// heldPhrase says what going loud is about to put on screen. Worth knowing before
+// he stops recording rather than after: five cards arriving at once is a surprise,
+// and one of them may be a question an agent has been parked on for ten minutes.
+func heldPhrase(n int) string {
+	switch {
+	case n <= 0:
+		return ""
+	case n == 1:
+		return "1 card waiting"
+	default:
+		return fmt.Sprintf("%d cards waiting", n)
+	}
 }
 
 // runControl is the desktop handover from a shell (FR74). It exists beside the MCP
@@ -1383,10 +1401,17 @@ func runControl(args []string) int {
 			// The fuse is printed, not implied. A mode that expires and does not say
 			// when is a mode he has to remember, which is the thing it exists to
 			// avoid.
-			fmt.Printf("quiet: the sign is four pixels on the top edge, and a window can cover it (loud again in %s)\n",
-				(time.Duration(res.QuietLeftS) * time.Second).Round(time.Minute))
+			// The column comes down with the sign, so say so here too: an agent
+			// that notifies during the recording will not put anything on screen,
+			// and a card that was up when he armed it is already in the count.
+			held := ""
+			if p := heldPhrase(res.QuietHeld); p != "" {
+				held = ", " + p
+			}
+			fmt.Printf("quiet: the sign is four pixels on the top edge, a window can cover it, and cards wait instead of appearing%s (loud again in %s)\n",
+				held, (time.Duration(res.QuietLeftS) * time.Second).Round(time.Minute))
 		} else {
-			fmt.Println("loud: the hands-off strip is back on top of everything")
+			fmt.Println("loud: the hands-off strip is back on top of everything, and anything that queued is on screen now")
 		}
 		return exitOK
 	}
