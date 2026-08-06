@@ -1,0 +1,1235 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>FR94 - take the keyboard back mid-run</title>
+<style>
+  :root {
+    --ground: #0f1116;
+    --surface: #161920;
+    --surface2: #1c2028;
+    --surface3: #22262f;
+    --edge: #272c36;
+    --edge-soft: #1f242c;
+    --ink: #e5e8ee;
+    --ink2: #98a0ad;
+    --ink3: #69717e;
+    --accent: #7c8cf8;
+    --success: #4fb286;
+    --warning: #d9a441;
+    --error: #e05c5c;
+    --info: #4fa3e3;
+    --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+    --r: 10px;
+    font-family: "Cantarell", "Ubuntu Sans", system-ui, sans-serif;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    padding: 18px 22px 48px;
+    background: var(--ground);
+    color: var(--ink);
+    font-size: 14px;
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  h2 {
+    margin: 30px 0 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink3);
+  }
+  .lede {
+    margin: 0 0 6px;
+    color: var(--ink2);
+    max-width: 92ch;
+    line-height: 1.55;
+  }
+  .lede b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    color: var(--ink);
+    background: var(--surface2);
+    border: 1px solid var(--edge-soft);
+    border-radius: 4px;
+    padding: 0 4px;
+  }
+
+  /* ---------- layout ---------- */
+  .cols {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--edge);
+    border-radius: var(--r);
+    padding: 14px;
+  }
+
+  /* ---------- the fake screen ---------- */
+  .screen {
+    position: relative;
+    width: 760px;
+    height: 400px;
+    flex: none;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid var(--edge);
+    background: linear-gradient(150deg, #10141d 0%, #141a26 55%, #0e1219 100%);
+  }
+  .screen .wall {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(
+      circle at 30% 40%,
+      rgba(124, 140, 248, 0.09),
+      transparent 55%
+    );
+  }
+  /* the app the agent is driving */
+  .app {
+    position: absolute;
+    left: 60px;
+    top: 92px;
+    width: 560px;
+    height: 250px;
+    background: var(--surface);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    box-shadow: 0 20px 46px -14px rgba(0, 0, 0, 0.8);
+    overflow: hidden;
+  }
+  .app .bar {
+    height: 26px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--edge);
+    font-size: 11px;
+    color: var(--ink3);
+  }
+  .app .bar i {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--edge);
+    display: block;
+  }
+  .app .body {
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.75;
+    color: var(--ink2);
+    white-space: pre-wrap;
+  }
+  .app .body .caret {
+    display: inline-block;
+    width: 7px;
+    background: var(--accent);
+    color: transparent;
+    animation: blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink {
+    50% {
+      opacity: 0;
+    }
+  }
+  /* the synthetic pointer */
+  .ptr {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+    transition: left 700ms cubic-bezier(0.4, 0.05, 0.2, 1),
+      top 700ms cubic-bezier(0.4, 0.05, 0.2, 1);
+    z-index: 40;
+  }
+  .ptr svg {
+    display: block;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+  }
+  .ptr.frozen svg {
+    opacity: 0.45;
+  }
+
+  /* ---------- the strip, in all its states ---------- */
+  .stripwrap {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    display: flex;
+    justify-content: center;
+  }
+  .strip {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 460px;
+    height: 46px;
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--warning);
+    border-left: 4px solid var(--warning);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.9);
+  }
+  .strip .dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 999px;
+    background: var(--warning);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.3;
+    }
+  }
+  .strip .label {
+    flex: none;
+    font-weight: 700;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    color: var(--warning);
+    white-space: nowrap;
+  }
+  .strip .what {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .strip .who {
+    flex: none;
+    font-size: 10.5px;
+    color: var(--ink3);
+  }
+  .strip .count {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    font-size: 10.5px;
+    color: var(--ink3);
+  }
+  .strip .btn {
+    flex: none;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 3px 9px;
+    font: inherit;
+    font-size: 11px;
+    background: none;
+    border: 1px solid var(--edge);
+    color: var(--ink2);
+  }
+  .strip .btn:hover {
+    color: var(--ink);
+    border-color: var(--ink3);
+  }
+
+  /* A - inverted strip */
+  .strip.paused-a {
+    border-color: var(--success);
+    border-left-color: var(--success);
+    background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  }
+  .strip.paused-a .dot {
+    background: var(--success);
+    animation: none;
+  }
+  .strip.paused-a .label {
+    color: var(--success);
+  }
+  .strip.paused-a .what {
+    color: var(--ink3);
+    font-style: italic;
+  }
+  .strip.paused-a .btn.resume {
+    border-color: var(--success);
+    color: var(--success);
+  }
+
+  /* B - collapsed pill */
+  .pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 6px 0 11px;
+    font-size: 11.5px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--success) 14%, var(--surface));
+    border: 1px solid var(--success);
+    color: var(--ink);
+    box-shadow: 0 8px 22px -10px rgba(0, 0, 0, 0.9);
+    white-space: nowrap;
+  }
+  .pill .glyph {
+    color: var(--success);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+  }
+  .pill .wait {
+    color: var(--ink2);
+    font-variant-numeric: tabular-nums;
+  }
+  .pill .btn {
+    cursor: pointer;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font: inherit;
+    font-size: 11px;
+    background: var(--success);
+    border: 1px solid var(--success);
+    color: #0d1512;
+    font-weight: 600;
+  }
+  /* the wait gets warmer the longer it runs - the message flips from
+     "the desktop is yours" to "somebody is waiting on you" */
+  .pill.warm {
+    background: color-mix(in srgb, var(--warning) 16%, var(--surface));
+    border-color: var(--warning);
+  }
+  .pill.warm .glyph {
+    color: var(--warning);
+  }
+  .pill.warm .btn {
+    background: var(--warning);
+    border-color: var(--warning);
+    color: #1a1206;
+  }
+
+  /* C - edge line only */
+  .edgeline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--success);
+    z-index: 60;
+  }
+  .edgeline.warm {
+    background: var(--warning);
+  }
+
+  /* the nag, when a pause is forgotten */
+  .nag {
+    position: absolute;
+    top: 52px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 55;
+    width: 400px;
+    padding: 11px 13px;
+    background: var(--surface);
+    border: 1px solid var(--warning);
+    border-left: 4px solid var(--warning);
+    border-radius: 10px;
+    box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.9);
+  }
+  .nag h4 {
+    margin: 0 0 3px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .nag p {
+    margin: 0 0 9px;
+    font-size: 11.5px;
+    color: var(--ink2);
+    line-height: 1.5;
+  }
+  .nag .row {
+    display: flex;
+    gap: 7px;
+  }
+  .nag button {
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    background: none;
+    border: 1px solid var(--edge);
+    color: var(--ink2);
+  }
+  .nag button.primary {
+    border-color: var(--success);
+    color: var(--success);
+  }
+  .nag button.danger {
+    border-color: var(--error);
+    color: var(--error);
+  }
+
+  /* ---------- stage controls ---------- */
+  .stagebar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .key {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--edge);
+    background: var(--surface2);
+    color: var(--ink2);
+  }
+  button.act {
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 7px;
+    background: var(--surface2);
+    border: 1px solid var(--edge);
+    color: var(--ink);
+  }
+  button.act:hover {
+    border-color: var(--ink3);
+  }
+  button.act.hot {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .hint {
+    color: var(--ink3);
+    font-size: 12px;
+  }
+
+  /* ---------- the agent's side ---------- */
+  .agentlog {
+    width: 420px;
+    flex: 1 1 380px;
+    min-width: 360px;
+    height: 400px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.6;
+    background: #0c0f15;
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .agentlog .ln {
+    display: flex;
+    gap: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .agentlog .t {
+    color: var(--ink3);
+    flex: none;
+  }
+  .agentlog .ok {
+    color: var(--success);
+  }
+  .agentlog .park {
+    color: var(--warning);
+  }
+  .agentlog .bad {
+    color: var(--error);
+  }
+  .agentlog .dim {
+    color: var(--ink3);
+  }
+  .agentlog .peer {
+    color: var(--info);
+  }
+
+  /* ---------- candidate cards ---------- */
+  .cands {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .cand {
+    width: 330px;
+    flex: none;
+    cursor: pointer;
+    background: var(--surface);
+    border: 1px solid var(--edge);
+    border-radius: var(--r);
+    padding: 12px;
+    transition: border-color 120ms;
+  }
+  .cand:hover {
+    border-color: var(--ink3);
+  }
+  .cand.on {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  }
+  .cand h3 {
+    margin: 0 0 2px;
+    font-size: 12.5px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .cand h3 .tick {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border-radius: 999px;
+    border: 1px solid var(--ink3);
+  }
+  .cand.on h3 .tick {
+    border-color: var(--accent);
+    background: var(--accent);
+    box-shadow: inset 0 0 0 2.5px var(--surface);
+  }
+  .cand p {
+    margin: 6px 0 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--ink2);
+  }
+  .cand .demo {
+    margin-top: 10px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    background: #0d1119;
+    border: 1px solid var(--edge-soft);
+    position: relative;
+    overflow: hidden;
+  }
+  .tag {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 999px;
+    vertical-align: 1px;
+  }
+  .tag.rec {
+    color: var(--success);
+    border: 1px solid var(--success);
+  }
+  .tag.risk {
+    color: var(--error);
+    border: 1px solid var(--error);
+  }
+
+  /* ---------- decisions ---------- */
+  .q {
+    margin-bottom: 16px;
+  }
+  .q > .qh {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+  .q > .qs {
+    font-size: 12px;
+    color: var(--ink2);
+    margin-bottom: 8px;
+    max-width: 90ch;
+    line-height: 1.5;
+  }
+  .opts {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .opt {
+    width: 300px;
+    flex: none;
+    cursor: pointer;
+    padding: 9px 11px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--edge);
+  }
+  .opt:hover {
+    border-color: var(--ink3);
+  }
+  .opt.on {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  }
+  .opt .oh {
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .opt .tick {
+    width: 11px;
+    height: 11px;
+    flex: none;
+    border-radius: 999px;
+    border: 1px solid var(--ink3);
+  }
+  .opt.on .tick {
+    border-color: var(--accent);
+    background: var(--accent);
+    box-shadow: inset 0 0 0 2.5px var(--surface);
+  }
+  .opt .oc {
+    margin-top: 5px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--ink2);
+  }
+  .opt .oc b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .settle {
+    margin-top: 22px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .settle textarea {
+    flex: 1 1 420px;
+    min-height: 54px;
+    resize: vertical;
+    font: inherit;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--edge);
+    color: var(--ink);
+  }
+  button.send {
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 20px;
+    border-radius: 8px;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #0d1018;
+  }
+  .sent {
+    color: var(--success);
+    font-size: 12px;
+  }
+  .foot {
+    margin-top: 26px;
+    padding-top: 14px;
+    border-top: 1px solid var(--edge-soft);
+    color: var(--ink3);
+    font-size: 11.5px;
+    line-height: 1.6;
+    max-width: 96ch;
+  }
+</style>
+
+<h1>FR94 - take the keyboard back mid-run, without ending the run</h1>
+<p class="lede">
+  A run is binary today, so the only way to get the mouse back is to fight the
+  agent for it. This adds a third state. <b>Drive the stage below</b>: pause with
+  the hotkey, watch what the agent sees on the right, then settle the three open
+  questions at the bottom. Nothing here is built yet.
+</p>
+
+<h2>The stage</h2>
+<div class="cols">
+  <div class="screen" id="screen">
+    <div class="wall"></div>
+
+    <div class="edgeline" id="edgeline" style="display: none"></div>
+
+    <div class="app">
+      <div class="bar"><i></i><i></i><i></i> &nbsp;settings.go - agentbox</div>
+      <div class="body" id="appbody"></div>
+    </div>
+
+    <div class="stripwrap" id="stripwrap"></div>
+    <div id="naghost"></div>
+
+    <div class="ptr" id="ptr" style="left: 300px; top: 210px">
+      <svg viewBox="0 0 16 16" width="16" height="16">
+        <path
+          d="M1 1 L1 13 L4.4 10 L6.6 14.6 L9 13.4 L6.8 9 L11.4 9 Z"
+          fill="#fff"
+          stroke="#000"
+          stroke-width="1"
+        />
+      </svg>
+    </div>
+  </div>
+
+  <div class="agentlog" id="log"></div>
+</div>
+
+<div class="stagebar">
+  <span class="key" id="hotkeychip">Super + Esc</span>
+  <span class="hint">- or click the strip. Focus the page and press <b>Esc</b> to fire it here.</span>
+  <button class="act hot" id="toggle">Pause</button>
+  <button class="act" id="skip">+1 min of waiting</button>
+  <button class="act" id="peer">Second agent asks for the desktop</button>
+  <button class="act" id="reset">Reset the run</button>
+</div>
+
+<h2>What the paused sign looks like</h2>
+<p class="lede">
+  Presence is the whole signal in FR74: on screen means an agent is driving, gone
+  means the desktop is yours. Pause breaks that binary, so the paused form has to
+  read as the <b>opposite pole while still being present</b> - and it has to stay
+  out of the way, because you paused precisely to use that screen. Pick one; the
+  stage uses it live.
+</p>
+<div class="cands" id="cands"></div>
+
+<h2>The three open questions</h2>
+<div id="questions"></div>
+
+<div class="settle">
+  <textarea id="note" placeholder="Anything the options miss (optional)"></textarea>
+  <button class="send" id="send">Settle it</button>
+  <span class="sent" id="sentmsg"></span>
+</div>
+
+<div class="foot">
+  <b>Where this lands if it is built.</b>
+  <code>internal/daemon/control.go</code> gains the third state and the gate that
+  <code>MethodDrive</code> waits on (today it calls <code>drv.Drive</code>
+  unguarded, <code>daemon.go:762</code>).
+  <code>internal/hotkey</code> already grabs a global combo and rebinds it live,
+  so the key costs a second <code>hotkey.Open</code> and a config knob, not a new
+  mechanism. <code>frontend/src/surfaces/Control.svelte</code> gains the paused
+  form. The pause never travels over MCP in the un-pause direction: no tool
+  resumes a run, or the pause is a suggestion.
+</div>
+
+<script>
+  // ---------- state ----------
+  const S = {
+    run: "driving", // driving | paused
+    waited: 0, // seconds paused
+    cand: "b", // a | b | c
+    autoresume: "never", // never | 5min | 2min
+    inflight: "atomic", // atomic | step | hard
+    scope: "desktop", // desktop | run
+    nag: false,
+    activity: "typing the descriptor table into settings.go",
+    typed: 0,
+  };
+  const WARM_AT = 120; // the wait turns warm here
+  const NAG_AT = 180; // and asks a question here
+
+  const ACTS = [
+    "typing the descriptor table into settings.go",
+    "clicking Save, then waiting for the build",
+    "scrolling to the failing assertion",
+    "typing the fix into settings_test.go",
+  ];
+  const CODE = [
+    "func knobs() []knob {",
+    '  return []knob{',
+    '    {key: "editor.command", kind: kindArgv},',
+    '    {key: "speech.command", kind: kindArgv},',
+    "  }",
+    "}",
+  ];
+
+  // ---------- log ----------
+  let clock = 0;
+  function stamp() {
+    const m = String(Math.floor(clock / 60) + 4).padStart(2, "0");
+    const s = String(clock % 60).padStart(2, "0");
+    return `15:${m}:${s}`;
+  }
+  function log(cls, text) {
+    const el = document.getElementById("log");
+    const ln = document.createElement("div");
+    ln.className = "ln";
+    ln.innerHTML = `<span class="t">${stamp()}</span><span class="${cls}">${text}</span>`;
+    el.appendChild(ln);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // ---------- the strip ----------
+  function mmss(n) {
+    return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+  }
+
+  function renderStrip() {
+    const host = document.getElementById("stripwrap");
+    const edge = document.getElementById("edgeline");
+    const warm = S.waited >= WARM_AT;
+    edge.style.display = "none";
+    edge.className = "edgeline" + (warm ? " warm" : "");
+
+    if (S.run === "driving") {
+      host.innerHTML = `
+        <div class="strip" title="click to pause">
+          <span class="dot"></span>
+          <span class="label">HANDS OFF</span>
+          <span class="what">${S.activity}</span>
+          <span class="who">claude</span>
+          <span class="count">${mmss(Math.min(clock, 599))}</span>
+          <button class="btn" id="stripbtn">Pause</button>
+        </div>`;
+      host.querySelector("#stripbtn").onclick = (e) => {
+        e.stopPropagation();
+        setPaused(true, "the Pause button on the strip");
+      };
+      return;
+    }
+
+    const left =
+      S.autoresume === "never"
+        ? null
+        : (S.autoresume === "5min" ? 300 : 120) - S.waited;
+
+    if (S.cand === "a") {
+      host.innerHTML = `
+        <div class="strip paused-a">
+          <span class="dot"></span>
+          <span class="label">PAUSED - YOURS</span>
+          <span class="what">${S.activity}</span>
+          <span class="who">claude</span>
+          <span class="count">waiting ${mmss(S.waited)}${
+        left !== null ? ` · resumes in ${mmss(Math.max(left, 0))}` : ""
+      }</span>
+          <button class="btn resume" id="stripbtn">Resume</button>
+        </div>`;
+    } else if (S.cand === "b") {
+      host.innerHTML = `
+        <div class="pill ${warm ? "warm" : ""}">
+          <span class="glyph">${warm ? "AGENT WAITING" : "PAUSED"}</span>
+          <span class="wait">${mmss(S.waited)}${
+        left !== null ? ` / ${mmss(Math.max(left, 0))}` : ""
+      }</span>
+          <button class="btn" id="stripbtn">Resume</button>
+        </div>`;
+    } else {
+      host.innerHTML = "";
+      edge.style.display = "block";
+    }
+    const b = host.querySelector("#stripbtn");
+    if (b) b.onclick = () => setPaused(false, "Resume");
+  }
+
+  function renderNag() {
+    const host = document.getElementById("naghost");
+    if (!S.nag || S.run !== "paused") {
+      host.innerHTML = "";
+      return;
+    }
+    host.innerHTML = `
+      <div class="nag">
+        <h4>claude has been parked for ${mmss(S.waited)}</h4>
+        <p>It is waiting on the desktop, mid-way through a drive sequence. It will
+           give up on its own in ${mmss(Math.max(600 - S.waited, 0))} and the run ends.</p>
+        <div class="row">
+          <button class="primary" id="nagresume">Resume now</button>
+          <button id="naglater">Not yet</button>
+          <button class="danger" id="nagend">End the run</button>
+        </div>
+      </div>`;
+    host.querySelector("#nagresume").onclick = () => setPaused(false, "the nag card");
+    host.querySelector("#naglater").onclick = () => {
+      S.nag = false;
+      renderNag();
+    };
+    host.querySelector("#nagend").onclick = () => {
+      S.nag = false;
+      log("bad", "release_control  ✗ ended by the human while parked");
+      S.run = "driving";
+      S.waited = 0;
+      resetRun(false);
+    };
+  }
+
+  // ---------- pause / resume ----------
+  function setPaused(on, how) {
+    if (on && S.run === "paused") return;
+    if (!on && S.run === "driving") return;
+
+    if (on) {
+      S.run = "paused";
+      S.waited = 0;
+      S.nag = false;
+      document.getElementById("ptr").classList.add("frozen");
+      log("dim", `<span class="park">⏸</span> paused by the human (${how})`);
+      if (S.inflight === "atomic") {
+        log("park", "drive_desktop  ⏸ parked after the current keystroke (12 of 34 steps)");
+      } else if (S.inflight === "step") {
+        log("park", "drive_desktop  … finishing step 12: type \"kindArgv\" (2.4s)");
+        setTimeout(
+          () => S.run === "paused" && log("park", "drive_desktop  ⏸ parked after step 12 (12 of 34)"),
+          900,
+        );
+      } else {
+        log("bad", "drive_desktop  ✗ stopped mid-step 12 (typed \"kind\", not \"kindArgv\")");
+        log("bad", "               ⚠ button 1 was down; released it to unstick the desktop");
+      }
+      log("dim", "               the run is alive; set_activity still writes the strip");
+    } else {
+      S.run = "driving";
+      document.getElementById("ptr").classList.remove("frozen");
+      log("dim", `<span class="ok">▶</span> resumed by the human (${how}) after ${mmss(S.waited)}`);
+      log(
+        "ok",
+        S.inflight === "hard"
+          ? "drive_desktop  ✓ resumed at step 13; step 12 is the caller's to redo"
+          : "drive_desktop  ✓ resumed at step 13, 22 steps left",
+      );
+      S.waited = 0;
+    }
+    renderStrip();
+    renderNag();
+  }
+
+  // ---------- the clock ----------
+  setInterval(() => {
+    clock++;
+    if (S.run === "paused") {
+      S.waited++;
+      const limit = S.autoresume === "5min" ? 300 : S.autoresume === "2min" ? 120 : null;
+      if (limit && S.waited >= limit) {
+        log("park", `⏵ auto-resumed after ${mmss(limit)} of no input from you`);
+        setPaused(false, "the idle timer");
+        return;
+      }
+      if (S.autoresume === "never" && S.waited === NAG_AT) {
+        S.nag = true;
+        log("dim", "               the human is asked whether to resume or end the run");
+      }
+      if (S.waited === WARM_AT) log("park", `drive_desktop  ⏸ still parked (${mmss(S.waited)})`);
+      if (S.waited === 600) {
+        log("bad", "drive_desktop  ✗ paused_timeout after 10:00 - the desktop is the human's");
+        log("dim", "               the run is NOT ended; the agent can wait again or go elsewhere");
+      }
+      renderStrip();
+      renderNag();
+      return;
+    }
+    // driving: narrate, move the pointer, type
+    if (clock % 7 === 0) {
+      S.activity = ACTS[Math.floor(clock / 7) % ACTS.length];
+      log("dim", `set_activity   ${S.activity}`);
+    }
+    if (clock % 3 === 0) {
+      const p = document.getElementById("ptr");
+      p.style.left = 120 + Math.floor(Math.random() * 480) + "px";
+      p.style.top = 130 + Math.floor(Math.random() * 190) + "px";
+      if (clock % 6 === 0) log("ok", `drive_desktop  ✓ 3 steps (move, click, type)`);
+    }
+    S.typed = Math.min(S.typed + 4, CODE.join("\n").length);
+    paintCode();
+    renderStrip();
+  }, 1000);
+
+  function paintCode() {
+    const all = CODE.join("\n");
+    const shown = all.slice(0, S.typed);
+    document.getElementById("appbody").innerHTML =
+      shown.replace(/</g, "&lt;") + (S.run === "driving" ? '<span class="caret">|</span>' : "");
+  }
+
+  // ---------- candidates ----------
+  const CANDS = [
+    {
+      id: "a",
+      name: "Inverted strip",
+      rec: "",
+      why:
+        "Same 620x62 window, green instead of amber, the label flips to PAUSED - YOURS and the frozen activity line goes italic so you can see what it will go back to. One shape to learn, and the waiting counter has room.",
+      cost:
+        "It keeps the whole top of the screen while you use that screen, which is the thing you paused for.",
+    },
+    {
+      id: "b",
+      name: "Collapsed pill",
+      rec: "rec",
+      why:
+        "Shrinks to a 220x30 pill: state, how long it has waited, Resume. Past two minutes it turns amber and the word changes from PAUSED to AGENT WAITING, because the message flips from 'the desktop is yours' to 'somebody is waiting on you'.",
+      cost:
+        "Two shapes to recognise instead of one, and the activity line is gone until you hover it.",
+    },
+    {
+      id: "c",
+      name: "Edge line only",
+      rec: "risk",
+      why:
+        "The strip goes, and FR74's 4px marker takes over the top edge in a different colour. Maximum screen back, and the machinery already exists.",
+      cost:
+        "No words and no Resume button, so the hotkey becomes the only way back and a colour is carrying the whole meaning. This is the one that can read as 'nothing is happening'.",
+    },
+  ];
+
+  function renderCands() {
+    const host = document.getElementById("cands");
+    host.innerHTML = CANDS.map(
+      (c) => `
+      <div class="cand ${S.cand === c.id ? "on" : ""}" data-c="${c.id}">
+        <h3><span class="tick"></span>${c.name}
+          ${c.rec === "rec" ? '<span class="tag rec">recommended</span>' : ""}
+          ${c.rec === "risk" ? '<span class="tag risk">risky</span>' : ""}
+        </h3>
+        <div class="demo">${demoFor(c.id)}</div>
+        <p>${c.why}</p>
+        <p style="color:var(--ink3)"><b style="color:var(--ink2)">Costs:</b> ${c.cost}</p>
+      </div>`,
+    ).join("");
+    host.querySelectorAll(".cand").forEach((el) => {
+      el.onclick = () => {
+        S.cand = el.dataset.c;
+        renderCands();
+        renderStrip();
+      };
+    });
+  }
+
+  function demoFor(id) {
+    if (id === "a")
+      return `<div class="strip paused-a" style="width:300px;height:40px;font-size:11px">
+          <span class="dot"></span><span class="label" style="font-size:9.5px">PAUSED - YOURS</span>
+          <span class="what">clicking Save</span>
+          <span class="count">0:24</span>
+          <button class="btn resume">Resume</button></div>`;
+    if (id === "b")
+      return `<div class="pill"><span class="glyph">PAUSED</span>
+          <span class="wait">0:24</span><button class="btn">Resume</button></div>`;
+    return `<div style="position:absolute;inset:0"><div style="position:absolute;top:0;left:0;right:0;height:4px;background:var(--success)"></div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:11px">nothing else on screen</div></div>`;
+  }
+
+  // ---------- questions ----------
+  const QS = [
+    {
+      key: "autoresume",
+      head: "Does a pause ever end by itself?",
+      sub:
+        "A pause you forget about strands the agent mid-sequence. But an auto-resume takes the desktop back while you are still using it, which is the exact collision this feature exists to prevent.",
+      opts: [
+        {
+          id: "never",
+          name: "Never - it nags instead",
+          rec: true,
+          copy:
+            "Only you resume. At <b>2 min</b> the sign turns amber, at <b>3 min</b> a card asks Resume / Not yet / End the run. The agent's own wait times out at 10 min and it is told the desktop is yours - the run does not die, it just stops waiting.",
+        },
+        {
+          id: "5min",
+          name: "Auto-resume after 5 min",
+          copy:
+            "The sign counts down. Five minutes of no input from you and the agent gets the desktop back on its own. Safe if you always come back to a keyboard you left; a knife if you walked away.",
+        },
+        {
+          id: "2min",
+          name: "Auto-resume after 2 min",
+          copy:
+            "Short enough that the agent rarely strands, short enough that a phone call hands your desktop to a robot.",
+        },
+      ],
+    },
+    {
+      key: "inflight",
+      head: "What happens to the drive_desktop already in flight?",
+      sub:
+        "The hotkey fires mid-script. A script is a list of steps and a `type` step is a sentence at a set words-per-minute, so 'finish the step' can mean seconds more typing.",
+      opts: [
+        {
+          id: "atomic",
+          name: "Park at the next atomic boundary",
+          rec: true,
+          copy:
+            "Between characters inside a <b>type</b>, between steps otherwise, and never with a mouse button down - a drag completes its button-up first. Instant in practice (one keystroke) and it never leaves the desktop stuck.",
+        },
+        {
+          id: "step",
+          name: "Finish the current step",
+          copy:
+            "Cleanest for the agent: no half-typed word to reason about. But a 40-character type step at 240 wpm is 2.4 more seconds of typing into whatever you just switched to. Not instant, and instant is the requirement.",
+        },
+        {
+          id: "hard",
+          name: "Stop dead, right now",
+          copy:
+            "Truly instant. Leaves half-typed words, and can leave a button held down, which is a desktop you then have to unstick by hand. Needs a button-up sweep anyway, so it is not simpler than parking atomically.",
+        },
+      ],
+    },
+    {
+      key: "scope",
+      head: "Is pause a property of the run, or of the desktop?",
+      sub:
+        "There is only ever one run, because the desktop is one resource. The difference shows when a SECOND agent asks for the desktop while you are paused - and when you want to pause before any run exists.",
+      opts: [
+        {
+          id: "desktop",
+          name: "Desktop-wide latch",
+          rec: true,
+          copy:
+            "Pause is a state of the desktop: it parks the live run <i>and</i> holds off <b>request_control</b> from anyone else, with the holder reported as you. It also works with no run live - a pre-emptive 'not now', which is worth having on its own.",
+        },
+        {
+          id: "run",
+          name: "Just this run",
+          copy:
+            "Pause only touches the agent that holds the desktop. A second agent's <b>request_control</b> is refused for the ordinary reason (someone holds it) and would be <b>granted</b> the moment the paused run releases - handing your desktop away while you are still typing.",
+        },
+      ],
+    },
+  ];
+
+  function renderQs() {
+    const host = document.getElementById("questions");
+    host.innerHTML = QS.map(
+      (q) => `
+      <div class="q">
+        <div class="qh">${q.head}</div>
+        <div class="qs">${q.sub}</div>
+        <div class="opts">
+          ${q.opts
+            .map(
+              (o) => `
+            <div class="opt ${S[q.key] === o.id ? "on" : ""}" data-q="${q.key}" data-o="${o.id}">
+              <div class="oh"><span class="tick"></span>${o.name}
+                ${o.rec ? '<span class="tag rec">recommended</span>' : ""}</div>
+              <div class="oc">${o.copy}</div>
+            </div>`,
+            )
+            .join("")}
+        </div>
+      </div>`,
+    ).join("");
+    host.querySelectorAll(".opt").forEach((el) => {
+      el.onclick = () => {
+        S[el.dataset.q] = el.dataset.o;
+        renderQs();
+        renderStrip();
+        renderNag();
+      };
+    });
+  }
+
+  // ---------- stage buttons ----------
+  document.getElementById("toggle").onclick = () => {
+    setPaused(S.run === "driving", "the Pause button below the stage");
+    document.getElementById("toggle").textContent = S.run === "driving" ? "Pause" : "Resume";
+  };
+  document.getElementById("skip").onclick = () => {
+    if (S.run !== "paused") {
+      log("dim", "               (nothing to skip - the run is not paused)");
+      return;
+    }
+    S.waited += 60;
+    clock += 60;
+    if (S.autoresume === "never" && S.waited >= NAG_AT) S.nag = true;
+    log("dim", `               … ${mmss(S.waited)} parked`);
+    renderStrip();
+    renderNag();
+  };
+  document.getElementById("peer").onclick = () => {
+    if (S.run === "paused" && S.scope === "desktop") {
+      log("peer", "agent b · request_control  ⏸ waiting - the human paused the desktop");
+      log("dim", "                            held_by: boris (paused " + mmss(S.waited) + ")");
+    } else if (S.run === "paused") {
+      log("peer", "agent b · request_control  ✗ refused - held by claude");
+      log("dim", "                            it retries, and wins the moment claude releases");
+    } else {
+      log("peer", "agent b · request_control  ✗ refused - held by claude");
+    }
+  };
+  document.getElementById("reset").onclick = () => resetRun(true);
+
+  function resetRun(clear) {
+    S.run = "driving";
+    S.waited = 0;
+    S.nag = false;
+    S.typed = 0;
+    clock = 0;
+    document.getElementById("ptr").classList.remove("frozen");
+    document.getElementById("toggle").textContent = "Pause";
+    if (clear) document.getElementById("log").innerHTML = "";
+    log("ok", "request_control  ✓ granted - 'walking the settings surface'");
+    log("ok", "drive_desktop  ✓ 3 steps (window, move, click)");
+    renderStrip();
+    renderNag();
+    paintCode();
+  }
+
+  // the hotkey, as far as a web page can have one
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setPaused(S.run === "driving", "Super+Esc");
+      document.getElementById("toggle").textContent = S.run === "driving" ? "Pause" : "Resume";
+    }
+  });
+
+  // click the strip itself to pause
+  document.getElementById("stripwrap").onclick = (e) => {
+    if (S.run === "driving" && !e.target.closest("button")) setPaused(true, "a click on the strip");
+  };
+
+  // ---------- settle ----------
+  document.getElementById("send").onclick = () => {
+    const payload = {
+      strip: S.cand,
+      autoresume: S.autoresume,
+      inflight: S.inflight,
+      scope: S.scope,
+      note: document.getElementById("note").value.trim(),
+    };
+    try {
+      window.agentbox && window.agentbox.emit("decide", payload);
+    } catch (err) {
+      /* a plain browser has no bridge; the page still works */
+    }
+    document.getElementById("sentmsg").textContent =
+      "Sent: " +
+      CANDS.find((c) => c.id === payload.strip).name.toLowerCase() +
+      ", " +
+      payload.autoresume +
+      ", " +
+      payload.inflight +
+      ", " +
+      payload.scope +
+      ".";
+  };
+
+  renderCands();
+  renderQs();
+  resetRun(true);
+</script>

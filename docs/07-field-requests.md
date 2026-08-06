@@ -2689,10 +2689,40 @@ done.
 - **Resume is his**, and only his. An agent must not be able to un-pause itself,
   or the pause is a suggestion.
 
+**Settled at the mock, 2026-08-06** ([docs/mocks/fr94-pause-resume.html](mocks/fr94-pause-resume.html),
+driven by Boris himself). The mock put the three open questions on screen as
+choices with their costs, and he answered all three. Two went against the
+recommendation, which is the argument for mocking rather than speccing:
+
+1. **The paused sign is the inverted strip**, not the collapsed pill that was
+   recommended. Same 620x62 window, green where it was amber, the label flips
+   from HANDS OFF to `PAUSED - YOURS`, the frozen activity line goes italic so
+   the run it will go back to is still readable, and a Resume button and a
+   waiting counter take the place of the age. One shape to learn beats two, and
+   the cost - it keeps the top of the screen while you use that screen - was
+   accepted.
+2. **A pause never ends by itself.** Only the human resumes. At 2 min the sign
+   turns amber, at 3 min a card asks Resume / Not yet / End the run. The agent's
+   own wait times out at 10 min and it is told the desktop is the human's; the
+   run does not die, it stops waiting. An auto-resume was rejected for the reason
+   the feature exists: it takes the desktop back while he is still using it.
+3. **An in-flight `drive_desktop` finishes its current step, except `type`,
+   which parks between characters.** He chose "finish the current step" and this
+   is that answer with the one case where it disagrees with "instant" carved out:
+   `move`, `click` and `drag` are sub-100ms and stopping mid-drag is what leaves
+   a button held down, but a `type` step is a whole sentence at a set wpm, so
+   finishing it is seconds of typing into whatever he just switched to. Parking
+   between characters means a whole word never lands and nothing else changes.
+4. **Pause is a desktop-wide latch**, not a property of the run. It parks the
+   live run *and* holds off `request_control` from every other agent, with the
+   holder reported as the human. It works with no run live too, which makes it a
+   pre-emptive "not now" - worth having on its own.
+
 **Open questions for the mock.** Whether a pause auto-resumes after some
 idle period (a pause he forgets about strands the agent), what happens to a
 `drive_desktop` already in flight when the hotkey fires, and whether pause is
-per-run or a desktop-wide state that any waiting agent respects.
+per-run or a desktop-wide state that any waiting agent respects. *All three
+answered above.*
 
 Related: FR74 (the strip and its guarantee), and `internal/webui/control.go`
 plus the desktop lock in the daemon are where a run's state lives today.
