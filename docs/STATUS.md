@@ -397,10 +397,19 @@ still on disk as a fallback; delete them once a few quiet days pass.
 - Inline ask panel (FR49): a question from an agent running in the session
   surface is answered in its conversation, above the composer.
   `inlineRoutable` is the whole rule: session-tagged, a kind the panel can
-  take (choice/confirm/notify), not urgent, and the app window open. The
-  panel does not take focus; a switcher row marks itself when its
-  conversation is the one waiting; closing the app window with a question
-  pending re-presents it as a card (`rerouteAsk`).
+  take (choice/confirm/notify), not urgent, and a host on screen. The panel
+  does not take focus; a switcher row marks itself when its conversation is
+  the one waiting; losing the host with a question pending re-presents it as
+  a card (`rerouteAsk`).
+  **Since 2026-08-06 "a host" means the app window OR the drop-down panel.**
+  It was the app window alone, so a question asked while the panel was down
+  opened a card over the very conversation it was about. Three things to know
+  before touching this: the panel's reroute must run after `slide()`, which is
+  what clears the open flag (asked earlier, routing still sees a host and the
+  question stays in a panel that is not there); with both hosts open the
+  question renders in both, and answering either resolves it; and opening a
+  host does NOT pull an existing card back inline - the app has never done
+  that, and the two are deliberately symmetric.
 - Settings surface: a descriptor table (section → group → knob) drives the
   whole surface - control type, bounds, valid values and restart-need
   declared once, in Go. Reads the file fresh as the baseline (the file is
@@ -794,17 +803,6 @@ which still renders with its own count.
   heuristic: markup with a `<script>` runs, a table does not. The
   interaction channel is verified through the CLI and unit tests, not yet
   through an MCP host.
-- **The drop-down panel is not an inline host, and it is not clear that is
-  right.** `inlineRoutable` requires the APP window (`AppOpen()`), so a question
-  from a conversation shown in the drop-down panel opens as a card instead -
-  seen on 2026-08-06 with `webui-demo ask panel`, the card landing at 470x258
-  squarely over the panel's lower half. That is the exact thing FR49 exists to
-  prevent ("the context the question is about is what a card would cover"), and
-  the panel has the same transcript and the same composer the rule is written
-  about. Nothing in the docs says the exclusion was decided, only that the rule
-  says `appOpen`; it may simply be what got built. **A question for Boris, not a
-  fix to make unasked** - it changes where his questions appear. Whichever way it
-  goes, `rerouteAsk` would need the panel's close as well as the app's.
 - Session surface, deliberate scope cuts: the stream-json permission
   control_request protocol is not handled (so only the non-stalling modes
   plan/Full are offered, not default/acceptEdits); whether `plan` mode lets
@@ -941,13 +939,15 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
-**As of session 55 (2026-08-06) nothing is blocked on Boris.** Session 55 took
-two items off session 54's queue: `config.SplitArgv` got the fifth fuzz target
-(it found two escaping defects, both fixed), and the inline ask panel was looked
-at on a real long body (it does not need FR84's fold, but it was pushing the
-composer off the window and now does not). What is left on that queue is living
-with `[flood]`'s defaults, and whether `tools/showcase/` gets deleted outright -
-Boris's call, and the one thing worth putting to him.
+**As of session 55 (2026-08-06) session 54's queue is empty and nothing is
+blocked on Boris.** Session 55 cleared it: `config.SplitArgv` got the fifth fuzz
+target (two escaping defects, both fixed); the inline ask panel was looked at on
+a real long body (it does not need FR84's fold, but it was pushing the composer
+off the window and now does not); the drop-down panel became an ask host, which
+is what that look turned up; and the showcase question was answered - the video
+pipeline is deleted and the live half kept (priority 2 below). What remains is
+living with `[flood]`'s defaults, which is a matter of using AgentBox rather than
+a task anybody can sit down and do.
 
 **As of session 54 (2026-08-06) FR30 is built.**
 He cleared the whole queue in two exchanges at the start of that session: flood

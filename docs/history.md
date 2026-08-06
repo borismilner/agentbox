@@ -67,14 +67,25 @@ absorbs the squeeze first, and past that the panel scrolls as a unit, so nothing
 ever paints outside it. Three build-and-look cycles, which is what this surface
 seems to cost.
 
-**One thing was found and deliberately not fixed.** Reaching the drop-down panel
-from a demo for the first time (`webui-demo ask panel`, added for it) showed that
-a question there opens as a card - 470x258, landing over the panel's lower half.
-`inlineRoutable` requires the app window, and the panel does not count. That is
-the exact thing FR49 exists to prevent, and the panel has the same transcript and
-composer the rule is written about, but nothing in the docs says the exclusion
-was decided rather than just built. It changes where Boris's questions appear, so
-it is a question for him and it is in STATUS's known gaps.
+**Reaching the drop-down panel from a demo for the first time** (`webui-demo ask
+panel`, added for it) showed a question there opening as a card - 470x258,
+landing over the panel's lower half. `inlineRoutable` required the app window and
+the panel did not count, which is the exact thing FR49 exists to prevent, in the
+host nobody had checked. Raised as a question rather than fixed unasked, since it
+changes where Boris's questions appear; he said to do what was best, so the gate
+became "a host that renders conversations is on screen". The mechanic worth
+keeping: the panel's reroute has to run after `slide()`, because that is what
+clears the open flag - asked any earlier, the rule still sees a host and the
+question stays in a panel that is no longer on screen.
+
+**The showcase was settled the same way.** Delete the video, keep what is
+reusable: `record.sh`, `take.sh`, `verify.sh`, `docs/recording.md` and
+`docs/youtube.md` are gone, and `deck.py`, `perform.py`, `console.jsx`, `tour.md`
+and `docs/showcase.md` stay because each is worth having in front of a room with
+no camera anywhere. `perform.py` lost its recorder marks and its
+recorded-monitor check. `make deck` turned out to be broken in the state this
+machine was actually in - a venv holding a python and no pip made it skip the
+venv build and then die on the pip line - so it gates on importing pptx now.
 
 The lesson is the same one session 54 wrote down, arriving from the other
 direction: neither defect was in the thing being worked on. One came from a

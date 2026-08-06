@@ -158,9 +158,10 @@ Global (via desktop shortcut, suggested Ctrl+Alt+K): `agentbox summon`.
   composer keeps focus, the answer keys act only when nothing is being typed
   (Esc in the composer hands the keyboard over), and the hint line says which
   of the two you are in. A non-selected session marks its switcher row instead,
-  since the panel is only visible in the conversation it belongs to. If the app
-  window closes with a question in the panel, the item gets its card - it is
-  never left somewhere unreadable.
+  since the panel is only visible in the conversation it belongs to. Either
+  surface that renders conversations will hold it - the app window or the
+  drop-down panel - and if the one it is in goes away, the item gets its card.
+  It is never left somewhere unreadable.
 
 ## Inbox
 
