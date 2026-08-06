@@ -1,8 +1,8 @@
-# Handoff - AgentBox: the leftover queue spent, and FR30 is the only thing left
+# Handoff - AgentBox: the whole queue cleared in one session, and nothing is blocked
 
-*Written by session 53, which resumed onto an empty queue, closed both solo items
-session 52 left, and fixed the one note six handoffs had carried without testing.
-Nothing is in flight. The next real work needs one sentence from Boris.*
+*Written by session 54, which opened on an empty queue with everything blocked on
+Boris, asked for all of it at once, and shipped the lot. FR30 is built. FR84 is
+closed. Nothing waits on him and nothing is in flight.*
 
 **Written:** 2026-08-06 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -10,213 +10,237 @@ Nothing is in flight. The next real work needs one sentence from Boris.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean and level with origin/main (pushed)
+git status -sb              # expect clean, level with origin/main (pushed)
                             # origin is gitlab and IS main's upstream; the `github`
                             # remote is far behind and is not where this goes
-make deployed               # expect 7609088aae12 - and that is CORRECT, see below
+make deployed               # expect 731e20af69be - see "No deploy is owed" below
 agentbox control state      # expect "no run: the desktop is the human's"
 agentbox pending            # expect "nothing pending"
 agentbox sync agents        # your row; ghosts from `claude -p` checks are harmless
-make check                  # gofmt + vet + race + JS tests, ~2 min
+make check                  # gofmt + vet + race + JS tests, ~3 min
 ```
 
-**No deploy is owed.** Every commit since `7609088` is tests and docs, so the
-running daemon is deliberately older than HEAD. Confirm with `git log --oneline
-7609088..HEAD` before assuming otherwise - and remember `make deployed` asks the
-running daemon, because a replaced binary is not a deployed binary.
+**No deploy is owed.** `731e20af69be` was the last code commit and it is what the
+daemon is running; the only thing after it is the docs commit carrying this
+handoff. Confirm with `git log --oneline 731e20a..HEAD` before assuming otherwise,
+and remember `make deployed` asks the running daemon, because a replaced binary
+is not a deployed binary.
 
-**Nothing is in flight. No field request is open.**
+**Nothing is in flight, no field request is open, and nothing is blocked on
+Boris.** This is the first handoff in a long while with an empty "Blocked on you"
+section, so the next session picks its own work from the list below rather than
+waiting for a sentence.
 
 ### The queue, in order
 
-1. **FR30 flood control - blocked on one sentence from Boris, and it is the only
-   substantial thing left.** `docs/01-requirements.md:90` promises per-agent rate
-   limits collapsing into one stack card; nothing in the daemon does it. An agent
-   in a loop papers the screen and can now also fill a recording's held queue.
-   Not built because it changes WHEN a card appears, which is a decision about his
-   notifications. **The two questions to put to him** (session 53 drafted these
-   and he has not answered): collapse a burst into one stack card, or rate-limit
-   and drop? And what counts as a flood - N cards in M seconds, per agent or per
-   project?
-2. **`webui-demo agents` still unseen** - the last of the four surfaces. It needs
-   the daemon displaced (`make stop`, run the demo, `make restart-daemon`), which
-   takes Boris's notifier down for a few minutes and is the trap CLAUDE.md warns
-   about (a second AgentBox shows no windows while another is running). Session 53
-   judged that not worth doing unprompted while he was at the keyboard. **Ask
-   before doing it** - there is no way to read "is Boris busy" off the machine, and
-   every other session on it reaches him through that daemon.
-3. **`[editor]` still has no settings control.** Unchanged and still his call: the
-   value is an argv array and the descriptor table has no kind for one, which is
-   why `speech.command` has none either. The honest shape is a new kind.
-4. **More fuzz targets** if nothing better presents. Four now exist
+1. **`[flood]` wants living with before it is tuned.** `burst = 3` in `window_s =
+   10` is Boris's number, chosen on paper and shipped the same day; nobody has yet
+   had a real agent trip it in the course of ordinary work. If it fires on
+   something innocent, the knob is in `~/.config/agentbox/config.toml` - **do not
+   change his file to "fix" a judgement he made**; tell him what tripped it.
+2. **Two FR30 judgement calls are worth a second opinion**, both deliberate and
+   both documented in [docs/STATUS.md](docs/STATUS.md):
+   - An open stack card keeps collecting **until the human dismisses it**. That is
+     what stops a sustained loop getting a fresh budget every window, but it also
+     means a session that flooded once stays collapsed until he closes the card.
+   - An urgent item inside a burst **collapses** into the stack card and raises it
+     to urgent (which then preempts). It never appears as its own card. The
+     alternative - urgent always breaks out - was not built.
+3. **`AskPanel.svelte` did not get FR84's fold.** The inline panel has the same
+   title/body/controls order as the card, but it lives in the scrolling session
+   transcript, so a long body does not put its controls out of reach the way a
+   fixed-height card window does. Judged out of scope rather than missed. Look at
+   it on a real long-bodied ask before deciding it needs the same treatment.
+4. **More fuzz targets** if nothing better presents. Four exist
    (`change.FuzzParse`, `walkthrough.FuzzCover`, `FuzzSpecParse`,
-   `FuzzBuildPayload`). The remaining agent-authored surfaces are thinner.
+   `FuzzBuildPayload`); `config.SplitArgv` is a new, small, hand-written parser
+   and is the obvious fifth.
+5. **`tools/showcase/` is frozen but not deleted.** Deleting it is Boris's call
+   and he has not made it. Do not delete it on your own initiative; ask.
 
 ## Where we are
 
-Session 52 left two solo items and four "unseen surfaces". Both solo items are
-done and the surface question turned out to be the wrong question.
+Session 53 left FR30 as the only substantial thing left, blocked on one sentence.
+Session 54 asked for that sentence and four others in the same breath, and Boris
+cleared the whole list in two exchanges. Everything he decided was built,
+deployed, and exercised on the real desktop the same session.
 
-**Two fuzz targets, both clean:** `walkthrough.Parse` at 9.0M executions and
-`BuildPayload` at 3.1M. They assert what callers trust without checking - that an
-accepted spec's citations are sliceable, that glossary marking partitions the
-author's text rather than rewriting it, that the tallies match the lists under
-them, that no remark is dropped or doubled, that absence travels as `[]` not
-`null`, and that a payload always marshals, since a handback `json.Marshal`
-refuses loses the whole review at submit. Clean is the honest result; session 52's
-target found a real bug in thirty seconds and these found nothing.
+**What he decided (2026-08-06), because a future session will want the reasoning
+and not just the outcome:**
 
-**One documented bound came out of it:** `MaxSpecBytes` reads as a 1 MB cap and is
-never enforced on its own, so a spec with no diff can be 3 MB. Worst case
-measured: 2.8 MB with a 48-term glossary costs 940 ms in `Parse`. Deliberately not
-patched - see [docs/STATUS.md](docs/STATUS.md) for why the obvious fix would start
-refusing honest specs.
+| Question | His answer |
+|---|---|
+| FR30: collapse or drop? | Collapse into one stack card, nothing dropped |
+| FR30: what counts as a flood? | 3 cards in 10s, per agent, and make it configurable |
+| FR84's other half | Approach C: fields first, prose folded |
+| `[editor]` / `speech.command` control | Build it |
+| The showcase re-record | **Dropped for good** - stop maintaining it |
+| `webui-demo agents` (needs the daemon down) | Go ahead now |
 
-**The Agents row detail was watched**, and the important finding is that two of its
-three empty answers are unreachable rather than unseen (below).
+**All five shipped.** FR30 is `internal/daemon/flood.go` + kind `stack` +
+migration 0013 + `[flood]` knobs. FR84's other half folds a body past 240
+characters behind "why this is being asked" (`?` or a click). The settings
+surface has a `command` kind for argv arrays. The showcase docs carry a frozen
+banner. `webui-demo agents` was watched and is fine.
+
+## The part worth reading: six defects, and how each was found
+
+Four unit-test-invisible defects in FR30 and two in FR84. **Not one of them came
+from reading the diff**, and that is the finding, not a coincidence:
+
+- **The budget refilled underneath an open stack card**, so a sustained loop
+  collected a fresh budget every window - three cards per ten seconds on the
+  shipped defaults. Found by watching a live burst and doing the arithmetic.
+- **`agentbox dismiss <stack>` cleared the summary and left every notification
+  under it pending.** The sweep had been written on the card's own Esc, and there
+  are three doors that retire an item. Found while clearing the demo queue.
+- **The number key promoted the right item and then put the stack card back in
+  front of it**, so pressing 1 read as nothing happening except "1 waiting". Every
+  unit test passed because they all had the stack card queued rather than on
+  screen, which is not where a human is when they press the key.
+- **An answered row still read "waiting on you"** under a footer still counting
+  one, because the entries were a snapshot taken at collapse time that nothing
+  revisited.
+- **A restart un-collapsed the burst.** Every collapsed item is pending in its own
+  right, so the restore put the stack card AND all fourteen items back on the
+  queue, and the restored card had no budget behind it either (so the next item
+  opened a second summary of the same flood). Found in the adversarial pass over
+  the diff, then reproduced and fixed against a real `systemctl --user restart`.
+- **A card could only ever get taller.** `.card` is `min-height: 100%`, so
+  measuring the shell measures the WINDOW; once a card had grown it reported the
+  window's height back to Go forever. Older than FR84 and invisible until FR84
+  gave a card something that folds. It needed **two** fixes - the measurement has
+  to take min-height off for the read, AND anything that can make the card shorter
+  has to ask for a re-measure, because under the window's height there is nothing
+  left for the observer to observe.
 
 ## What was verified on the real desktop
 
-Not read off the diff.
+Not read off the diff. Captures in the scratchpad (path in Live state).
 
-- **`Recent items` paints**: twelve rows at the `agentDetailItems` cap, newest
-  first, each with kind, state and age (`agents-3.png`). `Signals` paints on both
-  a real row and a hook-only one (`agents-5.png`).
-- **The hook fix reads correctly on screen** (`agents-6.png`), with the last
-  old-format entry still in the activity ring directly above the new ones: three
-  wrapped lines against one, and `Signals` back in the first screenful.
-- Desktop taken twice with `request_control`, released both times; `control state`
-  and `wmctrl` confirmed no strip left on screen.
-
-> **The one thing only the screen could say.** Boris's PostToolUse hook wrote the
-> raw Bash command through `cut -c1-70`, and **`cut` truncates every line and drops
-> none** - so a heredoc arrived whole. One opened row rendered a Go test file as a
-> single wrapping activity line and a commit message as another, pushing
-> `Recent items` two screens below the fold. Six handoffs carried this as a wording
-> preference. It was a legibility defect with a different cause and a worse
-> severity than any of those six descriptions.
-
-## Two empty answers that cannot be reached, and why that closes them
-
-Both are correct defensive code in `frontend/src/surfaces/Agents.svelte`. Neither
-is worth another session's staging:
-
-- *"This session has left the board"* needs `found: false`. The surface closes the
-  detail the instant the roster stops listing the row (the guard near the top of
-  the file, "a row that went away must not keep the detail open under a different
-  agent"), so the daemon's answer survives only in the sub-second race between the
-  surface's roster copy and the daemon's map, or when the bridge call throws.
-- *"Nothing behind it yet"* needs a row with no timeline, no signals and no items -
-  and every row on the board got there by announcing, which posts the signal that
-  fills the block. Tried on the hook-only row: it showed its meta and its one
-  announce, correctly.
+- **A real flood, end to end**: seven `agentbox notify` calls, three own cards,
+  four collapsed into one card reading "claude: 4 notifications in under a
+  second" (`fr30-stack-1.png`).
+- **A question caught in a burst** (`fr30-v2-stack.png`): row 1 amber, "waiting on
+  you", footer "1 still waiting for an answer; dismissing keeps it". `e` expands,
+  `1` opens it as a real card, answering it delivered `Roll back` to the parked
+  CLI caller, and the row came back marked `done` and dimmed
+  (`fr30-v3-done-row.png`).
+- **A real daemon restart** (`systemctl --user restart agentbox.service`) with a
+  burst pending: the stack card came back with its four entries, the collapsed
+  items did NOT come back as their own cards, and the next notify grew the same
+  card rather than opening a second (`fr30-after-restart.png`).
+- **FR84's fold** (`fr84-shrinks.png`), with the window measured at each step:
+  230px folded, 384 open, 230 folded again.
+- **Both settings controls** on the real Settings surface
+  (`settings-sessions.png`, `settings-sound.png`). Boris's own `speech.command`
+  renders as itself and the form stays clean, which is the round-trip check that
+  mattered. Typing into the editor box flipped the footer to "1 key to write ·
+  editor.command"; **Revert put it back and his `config.toml` was left byte-identical.**
+- **`webui-demo agents`**: every area, badge, the orphan lock's Break lock confirm,
+  and an opened row's four blocks.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `7609088aae12`, older than HEAD **on purpose** - see "Do this next".
-- **Git:** `main`, clean, **pushed to `origin`** (gitlab). Five commits this
-  session, oldest first: `13b00cd` (the two fuzz targets), `1ce2500` (the spec cap
-  note), `27f31d3` (the row detail watched), `dfdc552` (the hook fix recorded), and
-  the docs commit carrying this handoff. Run `git status -sb`: that is the only
-  truthful answer.
+- **Deployed:** `731e20af69be`, the last code commit. Only the docs commit
+  carrying this handoff sits after it, so no deploy is owed.
+- **Git:** `main`, clean, pushed to `origin` (gitlab). Twelve commits this
+  session, oldest first: `e8f5d88` (demo surface seen + showcase dropped),
+  `5b097ef` (FR30), then the four fixes the live desktop forced - `5cd2847`
+  (refilling budget), `6aad71b` (the door that did not sweep), `6cda360` (the
+  stack retaking the screen), `e37f2e1` (the row that kept asking) - then
+  `e0eaf23` (FR84's fold), `c321e80` and `eadf9da` (the card-shrink defect, which
+  took two), `544946f` (argv settings), `8a4f254` (docs), `731e20a` (the restart
+  and urgent fixes from the adversarial pass). `git log --oneline 7643938..HEAD`
+  is the truthful answer; that sha is the previous session's last commit.
 - **Two remotes, and only one of them is the tree.** `origin` is
   `git@gitlab.com:fu-bar/agentbox.git` and is `main`'s upstream. `github`
-  (`git@github.com:borismilner/agentbox.git`) is far behind and is not where this
-  work goes. A bare `git push` is right because the upstream is set.
-- **`~/.claude/settings.json` was edited this session** (the PostToolUse Bash
-  activity hook) with Boris's authorisation. It is his file and outside this repo,
-  so it is **not** covered by any commit here and no `git` command will restore it.
-  JSON validated with `jq -e`. The backup is in this session's scratchpad (path
-  below) and dies with a reboot; the fix itself is quoted in full in
-  [docs/STATUS.md](docs/STATUS.md), which is what a restore would actually need.
-- **The desktop is his**, nothing quiet, no locks held, nothing pending. All
-  checked at the end.
-- **No peer sessions.** `announce` returned `alone: true`; one hook-only ghost row
-  (`proc-1029368-4422447`) from a `claude -p /usage` check, which is harmless.
+  (`git@github.com:borismilner/agentbox.git`) is far behind. A bare `git push` is
+  right because the upstream is set.
+- **Boris's `~/.config/agentbox/config.toml` was NOT modified.** The settings
+  control was exercised with Revert rather than Save, and the file's md5 was
+  checked after. It has no `[flood]` section, so flood control runs on the
+  built-in defaults (3 in 10s).
+- **The desktop is his**, nothing pending, no locks held, no agentbox window on
+  screen. All checked at the end.
 - **Captures live in a session scratchpad** and will not survive a reboot:
-  `/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/0336eafc-3891-4604-b15e-e2b74203cb03/scratchpad/`
-  (`agents-2.png` is the wall of shell before the fix, `agents-3.png` the Recent
-  items block, `agents-5.png` the hook-only row, `agents-6.png` the fix on screen,
-  `settings.json.bak` the hook backup). Deliberately not committed.
-- **Usage at handoff:** session ~26%, resetting 2026-08-06 23:40 Asia/Jerusalem;
-  week (all models) ~28%, resets 2026-08-12 05:00. This is a clean stopping point
-  with room left, not a rescue.
+  `/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/e1fc6994-afab-4e94-87cb-37f56cb75f91/scratchpad/`
+  Deliberately not committed.
+- **Usage at handoff:** session ~50%, resetting 2026-08-06 23:40 Asia/Jerusalem;
+  week (all models) ~30%, resets 2026-08-12 05:00. A clean stop with room left,
+  not a rescue.
 - **In-flight edits: none. Background jobs: none. PRs:** none, ever.
 
 ## Blocked on you (Boris)
 
-- **FR30 flood control** is the one that matters - a documented `must` that was
-  never built, and the only substantial work left. The two questions are in queue
-  item 1. One sentence unblocks it.
-- **FR84's other half** (a long body still pushes a form's fields below the fold)
-  needs your word, because the approach that fixes it is the one you did not pick.
-  Mock: [docs/mocks/fr84-form-shapes.html](docs/mocks/fr84-form-shapes.html),
-  approach C.
-- **Whether the re-record is worth scheduling** (STATUS priority 2). Unchanged.
-- **`[editor]`'s settings control** wants a new descriptor kind for argv arrays.
-
-*The PostToolUse hook item that sat here for six handoffs is gone: fixed and
-watched on 2026-08-06.*
+**Nothing - proceed autonomously.** He cleared the entire list at the start of
+this session and every answer has shipped. The only thing that is his to say is
+whether `tools/showcase/` should be deleted outright (queue item 5), and that is a
+question to raise, not a blocker.
 
 ## I can do solo (no input needed)
 
-1. **`webui-demo agents`** when the desktop is free (queue item 2).
-2. **More fuzz targets**, though the pickings are thinner than they were.
+1. **Fuzz `config.SplitArgv`** (queue item 4) - a new hand-written parser with an
+   obvious round-trip property, and the cheapest real work on the list.
+2. **Look at a long-bodied ask in the inline panel** and decide whether FR84's
+   fold belongs there too (queue item 3).
+3. **Watch `[flood]` in ordinary use** and report anything it trips on that it
+   should not have (queue item 1).
 
 ## Facts - verified vs assumed
 
-- [verified] **`make check` passes** (gofmt, vet, race, JS tests) after every slice.
-- [verified] **Both new fuzz targets are clean**: 9.0M and 3.1M executions, run
-  this session at `-fuzztime 90s` each.
-- [verified] **`MaxSpecBytes` is not enforced alone**, and a 2.8 MB spec with a
-  full glossary costs 940 ms in `Parse` - measured with a throwaway test that was
-  deleted afterwards.
-- [verified] **`Recent items` and `Signals` paint**, watched on the real board.
-- [verified] **The hook fix produces one line with an ellipsis**, checked both from
-  the CLI (`agentbox sync agents`) and on the board.
-- [verified] **The two empty answers are unreachable by ordinary use**, established
-  by reading the guard in `Agents.svelte` AND by trying the hook-only row.
-- [verified] The session-51/52 set, unchanged: FR95 end to end, the panic guard,
-  the convergence guard, both diff parsers surviving a lying hunk header, the
-  `quiet_hotkey` knob rendering, the demoted marker's four traps.
+- [verified] **`make check` passes** (gofmt, vet, race, JS tests) after every
+  slice, including the last one.
+- [verified] **FR30 works end to end on the deployed build**: collapse, expand,
+  number-key open, answer delivered to a parked CLI caller, the row marked done,
+  the sweep on dismiss, and survival of a real daemon restart.
+- [verified] **FR84's fold and the card-shrink fix**, measured on screen at 230 /
+  384 / 230 px.
+- [verified] **Both settings controls render and mark exactly one key to write**,
+  and Revert leaves Boris's config byte-identical.
+- [verified] **`webui-demo agents` renders correctly** - the last unseen surface.
+- [verified] The session-51/52/53 set, unchanged: FR95 end to end, the panic
+  guard, the convergence guard, both diff parsers surviving a lying hunk header,
+  the `quiet_hotkey` knob rendering, the demoted marker's four traps, and the two
+  clean fuzz targets.
 - [assumed] **That the 30-minute fuse fires in a live daemon.** Carried from
   session 51: the timer is driven directly in the test and nobody has watched half
   an hour pass.
 - [assumed] **That the demoted marker behaves on a second monitor.** Carried; one
   monitor here, so only the fallback has ever run.
-- [assumed] The session-50/51 carried set, minus the three this session settled:
-  that the demo fallback paints, that the domain drawer animation is what Boris
-  wants, and the older list (a detail holding a mermaid diagram, `provisionalFor`
-  retiring a hook-only row, the 200-key prefix cap, `@me` in a shared key, a real
-  client's `await_signal` parked past 20s, the holder-parked-on-ask_user and 600s
-  long-wait lock warnings, `webui-demo agents` still rendering, and the identity
-  cross-check's no-node skip path).
+- [assumed] **That `[flood]`'s defaults are right for ordinary work.** They are
+  Boris's number, chosen on paper the same day they shipped, and only a synthetic
+  burst has ever tripped them.
+- [assumed] The session-50/51 carried set: that the domain drawer animation is
+  what Boris wants, that the demo fallback paints, a detail holding a mermaid
+  diagram, `provisionalFor` retiring a hook-only row, the 200-key prefix cap,
+  `@me` in a shared key, a real client's `await_signal` parked past 20s, the
+  holder-parked-on-ask_user and 600s long-wait lock warnings, and the identity
+  cross-check's no-node skip path.
 
 ## Declutter ledger
 
 | Removed / condensed | Where its knowledge now lives |
 |---|---|
-| Session 52's queue item 1 (four unseen surfaces) | Three are settled: `Recent items` is verified above, and the two empty answers are closed as unreachable with the reasoning in "Two empty answers". Only `webui-demo agents` survives, as queue item 2 |
-| Session 52's "Blocked on you" item about the PostToolUse hook | Fixed and watched. Cause, fix and the lesson are in session 53 of [docs/history.md](docs/history.md) and in the FR83 section of [docs/STATUS.md](docs/STATUS.md) |
-| Session 52's solo item 2 (more fuzz targets) | Both built and committed (`13b00cd`). What they assert and why is in the commit message and in session 53 of [docs/history.md](docs/history.md) |
-| Session 52's long FR95 narrative and its five robustness finds | All shipped and unchanged; the full account stays in session 52 of [docs/history.md](docs/history.md) rather than being recopied here |
-| Session 52's captures and scratchpad path | Gone with that session; this session's are listed fresh in Live state |
+| Session 53's queue item 1 (FR30 blocked, and the two questions to put to Boris) | Both answered and built. The answers and their reasoning are in the decision table above, in the FR30 section of [docs/STATUS.md](docs/STATUS.md), and in the code comments in `internal/daemon/flood.go` |
+| Session 53's queue item 2 (`webui-demo agents` unseen) | Watched. Findings and the two harness mechanics are in the FR83 section of [docs/STATUS.md](docs/STATUS.md) |
+| Session 53's queue item 3 (`[editor]` has no settings control) | Built. The `command` kind and why neither knob needs a restart are in the settings bullet of [docs/STATUS.md](docs/STATUS.md) |
+| Session 53's "Blocked on you" items (FR30, FR84's other half, the re-record, the editor control) | All four answered on 2026-08-06; the decision table above records what he chose, and each is closed in its own doc section |
+| Session 53's captures, scratchpad path and its whole narrative | Gone with that session; this session's are listed fresh in Live state, and session 53 survives in [docs/history.md](docs/history.md) |
+| The showcase re-record, carried as a priority since session 24 | Dropped for good. Priority 2 of [docs/STATUS.md](docs/STATUS.md) says what that means for `tools/showcase/` and its docs, and the three docs carry a frozen banner |
 
 ## Map
 
-1. [docs/STATUS.md](docs/STATUS.md) - current state. The FR83 section now carries
-   the row-detail findings and the hook fix; the walkthrough limits carry the
-   unenforced spec cap.
+1. [docs/STATUS.md](docs/STATUS.md) - current state. The FR30 section carries the
+   four things to know before touching flood control; the FR84 section carries the
+   card-measurement defect; the settings bullet carries the new `command` kind.
 2. [docs/history.md](docs/history.md) - session by session; this session is
-   "Fifty-third".
+   "Fifty-fourth".
 3. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in
    commits and handoffs. **No FR is open.**
-4. [docs/01-requirements.md](docs/01-requirements.md) - where FR30's unbuilt `must`
-   is written down.
-5. [internal/manual/walkthrough.md](internal/manual/walkthrough.md) - the authoring
-   standard; rule 49 is the one the coverage validator checks.
+4. [docs/01-requirements.md](docs/01-requirements.md) - FR30, now marked built,
+   with the one departure from its wording written down.
+5. [docs/06-configuration.md](docs/06-configuration.md) - the real `[flood]` keys.
 6. [docs/agent-manual.md](docs/agent-manual.md) - the MCP tool reference.
 7. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions. **Read it before
    touching the build, the daemon, or driving the desktop.**
-</content>
-</invoke>
