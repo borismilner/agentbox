@@ -252,6 +252,19 @@ func Parse(raw []byte) (*Spec, []string, error) {
 	return &s, warnings, nil
 }
 
+// Load decodes a spec that has already been through Parse - the stored copy -
+// without validating it again. The read path needs the citations and the scopes,
+// not a second opinion on a spec that was accepted when it was written: a rule
+// added later would otherwise make an old walkthrough unreadable, which is the
+// one thing the library is for.
+func Load(raw []byte) (*Spec, error) {
+	var s Spec
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
 // teachDecodeError upgrades the JSON errors a model is most likely to hit
 // into instructions.
 func teachDecodeError(err error) error {

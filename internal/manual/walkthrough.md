@@ -262,6 +262,15 @@ is long and its margin is empty, the step is written backwards.
     complete, and annotate whatever the thematic steps never stood on. A reader
     who cannot tell whether the tour was curated has to assume it was, and then
     cannot sign anything off.
+
+    **AgentBox checks this one.** It compares every hunk of the diff you pass
+    against every range your steps cite, and the create result carries the
+    arithmetic (`coverage`: hunks, covered, out of scope, and each uncovered
+    hunk by path and line). A hunk counts as covered when any citation OVERLAPS
+    it, so the twenty lines around a three-line change count - and it is a
+    warning, never a refusal. Two things follow: a deleted file is not counted
+    either way (there is nothing left to cite - say what went, in prose), and a
+    walkthrough with no diff reports nothing rather than reporting clean.
 50. **Name what you deliberately left out.** `out_of_scope` takes a glob and a
     reason. An unexplained exclusion is a hole; a stated one is a decision.
     This is also where an absence goes: no tests, no migration, no wiring.

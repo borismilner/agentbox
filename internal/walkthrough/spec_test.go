@@ -2,6 +2,7 @@ package walkthrough
 
 import (
 	"encoding/json"
+	"maps"
 	"strings"
 	"testing"
 )
@@ -456,9 +457,7 @@ func TestDomainTeachingErrors(t *testing.T) {
 		m := good()
 		first := m["steps"].([]map[string]any)[0]
 		second := map[string]any{}
-		for k, v := range first {
-			second[k] = v
-		}
+		maps.Copy(second, first)
 		second["id"] = "second"
 		m["steps"] = []map[string]any{first, second}
 		return m
@@ -518,9 +517,7 @@ func TestDomainStepsMustBeConsecutive(t *testing.T) {
 	first := m["steps"].([]map[string]any)[0]
 	mk := func(id, dom string) map[string]any {
 		st := map[string]any{}
-		for k, v := range first {
-			st[k] = v
-		}
+		maps.Copy(st, first)
 		st["id"] = id
 		st["domain"] = dom
 		return st

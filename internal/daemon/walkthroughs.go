@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/borismilner/agentbox/internal/proto"
 	"github.com/borismilner/agentbox/internal/store"
@@ -75,6 +76,15 @@ func (d *Daemon) walkthroughCreate(params json.RawMessage) (any, *proto.RPCError
 		d.log.Info("walkthrough.captured", "component", "daemon", "wt_id", req.ID,
 			"ranges", len(ex), "cited", len(cites), "missed", len(missed))
 	}
+	// The standard's rule 49 - "include one traversal that covers every changed
+	// line" - checked rather than trusted (FR61). Warnings, never a refusal: an
+	// incomplete walk is still worth having, and the author is the one who knows
+	// whether a gap is a gap or a step they are about to write.
+	cov := walkthrough.Cover(diff, cites, spec.OutOfScope)
+	warnings = append(warnings, coverageWarnings(cov)...)
+	d.log.Info("walkthrough.coverage", "component", "daemon", "wt_id", req.ID,
+		"computed", cov.Computed, "hunks", cov.Hunks, "covered", cov.Covered,
+		"out_of_scope", cov.OutOfScope, "uncovered", len(cov.Uncovered))
 	d.log.Info("walkthrough.created", "component", "daemon", "wt_id", req.ID,
 		"agent", req.Identity.Agent, "steps", len(spec.Steps), "counted", w.CountedSteps,
 		"spec_bytes", len(specJSON), "diff_bytes", len(diff))
@@ -82,13 +92,80 @@ func (d *Daemon) walkthroughCreate(params json.RawMessage) (any, *proto.RPCError
 		d.ui.ShowBoard(req.ID)
 	}
 	return proto.WalkthroughCreateResult{
-		ID:  req.ID,
-		Rev: 1,
-		// Coverage arithmetic lands with the drift slice; until then it is
-		// reported uncomputed, never guessed (FR61).
-		Coverage: proto.CoverageReport{UncoveredHunks: []proto.HunkRef{}},
+		ID:       req.ID,
+		Rev:      1,
+		Coverage: coverageReport(cov),
 		Warnings: warnings,
 	}, nil
+}
+
+// coverageReport is the wire shape of the arithmetic. UncoveredHunks is built
+// empty rather than left nil for the reason the type's own comment gives:
+// silence must never read as covered.
+func coverageReport(c walkthrough.Coverage) proto.CoverageReport {
+	out := proto.CoverageReport{
+		Computed: c.Computed, Hunks: c.Hunks, Covered: c.Covered,
+		OutOfScope: c.OutOfScope, Uncovered: len(c.Uncovered),
+		UncoveredHunks: []proto.HunkRef{},
+	}
+	for _, h := range c.Uncovered {
+		out.UncoveredHunks = append(out.UncoveredHunks, proto.HunkRef{
+			Path: h.Path, From: h.From, To: h.To, Kind: h.Kind,
+		})
+	}
+	return out
+}
+
+// coverageOfStored recomputes the arithmetic for a walkthrough being read. The
+// board asks for it whenever it opens, so a review kept in the library still
+// says what it did and did not account for - and it is recomputed rather than
+// stored because the spec is the only copy of the truth (FR61: nothing may hold
+// a second copy of a citation).
+//
+// A spec that will not decode leaves the report uncomputed. Never guessed, and
+// never a failed read: the walkthrough itself is still worth opening.
+func coverageOfStored(w *store.Walkthrough) proto.CoverageReport {
+	spec, err := walkthrough.Load([]byte(w.Spec))
+	if err != nil {
+		return proto.CoverageReport{UncoveredHunks: []proto.HunkRef{}}
+	}
+	return coverageReport(walkthrough.Cover(w.Diff, spec.Citations(), spec.OutOfScope))
+}
+
+// coverageMentions is how many uncovered hunks a warning names before it stops.
+// Enough to start from, short enough to stay a warning rather than a report -
+// the full list is in the result the caller already has.
+const coverageMentions = 5
+
+// coverageWarnings turns the arithmetic into teaching notes. They name the
+// hunks, because "3 hunks uncovered" sends the author back to diff the diff
+// against their own steps, which is the work this was supposed to save.
+func coverageWarnings(c walkthrough.Coverage) []string {
+	var out []string
+	if len(c.Uncovered) > 0 {
+		var b strings.Builder
+		fmt.Fprintf(&b, "%d of %d hunks are not cited by any step", len(c.Uncovered), c.Hunks)
+		if c.OutOfScope > 0 {
+			fmt.Fprintf(&b, " (%d more are out of scope, which is a decision and counts as answered)", c.OutOfScope)
+		}
+		b.WriteString(" - rule 49 asks for one traversal that covers every changed line, so either walk these or name them in out_of_scope with a reason: ")
+		for i, h := range c.Uncovered {
+			if i == coverageMentions {
+				fmt.Fprintf(&b, ", and %d more", len(c.Uncovered)-coverageMentions)
+				break
+			}
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "%s:%d-%d", h.Path, h.From, h.To)
+		}
+		out = append(out, b.String())
+	}
+	if len(c.Deleted) > 0 {
+		out = append(out, "the diff deletes "+strings.Join(c.Deleted, ", ")+
+			" - a deleted file cannot be cited, so it is not counted either way; say what went and why in prose, because the reader cannot see it on the board")
+	}
+	return out
 }
 
 func (d *Daemon) walkthroughRead(params json.RawMessage) (any, *proto.RPCError) {
@@ -139,7 +216,7 @@ func (d *Daemon) walkthroughState(id string) (*proto.WalkthroughState, *proto.RP
 		Spec:        json.RawMessage(w.Spec),
 		Marks:       []proto.WalkthroughMark{},
 		Comments:    []proto.WalkthroughComment{},
-		Coverage:    proto.CoverageReport{UncoveredHunks: []proto.HunkRef{}},
+		Coverage:    coverageOfStored(w),
 		CreatedAtMS: w.CreatedAt.UnixMilli(),
 		UpdatedAtMS: w.UpdatedAt.UnixMilli(),
 	}
