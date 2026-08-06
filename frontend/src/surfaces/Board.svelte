@@ -285,6 +285,12 @@
       if (e.key === "Escape") e.target.blur();
       return;
     }
+    // A focused control owns the keys that ACTIVATE it. Without this the board
+    // ran its own binding as well: Enter on a block header's button opened the
+    // file and jumped to the next unread step, so the board moved under the
+    // reader who pressed it. Found on FR65's open button, true of every button
+    // on the surface since the shortcuts were added.
+    if (e.target.tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) return;
     if (e.ctrlKey && (e.key === "=" || e.key === "+")) { zoom = Math.min(1.8, zoom + 0.1); e.preventDefault(); return; }
     if (e.ctrlKey && e.key === "-") { zoom = Math.max(0.7, zoom - 0.1); e.preventDefault(); return; }
     if (e.ctrlKey && e.key === "0") { zoom = 1; e.preventDefault(); return; }
