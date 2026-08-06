@@ -2760,6 +2760,25 @@ demotion, to the thinnest thing that still says the desktop is not the human's.
 Four pixels at the very top edge crops out of most recordings and reads as a
 window-manager accent in the rest.
 
+**Settled the same day, by Boris.** Demoted rather than hidden is the right
+reading, *and* the demoted marker gives up being top-most: **"generally it
+should live on top of any and all surfaces; when demoted for purposes of
+recording or stuff like that it can be overlapped."**
+
+That second half is the load-bearing one and it is a real relaxation, not a
+detail. Today the strip fights to stay in front - notification window type, plus
+a keeper that restacks it every 1.2s (`keepOnTop`), because a covered hands-off
+sign reads as "the desktop is yours" while an agent drives. Demoted, that fight
+is off: the marker is mapped and then left alone, so a window opened over the
+top edge covers it and a recording of that window has nothing of AgentBox in it.
+The guarantee is deliberately weaker in this mode, and it is weaker because he
+asked for it to be - the strong version is what the other 99% of the time gets.
+
+It also removes the hardest part of the job. The one thing FR74 could not make
+work was persuading Mutter to let a fullscreen window sit above a notification
+window (session 49: `x.lower(strip)` is called and Mutter ignores it). Nothing
+in a mode that is allowed to be overlapped needs that to work.
+
 Open questions for the mock:
 
 - **What turns it on.** A knob (`[control] recording = true`), a CLI verb
@@ -2768,10 +2787,8 @@ Open questions for the mock:
   position, and the only one that needs a process list.
 - **Whether it survives a restart.** A recording mode left on after the
   recording is a hands-off sign nobody can see, which is the one wrong answer
-  FR74 names.
-- **Whether the marker is enough**, or whether a recording should get nothing at
-  all. Boris said "hidable", and this entry proposes reading that as demoted;
-  that reading needs his word.
+  FR74 names. Sharper now that the marker can be covered: forgotten-on means no
+  visible sign at all, not a thin one.
 - **How it interacts with FR94's pause.** A paused, recording desktop has two
   things to say in four pixels. The colour can carry one of them.
 
