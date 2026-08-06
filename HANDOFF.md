@@ -1,8 +1,8 @@
-# Handoff - AgentBox: FR94 shipped, and one new field request took its place
+# Handoff - AgentBox: FR95 settled at the mock, three quarters built
 
-*Written by session 50, which mocked FR94, had Boris settle it, built it in four
-slices, found its first hotkey was dead on arrival, and took FR95 from him
-mid-build.*
+*Written by session 51, which measured FR95's one load-bearing mechanic before
+mocking it, had Boris settle four questions at the mock (he took every
+recommendation), built three of the four, and found the fourth question itself.*
 
 **Written:** 2026-08-06 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -10,188 +10,180 @@ mid-build.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean; see Live state about ahead-of-origin
-make deployed               # expect 9156e474f2a0 or later
-agentbox control state      # expect "no run: the desktop is the human's"
+git status -sb              # expect clean; 8 commits ahead of origin unless Boris pushed
+make deployed               # expect e0a54250a579 or later
+agentbox control state      # expect "no run: the desktop is the human's", no quiet suffix
 agentbox pending            # expect "nothing pending"
 agentbox sync agents        # your row; ghosts from `claude -p` checks are harmless
 agentbox sync locks         # expect "no locks held"
 make check                  # gofmt + vet + race, ~2 min
 ```
 
-**Nothing is in flight.** One field request Boris has filed is open: **FR95**,
-and it is item 1 below.
+**One thing is in flight and it is item 1: FR95's fourth answer.** Everything
+else in FR95 is shipped, deployed and watched on screen.
 
 ### The queue, in order
 
-1. **FR95 - get the strip out of a screen recording.** Filed 2026-08-06 while
-   FR94 was being built. Boris, verbatim: *"The hands off panel should also be
-   hidable for cases when we need to record the screen and don't want it to be
-   shown over the recording."* **Its shape is already settled** and that is the
-   valuable part, so read the FR95 entry in
-   [docs/07-field-requests.md](docs/07-field-requests.md) before anything else:
-   the strip is **demoted, not hidden** - it drops to FR74's existing 4px
-   top-edge marker - and, in his words, *"generally it should live on top of any
-   and all surfaces; when demoted for purposes of recording or stuff like that it
-   can be overlapped."* That second half is load-bearing: the demoted marker
-   gives up the `keepOnTop` fight, so a window over the top edge simply covers
-   it. **Mock it before building it.** Three questions are open in the entry:
-   what turns it on, whether it survives a restart, and what four pixels say when
-   the desktop is also paused.
-2. **Give the coverage rule a validator.** Carried unchanged from session 49 and
-   still the one open finding from the standard's trial. The standard demands a
-   traversal accounting for every changed line, and nothing checks it:
+1. **FR95's cards half - "demoting silences the column too".** Boris's fourth
+   answer at the mock, and the only part not built. While the sign is demoted,
+   **cards queue instead of appearing and drain the moment it goes loud**; the
+   earcon still plays so he knows one arrived; nothing is lost (the inbox has
+   them); an urgent card waits rather than interrupting. **Why it is last and
+   biggest:** it is the first FR95 slice to touch the presentation path. The
+   shape to copy is already there - the DND suppression in `d.present`
+   (`internal/daemon/daemon.go` around the `suppressed`/`silentIdle` block, ~line
+   1120) enqueues an item without making it current, and `breaksDndLocked`
+   decides who gets through. **Recording mode is NOT DND**, though: DND holds the
+   chime and this must keep it, so the two cannot simply be the same predicate.
+   The daemon already knows the mode: `d.control.Quieted()` returns it with the
+   fuse's remaining time, non-blocking. Test it beside the six FR95 tests at the
+   end of `internal/daemon/control_test.go`.
+2. **Give the coverage rule a validator.** Carried unchanged from sessions 49 and
+   50, still the one open finding from the standard's trial. The standard demands
+   a traversal accounting for every changed line and nothing checks it:
    `walkthrough.captured` logs `ranges/cited/missed` for citations and never
-   compares the cited set against the diff's changed set. The spec already holds
-   both halves at validation time.
-3. **Four assumed things about surfaces, still unseen.** Carried; each needs a
+   compares the cited set against the diff's changed set. The spec holds both
+   halves at validation time.
+3. **A settings-surface knob for `quiet_hotkey`.** `pause_hotkey` has one under
+   "Hands off" (`internal/webui/settings.go`); its neighbour now exists in the
+   config and does not. Small and mechanical - the descriptor table already has a
+   keys kind.
+4. **Four assumed things about surfaces, still unseen.** Carried; each needs a
    specific staging, listed under "Facts" below.
-4. **Consider giving `[editor]` a settings control.** Unchanged and still his
-   call: the value is an argv array and the descriptor table in
-   `internal/webui/settings.go` has no kind for one, which is why
-   `speech.command` has none either. The honest shape is a new knob kind.
+5. **Consider giving `[editor]` a settings control.** Unchanged and still his
+   call: the value is an argv array and the descriptor table has no kind for one,
+   which is why `speech.command` has none either. The honest shape is a new kind.
 
 ## Where we are
 
-FR94 is **shipped, deployed and exercised on the real desktop** - the whole of
-it, including the escalation. Boris can now take his keyboard and mouse back
-mid-run with `Ctrl+Alt+Escape` or the strip's own Pause button, and hand them on
-again, without the run ending.
+FR95 is "get the hands-off strip out of a screen recording". Its shape came in
+already settled, so this session did the three things that were left: measure the
+mechanic it rests on, mock it, and build what he chose.
 
-The session's shape was: mock, settle, build in four slices, and one hour lost to
-a hotkey that reported success and did nothing.
+**Boris drove the mock and took all four recommendations:**
 
-## FR94, as built
+- **A hotkey plus the same verb in the shell.** `Ctrl+Alt+Q`, and
+  `agentbox control quiet|loud` for the line above `obs` in a recording script.
+- **Not persisted, and it expires.** Dies with the daemon and a 30-minute fuse
+  takes it back to loud. A second press restarts the fuse ("still recording").
+- **Colour carries the pause on four pixels.** Amber driving, green paused,
+  accent asking - the marker already switched to accent for asking.
+- **Cards queue while demoted.** The one not built; item 1 above.
 
-Everything below was settled at the mock by Boris himself, driving it. **Two of
-his four answers went against the recommendation**, which is the argument for
-mocking rather than speccing. Reasons live in the FR94 entry.
-
-- **The inverted strip**, not the collapsed pill. Same 620x62 window, green,
-  `PAUSED - YOURS`, the frozen activity line still readable in italic, a filled
-  Resume button and a counter. At **2 min** it turns amber and reads
-  `AGENT WAITING`; at **3 min** one card is raised with a Resume now button.
-- **No auto-resume, ever.** Only he resumes. The agent's own wait ends at 10 min
-  and it is told the desktop is still his and the run still its own.
-- **An in-flight `drive_desktop` finishes its current step, except `type`, which
-  parks between characters.** He chose "finish the step"; the `type` carve-out is
-  the narrowing he accepted, because a 40-character type step at 300 wpm is
-  seconds of typing into whatever he just switched to. `Type` releases Shift
-  before parking - a latch held for minutes with a modifier down is the stuck
-  keyboard this is supposed to avoid.
-- **A desktop-wide latch**, not per-run. It parks the live run *and* holds off
-  every other agent's `request_control`, and it is legal with no run at all (a
-  pre-emptive "not now", which paints as `PAUSED - YOURS` / "nothing is driving"
-  with an **Allow agents** button).
-
-Where it lives: `internal/daemon/control.go` (the latch, `gate`, the nag timer),
-`internal/hand/hand.go` (the `Park` interface, `Run` and `Type`),
-`cmd/agentbox/daemon.go` (the `grab` helper, now carrying both hotkeys),
-`frontend/src/surfaces/Control.svelte`, `[control] pause_hotkey` in the config
-and in the settings surface under "Hands off".
-
-## The hour it cost, so nobody spends it again
-
-**`Super+Escape` was the first default and it never once fired.** The daemon
-logged `hotkey.grabbed for=pause hotkey=Super+Escape` and the key was dead.
-
-> **GNOME Shell takes every `Super` combination before a core X11 passive grab
-> can see it, and does it silently.** `XGrabKey` returns success - no
-> `BadAccess` - so every signal AgentBox has says the grab worked.
-
-Measured, not guessed (the table is in "Mechanics discovered"): `Super+F9` and
-`Super+P` swallowed; `Ctrl+Alt+Escape`, `Ctrl+Alt+P`, `Ctrl+Alt+space`,
-`Ctrl+Alt+comma`, `Ctrl+Shift+Escape` all delivered. **No Super in any default or
-suggestion.** The panel's `Ctrl+Alt+grave` was already in the right family.
-
-Two techniques worth keeping, both in the same entry:
-
-- **`agentbox drive "key ctrl+alt+grave"` is a real end-to-end hotkey test.**
-  XTEST presses do trigger passive grabs, so firing a combination known to work
-  through the identical path is what isolated the fault to Super.
-- **A probe that imports `internal/...` must live under `internal/` itself.** A
-  `main.go` in the scratchpad cannot compile against it at all.
+The fourth question was the mock's own find and is worth keeping in mind while
+building it: the strip is not the only thing AgentBox puts in the top-centre
+column, so demoting the strip alone leaves FR94's three-minute nag in the shot.
 
 ## What was verified on the real desktop
 
-Not read off the diff. Captures are in the scratchpad listed under Live state.
+Not read off the diff. Every capture is in the scratchpad listed under Live state.
 
-- **A parked drive.** `drive_desktop` sent through a fresh `agentbox mcp` child
-  held **21.45s** with the pointer frozen at `1228,85`, then ran both steps on
-  resume and landed on `900,640` exactly, returning `{"steps": 2}`.
-- **The hotkey**, after the fix: one press paused a live run, the next resumed it.
-- **Three strip states**, captured: amber `HANDS OFF` + Pause, green
-  `PAUSED - YOURS` at `0s` with the italic frozen line, amber `AGENT WAITING` at
-  `2m 12s`.
-- **The idle latch**: `PAUSED - YOURS` / "nothing is driving; agents are held off
-  until you release it" / **Allow agents**, and the strip comes down on resume.
-- **The second agent.** A `request_control` from another identity blocked **23
-  seconds** across the pause and was granted the instant of the resume.
-- **The three-minute card**, watched arriving at exactly `paused_s: 180`: a
-  warning toast, *"claude has been parked for 3m0s"*, with a **Resume now**
-  button, under an amber `AGENT WAITING` strip. Its button was then clicked for
-  real and the log shows the whole path -
-  `action.started ... command: agentbox control resume` then
-  `action.finished ... output: "resumed: agents may drive again"` - with the
-  state back to `driving`. **"End the run" was deliberately not built** as a
-  third button: the agent gives up on its own at ten minutes with its run
-  intact, which is a gentler end than cutting it off mid-sequence, and an
-  irreversible button on a card read in passing is the wrong shape for a state
-  that resolves itself.
+- **Demoted, on screen:** the strip window gone, a `1920x4` amber line at `+0+0`,
+  amber across the full width (sampled x=20 through x=1900), and visible over
+  GNOME's own top bar.
+- **A kiosk-fullscreen browser window covers it completely.** The whole centre
+  column of the capture is the window's blue, top row included, and
+  `wmctrl -lG` still lists `agentbox · hands off marker 1920x4` behind it. It
+  reappears when the window goes. **This retires the session-50 `[assumed]`.**
+- **Paused is `#4FB286` exactly** on the four pixels, which is `--k-success`.
+- **`Ctrl+Alt+Q` fires**, tested the session-50 way (`agentbox drive "key
+  ctrl+alt+q"`, because XTEST presses do trigger passive grabs): one press added
+  `· quiet: the sign is demoted for 30m0s more` to `control state`, the next
+  removed it.
+- **Loud again puts the strip back top-centre**, after two demote/promote round
+  trips: `620x62+650+48` per `xwininfo`, with its surface colour starting at pixel
+  x=654.
 
-> **The defect only the screen could find.** At `2m 50s` with the run released,
-> the strip read `AGENT WAITING` over the line "nothing is driving" - the
-> escalation firing with nobody to escalate about. One line (`warm` now requires
-> `!idle`), and it is the second time in three sessions that a surface passed
-> every test and lied on screen.
+> **The defect only the screen could find, for the third session running.**
+> `x11.plain` was written to decline the notification type and
+> `_NET_WM_STATE_ABOVE`, and `unlisted()` - the next line - added ABOVE straight
+> back as a post-map client message, the one route Mutter honours. The code read
+> exactly right and a fullscreen window still had four amber pixels on top of it.
 
-> **A mock on his screen is HIS.** Driving the FR94 mock to check it worked while
-> Boris was clicking in it cost twenty minutes of confusion - the page scrolled
-> between screenshot and click, selections changed on their own, and one stray
-> click emitted a decision he had not made. It was him, and he said so. CLAUDE.md
-> already warns never to click at a coordinate read off an earlier screenshot;
-> the missing half is that the moment a mock is in front of him, get out of it.
+> **And one bug that was not a bug.** `wmctrl -lG` reports doubled coordinates on
+> this desktop: the strip at `+650+48` is listed as `1300 96`. It was read as a
+> placement regression and disproved by `xwininfo` and the pixels, which agree
+> with each other. The commit written against it was reworded to say what was
+> actually observed. **Do not trust `wmctrl -lG` for geometry here.**
+
+## The measurements, and the order to make them in
+
+Three of four lied the first time, each with a plausible answer rather than an
+error. All are in "Mechanics discovered" now, and they are the reason a probe is
+worth writing carefully:
+
+- **Mutter decorates a bare X11 window** - a 4px window comes back ~30px tall
+  wearing a title bar, and the first probe measured that. `_MOTIF_WM_HINTS` with
+  decorations 0.
+- **`import -window root` cannot see a fullscreen window at all** (Mutter
+  unredirects it), so the same probe read "covered" and "not covered" depending
+  only on the tool. Use `gnome-screenshot -f`.
+- **A pre-map `_NET_WM_STATE` is ignored** - FULLSCREEN as well as ABOVE. A test
+  window that set it before mapping came up at `y=102`. `--kiosk` for Chrome
+  (`--start-fullscreen` does nothing in `--app` mode) or
+  `wmctrl -r NAME -b add,fullscreen` after the map.
+- **AgentBox confounds its own measurement:** while an agent holds the desktop, a
+  fullscreen window makes FR74 open ITS marker at `+0+0`. Measure a candidate
+  somewhere else on screen, or release the desktop first.
+
+The probe that answered all this is **not committed**; a copy is
+`fr95-probe-main.go.txt` in the scratchpad below. It has to live under
+`internal/` to resolve the module's xgb dependency.
+
+## The mock, and how it was checked before he saw it
+
+[docs/mocks/fr95-recording-mode.html](docs/mocks/fr95-recording-mode.html), and
+it was **driven headless in Chrome over the DevTools protocol before it went on
+his screen** - 35 assertions over every state, the settle path included. The
+driver is `drive_mock.py` in the scratchpad and it is worth reusing:
+
+- `google-chrome --headless=new --remote-debugging-port=N --user-data-dir=...`,
+  then the websocket from `http://127.0.0.1:N/json`. **`websocket-client` must be
+  given `suppress_origin=True`** or Chrome answers 403 with a message about
+  `--remote-allow-origins`, which is the whole reason the first two runs failed.
+- The two assertions that earned their keep were layout, not behaviour: no option
+  title taller than three lines, and every badge on one line. A page can pass
+  every behavioural check and read as a column of single words.
+- **A class collision caused the worse of the two defects.** The recording-frame
+  panel was `.rec` and the badge modifier is `.tag.rec`, so the panel's
+  `width: 320px` landed on every RECOMMENDED badge. Renamed to `.recside`, with
+  the reason in the stylesheet.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `9156e474f2a0`. Anything committed after it is docs; check
-  `make deployed` against `git log` before assuming a deploy is owed.
-- **Git:** `main`, clean, **pushed** (`1f193b4..b5d83c9` to
-  `gitlab.com:fu-bar/agentbox.git`, on Boris's word at the end of the session).
-  Fourteen commits, oldest first: `11778f1` `8b06691` `16d2e78` `eca7190`
-  `808237f` `2c3584e` `4421863` `171ba0e` `254285b` `31da412` `12d27fe`
-  `0a3d95e` `9156e47` `b5d83c9` `c70d933`, plus this handoff's own last commit.
-  A handoff cannot know its own sha or whether it got pushed, so **run
-  `git status -sb`** - that is the only truthful answer, and it was `clean, in
-  sync` at every point this session could observe.
-- **Background jobs: none. PRs:** none, ever - Boris pushes `main`.
-- **Nothing pending, no locks held, no strip on screen, nothing paused.** All
-  four checked at the end (`agentbox control state` says "no run: the desktop is
-  the human's"). The desktop was taken and released several times during the
-  session and is not held now.
-- **A second session was on this machine** at 16:56, `proc-722811`, purpose
-  "finding why the same image build failures keep coming back and fixing them
-  for good", area `repo:assignments`. Different repo, no shared files - but it
-  did collide on one thing, which is worth knowing because it is not code:
-  **`~/.claude/last-handoff.md` is a single global file two `/handoff` runs
-  write within minutes of each other**, and it overwrote this assignment's
-  pointer with its own. It was merged back by hand, under an
-  `agentbox sync lock last-handoff`, with both entries kept and a note at the
-  top saying the first line is whichever finished last. **So do not trust that
-  pointer to name this assignment** - `/resume` from this directory finds the
-  local `HANDOFF.md` first anyway, which is the route that cannot be raced.
-- **The FR94 mock window was closed by a deploy.** Reopen it with
-  `agentbox show --artifact docs/mocks/fr94-pause-resume.html` if wanted, but
-  nothing depends on it: the file is committed and every decision it settled is
-  written into the FR94 entry.
-- **Captures live in a session scratchpad** and will not survive a reboot:
-  `/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/aea199b3-203e-4f55-930c-b3e14708b8e5/scratchpad/`
-  (`crop-10-driving.png`, `crop-11-paused.png`, `crop-13-warm.png`,
-  `crop-15.png` are the four strip states; `park.log` is the parked drive's
-  timing). Deliberately not committed.
-- **Usage at handoff:** session **62%**, resets 2026-08-06 18:40
-  Asia/Jerusalem; week (all models) **23%**, resets 2026-08-12 05:00. Neither is
-  near a trigger, so this handoff is a stopping point rather than a rescue.
+- **Deployed:** `e0a54250a579`, which is HEAD~1. The only commit after it is
+  docs, so nothing is owed - but check `make deployed` against `git log` before
+  assuming.
+- **Git:** `main`, clean, **8 commits ahead of `origin/main`** at handoff and
+  **not pushed** - Boris pushes `main` himself. Oldest first: `60b766d` `ab8e64f`
+  `ed0a1f8` `1e98d79` `fd45c09` `9f49ec8` `e0a5425` `5764e68`, plus this
+  handoff's own commit. Run `git status -sb`: that is the only truthful answer.
+- **One commit was amended after its deploy.** `e0a5425` was `83e39fb` before its
+  message was corrected, so a binary built at `83e39fb` was briefly deployed with
+  a sha that is no longer in history. Redeployed at `e0a5425`; nothing to do.
+- **Background jobs: none. PRs:** none, ever.
+- **Nothing pending, no locks held, no strip on screen, nothing paused, nothing
+  quiet.** All checked at the end. The desktop was taken and released four times
+  this session and is not held now.
+- **The FR95 mock is open on his screen** as artifact `a395825f7f3be`, with
+  `watch=true` - editing the file re-runs it. His answers already arrived through
+  the bridge (`decide`: hotkey, fuse, colour, queue) and are recorded in the FR95
+  entry, so nothing depends on the window staying up.
+- **A peer session shares this checkout:** `proc-752938`, detached, carrying the
+  SessionStart placeholder purpose. It made no commits this session. Two agents in
+  one checkout is how an unfinished doc once got swept into an unrelated commit,
+  so no catch-all `git add`.
+- **Captures and tools live in a session scratchpad** and will not survive a
+  reboot:
+  `/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/6ee9c4a4-75cf-4353-83fe-18a0ee959971/scratchpad/`
+  (`w1-demoted.png`, `x1-kiosk.png`, `x2-uncovered.png`, `x3-paused.png`,
+  `y1-final.png` are the states above; `drive_mock.py`, `measure.py`,
+  `fr95-probe-main.go.txt` are the tools). Deliberately not committed.
+- **Usage at handoff:** session **81%**, resets 2026-08-06 18:39 Asia/Jerusalem
+  (minutes away, so a cap here costs nothing); week (all models) **25%**, resets
+  2026-08-12 05:00. This is a stopping point, not a rescue - item 1 was left
+  because it is the biggest slice and the session budget was thin, not because
+  anything blocks it.
 - **In-flight edits: none.**
 
 ## Blocked on you (Boris)
@@ -203,82 +195,78 @@ Nothing - proceed autonomously. Three things stay yours and block nothing:
   pick. Mock: [docs/mocks/fr84-form-shapes.html](docs/mocks/fr84-form-shapes.html),
   approach C.
 - **Your PostToolUse hook writes the raw Bash command as the activity line.**
-  Carried from four handoffs now, and this session watched it on the hands-off
-  strip itself: while FR94 was being verified the strip read
-  `SP=/tmp/claude-1000/-home-boris-milner-me-projects-agentbox/a...` instead of
-  what the agent was doing. It is your `~/.claude/settings.json`, so the wording
-  is yours; the first line, or the first 80 characters, would read better.
+  Carried from five handoffs, and this session watched the strip read
+  `SP=/tmp/claude-1000/...` followed by four lines of shell while FR95 was being
+  verified - the hands-off sign quoting a `convert` pipeline at you. It is your
+  `~/.claude/settings.json`, so the wording is yours; the first line, or the first
+  80 characters, would read better.
 - **Whether the re-record is worth scheduling** (STATUS priority 2). Unchanged.
 
 ## I can do solo (no input needed)
 
-1. **Mock FR95** and put it in front of him - shape settled, three questions
-   open, and the working rule says mock before build.
+1. **FR95's cards half** (queue item 1) - settled, specified, unbuilt.
 2. **The coverage validator** (queue item 2).
-3. **The four unseen surfaces** (queue item 3).
-4. **A JS test runner** (STATUS priority 6). `parseDiff` is a shared module with
+3. **The `quiet_hotkey` settings knob** (queue item 3).
+4. **The four unseen surfaces** (queue item 4).
+5. **A JS test runner** (STATUS priority 6). `parseDiff` is a shared module with
    two callers and no test of its own.
 
 ## Facts - verified vs assumed
 
-- [verified] **FR94 end to end**, every bullet under "What was verified" above.
-- [verified] **Super combinations cannot be grabbed on GNOME/X11**, measured
-  across seven combinations.
+- [verified] **FR95's three built slices**, every bullet under "What was verified"
+  above, on the real desktop.
+- [verified] **The demoted marker is coverable by a fullscreen window.** This was
+  session 50's `[assumed]` and it is now watched, but only after the ABOVE bug was
+  found - the first attempt disproved it for the wrong reason.
+- [verified] **A frameless 4px window at `+0+0` is visible over GNOME's top bar**
+  with no window type and no ABOVE.
 - [verified] **`make check` passes** (gofmt, vet, race) after every slice.
-- [verified] The session-49 set, unchanged: the TL;DR control on both sides, the
-  Agents board's Activity and Signals blocks, FR74's marker at `+0+0` and the
-  fact that its strip does NOT step aside, and the editor ladder's four rungs.
-- [assumed] **That the demoted marker in FR95 will actually be coverable.** The
-  reasoning is sound - dropping `keepOnTop` and the notification type is exactly
-  what makes a window sit above it - but nothing has been built or watched.
-- [assumed] **That the *"This session has left the board"* wording ever paints.**
-  It needs a row to vanish between the click and the reply; unseen for three
-  sessions now.
-- [assumed] **That `speak` and `diff` read back on screen.** Migration 0012's
-  columns, insert, select and wire are all tested; no item raised since has been
-  opened in the inbox detail. Raise an `agentbox review` with a diff, answer it,
-  then open its row.
-- [assumed] **That an agent row's Recent items block paints.** Activity and
-  Signals were seen; Items needs a session that has raised something and then had
-  its row opened. **This session raised one** (the FR94 nag card), so the staging
-  now exists.
-- [assumed] **That the demo fallback paints.** `Bridge.AgentDetail` falls back to
-  the fixture when no daemon is behind the build; unit-tested, unreachable on
-  screen while a real daemon owns the session bus.
-- [assumed] **That the domain drawer animation is what Boris wants.** Unchanged.
-- [assumed] The older carried-over set, unchanged: the inbox detail's
-  `found: false` path, the keyboard route to a resolved row's detail, a detail
-  holding a mermaid diagram, `provisionalFor` retiring a hook-only row after ten
-  minutes, the 200-key prefix cap on the surface, `@me` in a shared key, a real
+- [verified] The session-50 set, unchanged: FR94 end to end, Super combinations
+  ungrabbable on GNOME/X11, and the session-49 set behind it.
+- [assumed] **That the demoted marker behaves on a second monitor.** `demote`
+  reads the strip's own monitor before closing its window and falls back to the
+  pointer's screen when the mode is armed on an idle desktop. One monitor here, so
+  the fallback is all that has ever run.
+- [assumed] **That the 30-minute fuse fires in a live daemon.** The timer is
+  driven directly in the test and `Loud("the 30 minute fuse")` is what it calls;
+  nobody has watched half an hour pass. Cheap to check with a shortened constant
+  if it ever matters.
+- [assumed] The session-50 carried set, unchanged: that the *"This session has
+  left the board"* wording ever paints, that `speak` and `diff` read back on
+  screen, that an agent row's Recent items block paints, that the demo fallback
+  paints, that the domain drawer animation is what Boris wants, and the older
+  list behind those (the inbox detail's `found: false` path, the keyboard route to
+  a resolved row's detail, a detail holding a mermaid diagram, `provisionalFor`
+  retiring a hook-only row, the 200-key prefix cap, `@me` in a shared key, a real
   client's `await_signal` parked past 20s, the holder-parked-on-ask_user and 600s
   long-wait lock warnings, `webui-demo agents` still rendering, and the identity
-  cross-check's no-node skip path.
+  cross-check's no-node skip path).
 
 ## Declutter ledger
 
 | Removed / condensed | Where its knowledge now lives |
 |---|---|
-| Session 49's queue item 1 (FR94, "mock it before building it") | Done. The mock is [docs/mocks/fr94-pause-resume.html](docs/mocks/fr94-pause-resume.html), the four decisions and their reasons are in the FR94 entry, and the build is session 50 of [docs/history.md](docs/history.md) |
-| Session 49's whole "the experiment, and what it cost the standard" section, and the five defects | All still true and all in session 49 of [docs/history.md](docs/history.md). Only the one finding still open is carried, as queue item 2 |
-| Session 49's FR74-marker and editor-ladder sections | Both closed and recorded: FR74's verdict is STATUS priority 1, the editor ladder is under FR65 in the field-requests doc |
-| Session 49's "the row TOGGLES" trap and its capture paths | The trap is in session 49 of history.md; its scratchpad is gone. This session's captures are listed fresh in Live state |
-| The rule-numbering warning | Now permanent in STATUS under the authoring-standard bullet, not something a handoff has to keep repeating |
+| Session 50's queue item 1 (FR95, "mock it before building it") | Done. The mock is [docs/mocks/fr95-recording-mode.html](docs/mocks/fr95-recording-mode.html), the four decisions and Boris's answers are in the FR95 entry, and the build is session 51 of [docs/history.md](docs/history.md) |
+| Session 50's whole FR94 build narrative and its "hour it cost" section | All still true and all in session 50 of [docs/history.md](docs/history.md). The Super-grab finding is permanent in the field-requests doc under "Mechanics discovered" |
+| Session 50's four strip-state captures and their scratchpad path | Gone with the session that took them; this session's captures are listed fresh in Live state |
+| The FR94 mock reopen instructions | Nothing depends on it: the file is committed and every decision it settled is in the FR94 entry |
 
 ## Map
 
 1. [docs/07-field-requests.md](docs/07-field-requests.md) - FR numbers used in
-   commits and handoffs. **FR95 is the only open one**, and its shape is already
-   settled inside the entry. FR94's entry carries the four decisions. "Mechanics
-   discovered" gained the Super-grab finding and the two techniques that found it.
-2. [docs/STATUS.md](docs/STATUS.md) - current state. Priority 1 is FR74's
-   verdict, 1b is FR94 (shipped), 1c is FR95.
+   commits and handoffs. **FR95 is the only open one and three quarters of it is
+   built**; its entry carries Boris's four answers, the measurements, and what is
+   left. "Mechanics discovered" gained three traps this session.
+2. [docs/STATUS.md](docs/STATUS.md) - current state. Priority 1c is FR95.
 3. [docs/history.md](docs/history.md) - session by session; this session is
-   "Fiftieth".
-4. [docs/06-configuration.md](docs/06-configuration.md) - the new `[control]`
-   section, with the Super warning next to it.
+   "Fifty-first".
+4. [docs/06-configuration.md](docs/06-configuration.md) - `[control]`, now with
+   `quiet_hotkey` beside `pause_hotkey`.
 5. [docs/agent-manual.md](docs/agent-manual.md) - "He can pause you, and you
-   wait" under "Taking the desktop". `internal/manual/agent.md` is the in-binary
-   short form and has the same fact in one bullet.
+   wait" under "Taking the desktop". **It says nothing about recording mode yet**,
+   and probably should not: nothing changes for an agent, the sign is simply
+   smaller. Worth one line if item 1 lands, because a queued card DOES change what
+   an agent can expect.
 6. [CLAUDE.md](CLAUDE.md) - traps that have cost sessions. **Read it before
    touching the build, the daemon, or driving the desktop.**
 7. [docs/09-sync.md](docs/09-sync.md) - FR83, all five slices, the chip vocabulary.
