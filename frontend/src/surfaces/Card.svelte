@@ -146,7 +146,25 @@
   let shell = $state(null);
   $effect(() => {
     if (!shell) return;
-    const report = () => bridge.fit(Math.ceil(shell.getBoundingClientRect().height));
+    // The measurement has to be taken with min-height off, or it is circular:
+    // .card is min-height 100% so it always fills the window, and once the
+    // window has grown the card measures the window forever. Cards could
+    // therefore only ever get taller - invisible until FR84 gave one a control
+    // that folds, which left 190px of content sitting in a 384px window.
+    //
+    // measuring guards the re-entry: the style write inside the observer
+    // callback would otherwise wake the observer that made it.
+    let measuring = false;
+    const report = () => {
+      if (measuring) return;
+      measuring = true;
+      const prev = shell.style.minHeight;
+      shell.style.minHeight = "0px";
+      const h = Math.ceil(shell.getBoundingClientRect().height);
+      shell.style.minHeight = prev;
+      measuring = false;
+      bridge.fit(h);
+    };
     const ro = new ResizeObserver(report);
     ro.observe(shell);
     report();
