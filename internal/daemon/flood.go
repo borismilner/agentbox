@@ -153,6 +153,15 @@ func (d *Daemon) collapseLocked(it *proto.Item, now time.Time) (collapsed bool, 
 		// stack from one line.
 		open.Level = worstLevel(open.Stack)
 		d.persistStack(open)
+		// An urgent item must still break through. Collapsed into a stack card that
+		// is sitting in the queue it would not: the card rises to urgent and then
+		// waits behind whatever is on screen, so flood control would have turned
+		// the one level that is allowed to interrupt into the one that cannot.
+		// Same rule as an ordinary urgent arrival (enqueueLocked), applied to the
+		// card that now speaks for it.
+		if open.Level == proto.LevelUrgent {
+			d.raiseLocked(open)
+		}
 		d.log.Info(logging.EvItemCollapsed, "component", "daemon", "item_id", it.ID,
 			"stack_id", open.ID, "agent", it.Identity.Agent, "collapsed", len(open.Stack))
 		return true, nil
@@ -184,6 +193,24 @@ func (d *Daemon) collapseLocked(it *proto.Item, now time.Time) (collapsed bool, 
 	d.log.Info(logging.EvItemCollapsed, "component", "daemon", "item_id", it.ID,
 		"stack_id", stack.ID, "agent", it.Identity.Agent, "collapsed", 1)
 	return true, stack
+}
+
+// raiseLocked puts an already-queued stack card on screen because something
+// urgent has just been collapsed into it. It is enqueueLocked's urgent rule
+// applied after the fact: the card is only ever preempting a card that is not
+// itself urgent, and during a recording it takes the front of the queue instead
+// of the screen, which is the one thing recording mode exists to guarantee.
+func (d *Daemon) raiseLocked(stack *proto.Item) {
+	if d.current == stack {
+		return
+	}
+	for i, q := range d.queue {
+		if q == stack {
+			d.queue = append(d.queue[:i], d.queue[i+1:]...)
+			d.enqueueLocked(stack)
+			return
+		}
+	}
 }
 
 // markStackedLocked quiets the row of an item that has just been resolved, in

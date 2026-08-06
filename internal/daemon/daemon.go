@@ -640,10 +640,46 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	if err != nil {
 		return nil, err
 	}
+	// FR30: a burst that was collapsed has to come back collapsed. Every item
+	// inside a stack card is pending in its own right - that is what "nothing is
+	// dropped" means - so restoring the list as it comes puts the stack card AND
+	// all fourteen items it collapsed onto the queue, which undoes the collapse at
+	// the one moment the human has no idea why. The stack card speaks for them.
+	//
+	// Items whose stack card is NOT in this list are restored normally: the stack
+	// was dealt with, and what survived it (the questions it deliberately kept)
+	// belongs back on the queue as itself.
+	inStack := map[string]bool{}
+	for i := range pending {
+		if pending[i].Kind != proto.KindStack {
+			continue
+		}
+		for _, e := range pending[i].Stack {
+			inStack[e.ID] = true
+		}
+	}
+	held := 0
 	for i := range pending {
 		it := pending[i].Item
+		if inStack[it.ID] {
+			held++
+			continue
+		}
 		d.queue = append(d.queue, &it)
+		if it.Kind == proto.KindStack {
+			// Re-link the budget to the card that came back, or the next item from
+			// this session opens a SECOND stack card beside the one already on the
+			// queue - two summaries of one flood, which is the shape FR30 exists to
+			// prevent.
+			if d.flood == nil {
+				d.flood = map[string]*floodState{}
+			}
+			d.flood[floodKey(it.Identity)] = &floodState{stack: it.ID}
+		}
 		d.log.Info("item.restored", "component", "daemon", "item_id", it.ID, "kind", string(it.Kind))
+	}
+	if held > 0 {
+		d.log.Info("item.restored_collapsed", "component", "daemon", "held", held)
 	}
 	d.mu.Lock()
 	d.advanceLocked()

@@ -2,6 +2,9 @@ package daemon
 
 import (
 	"context"
+	"io"
+	"log/slog"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -565,5 +568,120 @@ func TestOpenStackedRefusesWhatTheHumanIsNotLookingAt(t *testing.T) {
 	defer d.mu.Unlock()
 	if d.current != nil && d.current.ID == "no-such-item" {
 		t.Fatal("promoted an item that is in no stack")
+	}
+}
+
+func TestARestartBringsTheBurstBackCollapsed(t *testing.T) {
+	// Every collapsed item is pending in its own right, so a naive restore puts
+	// the stack card AND everything it collapsed back on the queue - the collapse
+	// undone at the one moment the human has no idea why. Found by reading the
+	// restore path after the feature was already deployed, not by any test that
+	// existed.
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "agentbox.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := floodCfg()
+	ui := &fakeUI{}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	d, err := New(cfg, log, st, &fakeSound{}, ui)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callNotify(t, d, floodNotify("one"))
+	callNotify(t, d, floodNotify("two"))
+	callNotify(t, d, floodNotify("three"))
+	callNotify(t, d, floodNotify("four"))
+	st.Close()
+
+	// A fresh daemon on the same store, which is what a restart is.
+	st2, err := store.Open(filepath.Join(dir, "agentbox.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st2.Close() })
+	d2, err := New(cfg, log, st2, &fakeSound{}, &fakeUI{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	d2.mu.Lock()
+	all := append([]*proto.Item{}, d2.queue...)
+	if d2.current != nil {
+		all = append(all, d2.current)
+	}
+	d2.mu.Unlock()
+
+	stacks, notices := 0, 0
+	var stack *proto.Item
+	for _, it := range all {
+		switch it.Kind {
+		case proto.KindStack:
+			stacks++
+			stack = it
+		default:
+			notices++
+		}
+	}
+	if stacks != 1 {
+		t.Fatalf("%d stack cards after a restart, want 1", stacks)
+	}
+	if notices != 2 {
+		t.Fatalf("%d loose items after a restart, want the 2 that were never collapsed", notices)
+	}
+	if len(stack.Stack) != 2 {
+		t.Fatalf("the restored stack holds %d entries, want 2", len(stack.Stack))
+	}
+
+	// And the budget knows which card it belongs to, or the next item opens a
+	// SECOND summary of the same flood beside the first.
+	callNotify(t, d2, floodNotify("five"))
+	d2.mu.Lock()
+	defer d2.mu.Unlock()
+	after := append([]*proto.Item{}, d2.queue...)
+	if d2.current != nil {
+		after = append(after, d2.current)
+	}
+	n := 0
+	for _, it := range after {
+		if it.Kind == proto.KindStack {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("%d stack cards after collapsing into a restored one, want 1", n)
+	}
+}
+
+func TestAnUrgentItemStillBreaksThroughAStack(t *testing.T) {
+	// Flood control must not turn the one level that is allowed to interrupt into
+	// the one that cannot.
+	d, _, _, _ := newTestDaemon(t, floodCfg())
+	callNotify(t, d, floodNotify("one")) // on screen
+	callNotify(t, d, floodNotify("two"))
+	callNotify(t, d, floodNotify("three")) // opens the stack, queued behind one
+
+	d.mu.Lock()
+	onScreen := ""
+	if d.current != nil {
+		onScreen = string(d.current.Kind)
+	}
+	d.mu.Unlock()
+	if onScreen == "stack" {
+		t.Fatal("the stack was already on screen; this test needs it queued")
+	}
+
+	bad := floodNotify("the machine is on fire")
+	bad.Level = proto.LevelUrgent
+	callNotify(t, d, bad)
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.current == nil || d.current.Kind != proto.KindStack {
+		t.Fatalf("on screen = %+v, want the stack card the urgent item went into", d.current)
+	}
+	if d.current.Level != proto.LevelUrgent {
+		t.Fatalf("stack level = %q, want urgent", d.current.Level)
 	}
 }
