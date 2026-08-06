@@ -123,11 +123,22 @@ The frontend parser is told the same lie and reads it differently (enormous, not
 negative, so it swallows the following files into one body); fixing that means
 changing the render path, which is not worth doing blind, so STATUS carries it.
 
-**What could not be verified this session:** the new `quiet_hotkey` settings knob
-is wired at both ends and covered by the descriptor test, but it was never seen
-on screen - the display went to sleep mid-session (`gnome-screenshot` returns
-black, `GetActive` says the screensaver is on) and waking it to look was not
-worth doing to somebody's desktop while they were away.
+**And then the screen came back, so the two things that needed one were
+finished.** The `quiet_hotkey` knob renders under HANDS OFF as "Recording key",
+value populated and hint intact. Recording mode was watched with a run LIVE for
+the first time: the strip demoted to `1920x4+0+0` (amber sampled at x=20, 600,
+1200 and 1900), two cards held with `2 cards waiting` on the state line, and the
+URGENT one on screen first when it went loud.
+
+**The last piece was the one that needed eyes:** both diff parsers were ending a
+hunk on the header's word alone, so a count larger than the body swallowed every
+file after it. In the render that loses files silently; in the coverage
+arithmetic it is worse, because the hunks it ate are hunks nobody is told are
+uncovered. Both now end a hunk when a body line cannot be a body line (' ', '+',
+'-', '\', or empty - an empty line stays context, because that is a stripped
+trailing space and far more common than a lying header). Watched in a real
+review card: a header claiming nine thousand lines, and `after-the-liar.go`
+still rendering below it with its own count.
 
 ## Fifty-first session (2026-08-06): FR95 mocked, settled and mostly built, and three of its four measurements lied first
 

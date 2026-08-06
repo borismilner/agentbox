@@ -1,8 +1,9 @@
-# Handoff - AgentBox: FR95 closed, and four robustness finds behind it
+# Handoff - AgentBox: FR95 closed, four robustness finds, and both diff parsers fixed
 
 *Written by session 52, which finished FR95's last answer, watched it on the real
-desktop, and then spent the rest of the session on the robustness pass Boris
-asked for - one of which found a live bug the tests could never have.*
+desktop, spent the rest of the session on the robustness pass Boris asked for -
+one of which found a live bug the tests could never have - and then, when his
+screen came back, finished the two things that had needed one.*
 
 **Written:** 2026-08-06 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -13,7 +14,7 @@ cd ~/me/projects/agentbox
 git status -sb              # expect clean and level with origin/main (pushed)
                             # origin is gitlab and IS main's upstream; the `github`
                             # remote is far behind and is not where this goes
-make deployed               # expect 8b6344f1af55 or later
+make deployed               # expect 7609088aae12 or later
 agentbox control state      # expect "no run: the desktop is the human's", no quiet suffix
 agentbox pending            # expect "nothing pending"
 agentbox sync agents        # your row; ghosts from `claude -p` checks are harmless
@@ -25,27 +26,15 @@ left over, in the order it is worth doing.
 
 ### The queue, in order
 
-1. **Look at the two surfaces this session could not see.** The display went to
-   sleep partway through (`gnome-screenshot` returns black; the screensaver's
-   `GetActive` says true), so two things are wired, tested and unwatched: the new
-   **`quiet_hotkey` knob** under "Hands off" in settings (`agentbox app --tab
-   settings`), and the **cards-held behaviour with a run live** - everything in
-   FR95 was watched with no run, which is the common case but not the only one.
-2. **The frontend diff parser swallows a lying hunk header.** Found while fixing
-   the Go one (queue item 4 below): a count of twenty digits is not negative in
-   JS, merely enormous, so every following file is consumed into one body and the
-   reader loses them with nothing on screen to say why. The fix is to end a hunk
-   when a body line is not a body line at all (a valid one starts with ` `, `+`,
-   `-`, `\` or is empty), in `frontend/src/lib/diff.js`. **It changes the render
-   path, so it needs a screen** - there is a test ready to be written beside the
-   eleven in `frontend/src/lib/diff.test.js`, and `internal/change` is the shape
-   to copy.
-3. **Four assumed things about surfaces, still unseen.** Carried from sessions
-   50 and 51; each needs a specific staging, listed under "Facts" below.
-4. **Consider giving `[editor]` a settings control.** Unchanged and still his
+1. **Four assumed things about surfaces, still unseen.** Carried from sessions
+   50 and 51; each needs a specific staging, listed under "Facts" below. The two
+   that were queued here this morning are done and watched: the `quiet_hotkey`
+   knob renders under HANDS OFF as "Recording key", and both diff parsers now
+   survive a lying hunk header.
+2. **Consider giving `[editor]` a settings control.** Unchanged and still his
    call: the value is an argv array and the descriptor table has no kind for one,
    which is why `speech.command` has none either. The honest shape is a new kind.
-5. **Flood control (FR30) is a documented `must` that was never built.**
+3. **Flood control (FR30) is a documented `must` that was never built.**
    `docs/01-requirements.md` promises per-agent rate limits collapsing into one
    stack card; nothing in the daemon does it, so an agent in a loop papers the
    screen and (now) can fill a recording's held queue. Deliberately NOT built
@@ -88,8 +77,23 @@ Not read off the diff.
   are not cited by any step ... internal/daemon/walkthroughs.go:4-10, ...`, and
   the read path recomputes the same numbers. The test walkthrough was deleted
   afterwards; his library has only his two.
-- **A post-deploy smoke test of the final build** (`8b6344f1af55`): quiet, one
-  notify, `1 card waiting`, zero AgentBox windows, loud, dismissed.
+- **A post-deploy smoke test** (`8b6344f1af55`): quiet, one notify, `1 card
+  waiting`, zero AgentBox windows, loud, dismissed.
+
+**And then his screen came back, so the two things that needed one were done:**
+
+- **Recording mode with a run LIVE**, which no session had watched before. The
+  strip demoted to `1920x4+0+0` with amber sampled at x=20, 600, 1200 and 1900;
+  two cards held with `2 cards waiting` on the state line and no card window;
+  the URGENT one on screen first when it went loud, with "1 waiting" behind it.
+  Desktop taken and released, cards dismissed.
+- **The `quiet_hotkey` knob renders** under HANDS OFF as "Recording key", value
+  `Ctrl+Alt+Q` populated, hint intact, styled like the Pause key beside it (the
+  `var()`-fallback trap in CLAUDE.md is why this had to be looked at, not read).
+- **Both diff parsers, fixed and watched.** A review card carrying this session's
+  real diff plus a header claiming nine thousand lines: `after-the-liar.go`
+  renders below the liar with its own count instead of being eaten. The file rail
+  shows all three files; before the fix the third would not have existed.
 
 > **The one thing a test could not have found.** `FuzzParse` existed for about
 > thirty seconds before it produced `@@ -10000000000000000000 +0 @@`: the
@@ -99,7 +103,7 @@ Not read off the diff.
 > because the new coverage arithmetic runs on every walkthrough READ as well as
 > every create.
 
-## The four robustness finds, and why each was worth it
+## The five robustness finds, and why each was worth it
 
 - **Timers had no recover.** Every RPC handler has had one since the beginning.
   Every `time.AfterFunc` - toast expiry, escalation, undo grace, the FR95 fuse,
@@ -115,6 +119,13 @@ Not read off the diff.
   no framework - a dist committed so a machine without npm can build must not
   start needing npm to be tested. `make test-js` is in `make check` and skips
   itself when node is absent.
+- **A lying hunk header ate every file after it**, in BOTH parsers, because both
+  consumed a hunk's body on the header's word alone. In the render that loses
+  files silently; in the new coverage arithmetic it is worse, because the hunks it
+  ate are hunks nobody is told are uncovered. Both now end a hunk when a line
+  cannot be a body line (' ', '+', '-', '\\', or empty - an empty line stays
+  context, because that is a stripped trailing space and far commoner than a lying
+  header). This was the negative-line-number bug's other half.
 - **A silent divergence in FR95's own delivery.** Two flips (a hotkey against the
   fuse) can each release control's lock and then be scheduled in the other order,
   leaving the daemon holding every card while the strip says loud - no symptom on
@@ -124,25 +135,26 @@ Not read off the diff.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `8b6344f1af55`. Every commit after it is docs and tests, so no
-  deploy is owed - but check `make deployed` against `git log` before assuming,
+- **Deployed:** `7609088aae12`. Every commit after it is docs, so no deploy is
+  owed - but check `make deployed` against `git log` before assuming,
   and remember that `make deployed` asks the running daemon because a replaced
   binary is not a deployed binary.
-- **Git:** `main`, clean, **pushed to `origin`** (gitlab). Nine commits this
-  session, oldest first: `6617403` (FR95 cards), `8473edb` + `d62d616` (FR95
+- **Git:** `main`, clean, **pushed to `origin`** (gitlab). Eleven commits
+  this session, oldest first: `6617403` (FR95 cards), `8473edb` + `d62d616` (FR95
   docs), `36fbc04` (panic guard), `cb52c59` (held count), `f73b0e6` (settings
   knob), `5bc8997` (coverage validator), `a78094b` (JS runner), `8b6344f` (the
-  overflow). Run `git status -sb`: that is the only truthful answer.
+  overflow), `4d3937d` + `624e214` (handoff, FuzzCover), `7609088` (both
+  parsers). Run `git status -sb`: that is the only truthful answer.
 - **Two remotes, and only one of them is the tree.** `origin` is
   `git@gitlab.com:fu-bar/agentbox.git` and is `main`'s upstream. `github`
   (`git@github.com:borismilner/agentbox.git`) is far behind and is not where this
   work goes. A bare `git push` is right because the upstream is set.
-- **The desktop is asleep.** The screensaver is active and the monitor is off;
-  `LockedHint` says no but a capture comes back black either way. Nothing was
-  woken. Anything visual waits.
+- **The desktop is awake and is his.** It was taken once (`control request`,
+  granted on the window) to watch recording mode with a live run, and released;
+  `agentbox drive` typed three keystrokes into AgentBox's own windows and nothing
+  else. Everything raised for the checks was dismissed.
 - **Nothing pending, no locks held, no strip on screen, nothing quiet.** All
-  checked at the end. The desktop was never taken this session (no
-  `request_control` at all - every check was CLI and `wmctrl`).
+  checked at the end.
 - **A peer session shares this checkout:** `proc-832814-3533968`, detached,
   carrying the SessionStart placeholder purpose. It made no commits. Two agents
   in one checkout is how an unfinished doc once got swept into an unrelated
@@ -176,11 +188,8 @@ Nothing - proceed autonomously. Four things stay yours and block nothing:
 
 ## I can do solo (no input needed)
 
-1. **The two unseen surfaces** (queue item 1) - the moment there is a screen.
-2. **The frontend parser's lying-hunk fix** (queue item 2) - also needs a screen,
-   because it changes the render path.
-3. **The four older unseen surfaces** (queue item 3).
-4. **More fuzz targets.** The first paid for itself in thirty seconds and
+1. **The four older unseen surfaces** (queue item 1).
+2. **More fuzz targets.** The first paid for itself in thirty seconds and
    `FuzzCover` followed it (both clean now: 11.8M and 6.9M executions).
    `walkthrough.Parse` and the payload builder are the next two worth pointing it
    at - both read agent-authored text straight off the wire.
@@ -199,13 +208,12 @@ Nothing - proceed autonomously. Four things stay yours and block nothing:
   fullscreen window, a frameless 4px window at `+0+0` sits over GNOME's top bar,
   `Ctrl+Alt+Q` fires through XTEST, and `wmctrl -lG` reports DOUBLED coordinates
   on this desktop (use `xwininfo`).
-- [assumed] **That the `quiet_hotkey` knob renders correctly** under "Hands off".
-  It is wired at both ends and the descriptor test covers the wiring; nobody has
-  looked at it. A control can be fully styled in the stylesheet and unstyled on
-  screen - that trap has cost this project three build-deploy-look cycles.
-- [assumed] **That cards queue the same way with a run live.** The mechanism does
-  not read the run at all, but every live check this session was made with no run
-  on the desktop.
+- [verified] **The `quiet_hotkey` knob renders** under HANDS OFF as "Recording
+  key", value populated and hint intact, styled like its neighbour.
+- [verified] **Cards queue the same way with a run live**, watched with the strip
+  demoted mid-run: two held, `2 cards waiting`, urgent first out.
+- [verified] **Both diff parsers survive a lying hunk header**, watched in a real
+  review card.
 - [assumed] **That the 30-minute fuse fires in a live daemon.** Carried from
   session 51: the timer is driven directly in the test and nobody has watched
   half an hour pass.
@@ -230,7 +238,8 @@ Nothing - proceed autonomously. Four things stay yours and block nothing:
 | Session 51's queue items 2 and 3 (coverage validator, `quiet_hotkey` knob) | Both built. The validator is `internal/walkthrough/coverage.go` with the rule quoted in [internal/manual/walkthrough.md](internal/manual/walkthrough.md); the knob is in `internal/webui/settings.go` and unwatched (queue item 1) |
 | Session 51's measurement section and its probe | The four traps are permanent in "Mechanics discovered" ([docs/07-field-requests.md](docs/07-field-requests.md)); the probe was never committed and needs no recovery |
 | Session 51's mock-driving section (`drive_mock.py`) | The three things worth knowing are in session 51 of [docs/history.md](docs/history.md). If a third mock earns this treatment it earns a place under `tools/` |
-| Session 51's captures and scratchpad path | Gone with that session; this session's two are listed fresh in Live state |
+| Session 51's captures and scratchpad path | Gone with that session; this session's are listed fresh in Live state |
+| This session's own "two things that need a screen" | Both done once his screen came back, and both are under "What was verified" with the [verified] facts to match |
 
 ## Map
 

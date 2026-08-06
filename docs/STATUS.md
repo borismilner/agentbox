@@ -627,13 +627,12 @@ HTML Go hands it.
 on the first run: a hunk header with twenty digits overflowed the hand-rolled
 atoi and came back as a NEGATIVE line number, which then flowed into every span
 and slice built from the geometry. Clamped, and the failing input is committed
-as the corpus so `go test` replays it. **The frontend parser has the same lie
-told to it and reads it differently:** a count that large is not negative in JS,
-it is merely enormous, so it swallows every following file into one body and the
-reader loses them with nothing on screen to say why. Fixing that means ending a
-hunk when a body line is not a body line at all, which changes the render path -
-and it is not worth doing blind, so it waits for a session that can look at the
-screen.
+as the corpus so `go test` replays it. The frontend parser was told the same lie and read
+it differently - enormous rather than negative, so it swallowed every following
+file into one body - and **both parsers now end a hunk when a body line is not a
+body line at all** (' ', '+', '-', '\', or empty). Watched on screen in a review
+card: a header claiming nine thousand lines no longer eats the file after it,
+which still renders with its own count.
 
 - **Policy** (`internal/webui/policy_test.go`): one invariant over every
   surface at once - nothing AgentBox hands a webview fetches from a host on its
