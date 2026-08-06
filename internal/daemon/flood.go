@@ -107,7 +107,15 @@ func (d *Daemon) collapseLocked(it *proto.Item, now time.Time) (collapsed bool, 
 	}
 	f.recent = kept
 
-	if len(f.recent) < d.cfg.FloodBurst {
+	// A stack card that is still on screen keeps collecting, whatever the bucket
+	// says. Without this the budget refills underneath an open stack and a
+	// sustained loop gets a fresh card every window - measured on the real
+	// desktop at three cards per ten seconds, which is eighteen a minute and not
+	// anybody's idea of "calm survives buggy callers". The collapse ends when the
+	// human ends it: dismissing the stack (or answering through it) takes the
+	// card out of the queue, and the next item after that starts a clean budget.
+	open := d.liveStackLocked(f.stack)
+	if open == nil && len(f.recent) < d.cfg.FloodBurst {
 		f.recent = append(f.recent, now)
 		return false, nil
 	}
@@ -121,9 +129,14 @@ func (d *Daemon) collapseLocked(it *proto.Item, now time.Time) (collapsed bool, 
 		AtMS:     now.UnixMilli(),
 	}
 
-	if open := d.liveStackLocked(f.stack); open != nil {
+	if open != nil {
 		open.Stack = append(open.Stack, entry)
 		open.Title = stackTitle(it.Identity.Agent, len(open.Stack), stackSpan(open.Stack, now))
+		// The card wears the worst thing inside it. A burst that started as three
+		// info toasts and has since collapsed an error must not still read as the
+		// mildest of its contents - the human is being asked to judge the whole
+		// stack from one line.
+		open.Level = worstLevel(open.Stack)
 		d.persistStack(open)
 		d.log.Info(logging.EvItemCollapsed, "component", "daemon", "item_id", it.ID,
 			"stack_id", open.ID, "agent", it.Identity.Agent, "collapsed", len(open.Stack))
@@ -133,7 +146,7 @@ func (d *Daemon) collapseLocked(it *proto.Item, now time.Time) (collapsed bool, 
 	stack := &proto.Item{
 		ID:    newID(),
 		Kind:  proto.KindStack,
-		Level: proto.LevelWarning,
+		Level: worstLevel([]proto.StackEntry{entry}),
 		Title: stackTitle(it.Identity.Agent, 1, 0),
 		// The warning FR30 asks for, said on the card that carries the burst rather
 		// than on a second card beside it. Two cards for one flood would be the
@@ -156,6 +169,20 @@ func (d *Daemon) collapseLocked(it *proto.Item, now time.Time) (collapsed bool, 
 	d.log.Info(logging.EvItemCollapsed, "component", "daemon", "item_id", it.ID,
 		"stack_id", stack.ID, "agent", it.Identity.Agent, "collapsed", 1)
 	return true, stack
+}
+
+// worstLevel is the level a stack card wears: the highest of the entries in it,
+// floored at warning. Warning is the floor because the collapse itself is the
+// warning FR30 asks for - a stack of info toasts is still agentbox saying an
+// agent is over its limit, and saying that in the info voice would bury it.
+func worstLevel(entries []proto.StackEntry) proto.Level {
+	worst := proto.LevelWarning
+	for _, e := range entries {
+		if e.Level.Rank() > worst.Rank() {
+			worst = e.Level
+		}
+	}
+	return worst
 }
 
 // stackSpan is how long the burst in a stack card has been running.

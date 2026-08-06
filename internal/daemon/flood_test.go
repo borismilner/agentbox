@@ -233,6 +233,80 @@ func TestTheBudgetRefillsWhenTheWindowPasses(t *testing.T) {
 	}
 }
 
+func TestAnOpenStackKeepsCollectingPastTheWindow(t *testing.T) {
+	// The bug this pins was found on the real desktop, not in a test: the window
+	// refills underneath an open stack card, so a loop that keeps going gets a
+	// fresh budget every window - three cards per ten seconds on the shipped
+	// defaults, which is eighteen a minute and not "calm survives buggy callers".
+	d, _, _, _ := newTestDaemon(t, Config{FloodBurst: 2, FloodWindow: 30 * time.Millisecond})
+	callNotify(t, d, floodNotify("one"))
+	callNotify(t, d, floodNotify("two"))
+	callNotify(t, d, floodNotify("three")) // over: opens the stack
+
+	time.Sleep(60 * time.Millisecond) // the whole window has passed
+	callNotify(t, d, floodNotify("four"))
+	callNotify(t, d, floodNotify("five"))
+
+	d.mu.Lock()
+	var stack *proto.Item
+	stacks := 0
+	for _, q := range d.queue {
+		if q.Kind == proto.KindStack {
+			stacks++
+			stack = q
+		}
+	}
+	d.mu.Unlock()
+	if stacks != 1 {
+		t.Fatalf("%d stack cards, want 1: the burst never stopped", stacks)
+	}
+	if len(stack.Stack) != 3 {
+		t.Fatalf("stack holds %d, want 3 - the budget refilled under an open card", len(stack.Stack))
+	}
+
+	// Ending it is the human's move, and once he has made it the next item is a
+	// card again. Otherwise a session that flooded once would be collapsed for
+	// the rest of the day.
+	d.Dismiss(stack.ID)
+	callNotify(t, d, floodNotify("after"))
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, q := range d.queue {
+		if q.Kind == proto.KindStack {
+			t.Fatal("collapsed again after the human closed the stack")
+		}
+	}
+	if d.current != nil && d.current.Kind == proto.KindStack {
+		t.Fatal("collapsed again after the human closed the stack")
+	}
+}
+
+func TestTheStackWearsTheWorstLevelInIt(t *testing.T) {
+	d, _, _, _ := newTestDaemon(t, floodCfg())
+	callNotify(t, d, floodNotify("one"))
+	callNotify(t, d, floodNotify("two"))
+	callNotify(t, d, floodNotify("three")) // info, collapses: the card is warning
+
+	d.mu.Lock()
+	var stack *proto.Item
+	for _, q := range d.queue {
+		if q.Kind == proto.KindStack {
+			stack = q
+		}
+	}
+	d.mu.Unlock()
+	if stack.Level != proto.LevelWarning {
+		t.Fatalf("a stack of info notices is %q, want warning: the collapse is itself the warning", stack.Level)
+	}
+
+	bad := floodNotify("the one that matters")
+	bad.Level = proto.LevelError
+	callNotify(t, d, bad)
+	if stack.Level != proto.LevelError {
+		t.Fatalf("stack level = %q after collapsing an error, want error: one line has to speak for the whole burst", stack.Level)
+	}
+}
+
 func TestFloodControlOffByDefault(t *testing.T) {
 	// Burst 0 is the human saying never collapse, and it is also every daemon
 	// built without the knob - which is every test written before FR30.
