@@ -478,18 +478,31 @@ ordered steps with prose, citations `{path, lines:[from,to]}` pinned to a
 commit, and the change's unified diff as the manifest - and opens the review
 board. The human marks each step understood or unclear, writes notes and
 anchors comments to lines; everything persists across sessions.
-`await_walkthrough` returns the whole review in one turn. Three spec rules,
+`await_walkthrough` returns the whole review in one turn. Five spec rules,
 all validated with directions: never state added/removed on a file-backed
 block (the diff is the only carrier); never put literal line numbers in
 prose (bind a phrase to a code region instead); end a diff-carrying review
-with a check step. CLI:
+with a check step; every code and check step carries a `tldr`; a domain's
+steps must be consecutive. CLI:
 `agentbox walkthrough create --spec review.json | await ID | read ID --ack | list | delete ID`.
 
 **Read the standard before you write one.** How to structure the steps, where
 the explanation goes versus the annotations, what coverage has to account for:
-MCP resource `agentbox://standards/walkthrough`, or `agentbox docs walkthrough`. Four
+MCP resource `agentbox://standards/walkthrough`, or `agentbox docs walkthrough`. Seven
 things it will tell you that are easy to miss:
 
+- **The TL;DR is what most readers get.** `tldr: {bottom, points}` on every code
+  and check step, and the board OPENS in it - `bottom` is the one sentence that
+  has to survive, `points` are up to six facts that each stand alone. It is not
+  the shortened step; it is the same mastery restructured for a reader who may
+  stop anywhere. Refused if missing.
+- **Domains group the steps.** `domains: [{id, title, blurb}]` on the spec and a
+  `domain` on every step, once any domain exists. The board opens one group at a
+  time, so a domain's steps must be consecutive - validated. Two to four is the
+  useful range, and under about eight steps leave it out entirely.
+- **Runnable checks carry three fields.** `cmds: [{cmd, expect, recorded}]` - the
+  command, what to expect, and the date you last ran it. Run each one before you
+  write it down; a selector that matches nothing still exits zero.
 - **Paragraphs are explicit.** Prose is inline segments, so a bound phrase can
   sit mid-sentence. Set `"p": true` on the segment that starts each paragraph
   or the whole step renders as one wall.
