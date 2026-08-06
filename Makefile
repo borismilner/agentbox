@@ -162,13 +162,24 @@ $(FRONTEND_OUT): $(FRONTEND_SRCS)
 test: ## full suite with the race detector
 	go test ./... -race -count=1
 
+# The frontend's shared modules, on node's own runner - no framework, because a
+# dist that is committed so a machine without npm can still build should not
+# start needing npm to be tested. No node is not a failure for the same reason:
+# it says so and moves on, exactly like the build does.
+test-js: ## frontend module tests (skipped when node is absent)
+	@if command -v node >/dev/null 2>&1; then \
+		node --test "frontend/src/**/*.test.js"; \
+	else \
+		echo "node not found: skipping the frontend module tests"; \
+	fi
+
 fmt: ## fail when any file is not gofmt-clean
 	@out=$$(gofmt -l cmd internal tools); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 vet: fmt ## gofmt check + go vet
 	go vet ./...
 
-check: vet test ## everything CI would run
+check: vet test test-js ## everything CI would run
 
 generate: ## regenerate earcon WAVs
 	go run ./tools/genearcons internal/sound/assets

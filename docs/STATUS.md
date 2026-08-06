@@ -612,13 +612,16 @@ agentbox webui-demo panel                  # the drop-down console with a canned
 
 ## Tests
 
-`make check` = gofmt + vet + `go test ./... -race`; **21 packages** (incl.
-`internal/hand`, `internal/session`, `internal/webui` and
+`make check` = gofmt + vet + `go test ./... -race` + `make test-js`; **21 Go
+packages** (incl. `internal/hand`, `internal/session`, `internal/webui` and
 `internal/speech`), **685 tests**, all green as of FR83's last slice (session 45;
 the count is `grep -rh "^func Test"` top-level Go tests, 2026-08-04). The
-frontend has no test runner in the suite - `make check` is Go only. There is no
-automated *visual* check (see "Known gaps"); what a surface is *allowed to
-do* is tested, and so is the HTML Go hands it.
+frontend gained a runner on 2026-08-06 (session 52): node's own `--test`, no
+framework, over `frontend/src/**/*.test.js` - `parseDiff` is the first module in
+it, and the target says so and moves on when node is absent, exactly like the
+build does with a committed dist. There is still no automated *visual* check
+(see "Known gaps"); what a surface is *allowed to do* is tested, and so is the
+HTML Go hands it.
 
 - **Policy** (`internal/webui/policy_test.go`): one invariant over every
   surface at once - nothing AgentBox hands a webview fetches from a host on its
