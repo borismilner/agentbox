@@ -1316,13 +1316,19 @@ func (d *Daemon) wouldShowLocked(it *proto.Item) bool {
 	return false
 }
 
-// heldCount is how many cards are waiting out the recording. The whole queue,
-// because during recording mode nothing is on screen and everything in it is
-// waiting for the same thing.
+// heldCount is how many cards going loud would actually put on screen. Not the
+// whole queue: do-not-disturb and a muted agent hold items too, and counting
+// those would promise a drain that is not coming.
 func (d *Daemon) heldCount() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return len(d.queue)
+	n := 0
+	for _, it := range d.queue {
+		if d.announceableLocked(it) {
+			n++
+		}
+	}
+	return n
 }
 
 // QuietSet is told by control that recording mode flipped (FR95). Going quiet

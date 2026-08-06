@@ -964,6 +964,12 @@ func TestDoNotDisturbStillHoldsTheChimeDuringARecording(t *testing.T) {
 		t.Errorf("recording mode gave a DND-held card its chime back: %d sounds", snd.count())
 	}
 
+	// The count is a promise about what going loud will show, so a DND-held card
+	// must not be in it.
+	if n := d.heldCount(); n != 0 {
+		t.Errorf("the state line promised %d cards that DND is still holding", n)
+	}
+
 	// And going loud while DND is still on reveals nothing: the other hold is
 	// still holding.
 	d.Handover().Loud("the hotkey")
