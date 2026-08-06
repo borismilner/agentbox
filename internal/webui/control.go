@@ -219,8 +219,12 @@ func (c *control) demote() {
 		c.mu.Lock()
 		c.win, c.winXID = nil, 0
 		c.mu.Unlock()
-		// The column slot is released by the closing hook, not here: a second drop
-		// would be one more thing to keep in step with it for no gain.
+		// Drop the slot here rather than leaving it to the closing hook. The hook
+		// now declines to speak for a window that is no longer the live one (see
+		// openWindow), which is what stops it stealing the NEXT strip's slot - so
+		// this path has to release its own, or the column keeps a 62px gap that
+		// every toast sits below.
+		c.ui.top.drop("control")
 		application.InvokeSync(func() { w.Close() })
 	}
 	if already {
@@ -322,9 +326,21 @@ func (c *control) openWindow() {
 		c.mu.Unlock()
 
 		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			// Only for the window this hook belongs to. FR95 closes and reopens the
+			// strip on every demote and promote, and Wails delivers this event
+			// asynchronously: the old window's hook landed AFTER the new one had
+			// claimed its slot, dropped it, and left the returning strip wherever
+			// Mutter had first placed it - measured on screen at +1300+96 instead of
+			// top-centre. Comparing the window is what makes the late event harmless.
 			c.mu.Lock()
-			c.win, c.winXID = nil, 0
+			mine := c.win == w
+			if mine {
+				c.win, c.winXID = nil, 0
+			}
 			c.mu.Unlock()
+			if !mine {
+				return
+			}
 			// Release the slot, or the column keeps a gap where the strip was and
 			// every toast under it stays pushed down for nothing.
 			c.ui.top.drop("control")
