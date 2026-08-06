@@ -82,6 +82,16 @@ type Config struct {
 		SlideMS    int     `toml:"slide_ms"`   // 0 = no animation, just appear
 		MeasurePx  int     `toml:"measure_px"` // reading column inside the panel
 	} `toml:"panel"`
+	// Control is the desktop handover (FR74) and the pause latch on top of it
+	// (FR94). PauseHotkey is one desktop-wide combination that takes the keyboard
+	// and mouse back mid-run and hands them on again - one key for both, because
+	// somebody reaching for it urgently has one thing in mind. It is grabbed on
+	// X11 by the daemon; an empty string turns the grab off and leaves
+	// `agentbox control pause` as the way in, which is also the route on Wayland
+	// where no client may claim a key globally.
+	Control struct {
+		PauseHotkey string `toml:"pause_hotkey"`
+	} `toml:"control"`
 	// Window is every agentbox window's shape. These were constants until the sizes
 	// turned out to be taste: a card that is right on a 1080p laptop is small on a
 	// 4K panel, and the reading measure is the single biggest lever on how agentbox
@@ -239,6 +249,11 @@ func Default() Config {
 	c.Sync.SignalKeepDays = 7
 	c.Sync.SharedMaxBytes = 16384
 	c.Panel.Hotkey = "Ctrl+Alt+grave"
+	// Super+Escape: Escape is already the whole desktop's word for "stop what you
+	// are doing", and Super keeps it out of the way of every application that
+	// uses bare Escape - which is all of them. Nothing in GNOME's default map
+	// claims the pair.
+	c.Control.PauseHotkey = "Super+Escape"
 	c.Panel.HeightFrac = 0.5 // half the monitor, never more: see the clamp below
 	c.Panel.WidthFrac = 0.74
 	// Off by default: see the note in internal/webui/panel.go. A resize per frame

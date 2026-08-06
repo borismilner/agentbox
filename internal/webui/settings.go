@@ -154,6 +154,11 @@ var settingsSpec = []knobSection{
 				{section: "panel", key: "slide_ms", label: "Roll duration", kind: knobInt,
 					min: 0, max: 1000, step: 10, unit: "ms", hint: "0 = no animation"},
 			}},
+			{title: "Hands off", caption: "the strip an agent drives your desktop behind, and the key that takes it back", knobs: []knob{
+				{section: "control", key: "pause_hotkey", label: "Pause key", kind: knobText,
+					hint:    "pauses a run mid-drive and resumes it; empty = no grab, use `agentbox control pause`",
+					suggest: []string{"Super+Escape", "Ctrl+Alt+Escape", "Super+P", "Pause"}},
+			}},
 			{title: "Cards and toasts", knobs: []knob{
 				{section: "window", key: "card_width", label: "Card width", kind: knobInt,
 					min: 240, max: 2000, step: 10, unit: "px"},
@@ -547,6 +552,8 @@ func valueOf(c config.Config, k knob) string {
 		return strconv.Itoa(c.Window.ProgressMaxHeight)
 	case "panel.hotkey":
 		return c.Panel.Hotkey
+	case "control.pause_hotkey":
+		return c.Control.PauseHotkey
 	case "panel.width_frac":
 		return floatStr(c.Panel.WidthFrac)
 	case "panel.height_frac":
@@ -671,6 +678,8 @@ func setValue(c *config.Config, k knob, v string) error {
 		c.Window.ProgressMaxHeight = i
 	case "panel.hotkey":
 		c.Panel.Hotkey = norm
+	case "control.pause_hotkey":
+		c.Control.PauseHotkey = norm
 	case "panel.width_frac":
 		c.Panel.WidthFrac = f
 	case "panel.height_frac":

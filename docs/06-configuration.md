@@ -63,6 +63,14 @@ slide_ms = 0                 # 0 (the default) = the panel simply appears. Set a
 measure_px = 980             # the panel is wider than the app window, so its
                              # reading column can be too
 
+[control]                    # the hands-off strip (FR74) and its pause (FR94)
+pause_hotkey = "Super+Escape" # takes the keyboard and mouse back mid-run, and
+                             # the same key hands them on again. Grabbed by the
+                             # daemon on X11; "" = no grab, use
+                             # `agentbox control pause`. Resuming is the
+                             # human's alone - no MCP tool can do it, or the
+                             # pause would be a suggestion
+
 [session]                    # the Claude child a session spawns (FR49)
 default_mode = "plan"        # plan (read-only) | full; the prompting modes are
                              # not offered until AgentBox handles their protocol

@@ -197,6 +197,68 @@ func (a audio) ReadWait(ctx context.Context, text string) {
 	}
 }
 
+// grab is one desktop-wide key combination over its whole life: taken at
+// startup, rebound when the config changes under it, released on the way out.
+// Two of them exist (the panel's, M10, and the pause key, FR94) and every step
+// is identical bar the wording, so they share this rather than the logic being
+// written twice and drifting.
+//
+// Nothing here is fatal. A grab that cannot be taken - no X11, or another
+// application already owns the combination - leaves the feature reachable by its
+// CLI verb and says why once, because "my hotkey does nothing" is otherwise a
+// question with no answer anywhere.
+type grab struct {
+	name  string // for the log
+	log   *slog.Logger
+	fn    func() // what a press does
+	hint  string // what to do instead, when it could not be taken
+	quiet bool   // do not print to stderr, only log
+
+	hk *hotkey.Hotkey
+}
+
+func (g *grab) open(spec string) {
+	if spec == "" {
+		return // deliberately off
+	}
+	h, err := hotkey.Open(spec, g.log, g.fn)
+	if err != nil {
+		g.log.Warn("hotkey.unavailable", "component", "daemon", "for", g.name,
+			"hotkey", spec, "err", err.Error())
+		if !g.quiet {
+			fmt.Fprintf(os.Stderr, "agentbox: %v (%s)\n", err, g.hint)
+		}
+		return
+	}
+	g.hk = h
+	g.log.Info("hotkey.grabbed", "component", "daemon", "for", g.name, "hotkey", spec)
+}
+
+// apply moves the grab to whatever the config now says: rebind a live one, take
+// one where there was none, or drop it if the key was cleared.
+func (g *grab) apply(spec string) {
+	switch {
+	case g.hk != nil && spec == "":
+		g.hk.Close()
+		g.hk = nil
+		g.log.Info("hotkey.released", "component", "daemon", "for", g.name)
+	case g.hk != nil && spec != g.hk.Spec():
+		if err := g.hk.Rebind(spec); err != nil {
+			g.log.Warn("hotkey.rebind_failed", "component", "daemon", "for", g.name,
+				"hotkey", spec, "err", err.Error())
+		}
+	case g.hk == nil && spec != "":
+		g.open(spec)
+	}
+}
+
+func (g *grab) close() {
+	if g.hk != nil {
+		g.hk.Close()
+		g.hk = nil
+	}
+}
+
 // driver satisfies daemon.Driver: an agent asking agentbox to move the pointer and
 // press keys. A connection is opened per script rather than held open, because a
 // script is a self-contained sequence and a long-lived XTEST connection would be
@@ -359,26 +421,47 @@ func runDaemon() {
 	// them is fatal: `agentbox panel` still works, and the reason is logged and
 	// printed once rather than swallowed - "my hotkey does nothing" is otherwise
 	// unanswerable. An empty [panel] hotkey turns the grab off deliberately.
-	var hk *hotkey.Hotkey
-	if spec := strings.TrimSpace(cfg.Panel.Hotkey); spec != "" {
-		h, err := hotkey.Open(spec, log, u.TogglePanel)
-		if err != nil {
-			log.Warn("hotkey.unavailable", "component", "daemon", "hotkey", spec, "err", err.Error())
-			fmt.Fprintf(os.Stderr, "agentbox: %v (use `agentbox panel` instead, or set [panel] hotkey)\n", err)
-		} else {
-			hk = h
-			log.Info("hotkey.grabbed", "component", "daemon", "hotkey", spec)
-		}
+	//
+	// FR94 added a second grab beside it, and the pair is what made this a helper
+	// rather than two copies: the pause key has the same lifecycle (open at start,
+	// rebind on reload, release on shutdown) and exactly one difference, which is
+	// that it must not print to stderr. It fires while an agent is driving, so the
+	// fallback advice ("use the CLI instead") is advice for a keyboard its human
+	// is not currently at.
+	panelKey := &grab{
+		name: "panel", log: log, fn: u.TogglePanel,
+		hint: "use `agentbox panel` instead, or set [panel] hotkey",
 	}
+	panelKey.open(strings.TrimSpace(cfg.Panel.Hotkey))
+
+	// The pause key (FR94). It is the answer to "instant, and reachable while an
+	// agent is typing": a passive grab on the root window beats every other route
+	// because it needs no focus, no free pointer and no window of ours in the way.
+	// One key toggles - pause when the desktop is being driven, resume when it is
+	// latched - because a human reaching for it urgently has one thing in mind and
+	// should not have to remember which of two keys he is in.
+	pauseKey := &grab{
+		name: "pause", log: log, quiet: true,
+		hint: "use `agentbox control pause` instead, or set [control] pause_hotkey",
+		fn: func() {
+			if paused, _ := d.Handover().Paused(); paused {
+				d.Handover().Resume("the hotkey")
+				return
+			}
+			d.Handover().Pause("the hotkey")
+		},
+	}
+	pauseKey.open(strings.TrimSpace(cfg.Control.PauseHotkey))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var shutdown func()
 	shutdown = func() {
 		log.Info(logging.EvDaemonStop, "component", "daemon")
 		say.Close() // let the voice finish its sentence, then drop the model
-		if hk != nil {
-			hk.Close() // release the key grab before the process goes
-		}
+		// Release both key grabs before the process goes, or the combinations stay
+		// claimed on the X server until something notices the client is gone.
+		panelKey.close()
+		pauseKey.close()
 		d.StopAssignments() // no new runs; one in flight is left to finish
 		d.StopRoster()      // stop repainting a board that is about to go
 		// Before st.Close() below, and that ordering is the reason this call exists:
@@ -439,26 +522,12 @@ func runDaemon() {
 		// conversation with the config file rather than a restart.
 		u.SetConfig(c)
 
-		// The panel's hotkey too: rebind an existing grab, take one if the config
-		// had none, or drop it if the key was cleared.
-		spec := strings.TrimSpace(c.Panel.Hotkey)
-		switch {
-		case hk != nil && spec == "":
-			hk.Close()
-			hk = nil
-			log.Info("hotkey.released", "component", "daemon")
-		case hk != nil && spec != hk.Spec():
-			if err := hk.Rebind(spec); err != nil {
-				log.Warn("hotkey.rebind_failed", "component", "daemon", "hotkey", spec, "err", err.Error())
-			}
-		case hk == nil && spec != "":
-			if h, err := hotkey.Open(spec, log, u.TogglePanel); err != nil {
-				log.Warn("hotkey.unavailable", "component", "daemon", "hotkey", spec, "err", err.Error())
-			} else {
-				hk = h
-				log.Info("hotkey.grabbed", "component", "daemon", "hotkey", spec)
-			}
-		}
+		// Both hotkeys too: rebind a live grab, take one if the config had none,
+		// or drop it if the key was cleared. Changing either takes effect while
+		// he watches rather than at the next restart, which is the whole reason
+		// hotkey.Rebind exists.
+		panelKey.apply(strings.TrimSpace(c.Panel.Hotkey))
+		pauseKey.apply(strings.TrimSpace(c.Control.PauseHotkey))
 
 		log.Info("config.reloaded", "component", "daemon")
 	})
