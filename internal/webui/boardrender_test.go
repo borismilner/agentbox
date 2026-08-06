@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/borismilner/agentbox/internal/walkthrough"
 )
 
 // fixtureRepo writes a small "repository" with one Go file whose lines are
@@ -70,7 +72,7 @@ const fixtureDiff = `diff --git a/pkg/f.go b/pkg/f.go
 func TestRenderStepsBasics(t *testing.T) {
 	root := fixtureRepo(t)
 	var missed []string
-	steps, _, err := renderSteps(fixtureSpec(t, nil), fixtureDiff, root, nil,
+	steps, _, _, err := renderSteps(fixtureSpec(t, nil), fixtureDiff, root, nil,
 		func(step, path, reason string) { missed = append(missed, step+":"+path) })
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +136,7 @@ func TestRenderHonestErrors(t *testing.T) {
 		st["prose"] = []map[string]any{{"t": "plain"}}
 	})
 	var missed []string
-	steps, _, err := renderSteps(spec, "", root, nil, func(step, path, reason string) { missed = append(missed, reason) })
+	steps, _, _, err := renderSteps(spec, "", root, nil, func(step, path, reason string) { missed = append(missed, reason) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +151,7 @@ func TestRenderHonestErrors(t *testing.T) {
 		delete(st, "binds")
 		st["prose"] = []map[string]any{{"t": "plain"}}
 	})
-	steps, _, err = renderSteps(spec, "", root, nil, nil)
+	steps, _, _, err = renderSteps(spec, "", root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +165,7 @@ func TestRenderHonestErrors(t *testing.T) {
 	// A crafted stored spec whose path escapes the root: the jail refuses
 	// even though the validator upstream would too.
 	spec = strings.Replace(fixtureSpec(t, nil), "pkg/f.go", "pkg/../../etc/passwd", 1)
-	steps, _, err = renderSteps(spec, "", root, nil, nil)
+	steps, _, _, err = renderSteps(spec, "", root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +186,7 @@ func TestRenderSnippetAndAllNew(t *testing.T) {
 		delete(st, "binds")
 		st["prose"] = []map[string]any{{"t": "plain"}}
 	})
-	steps, _, err := renderSteps(spec, "", root, nil, nil)
+	steps, _, _, err := renderSteps(spec, "", root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +217,7 @@ func boardLineHTML(t *testing.T, hostile string) string {
 		delete(st, "binds")
 		st["prose"] = []map[string]any{{"t": "plain"}}
 	})
-	steps, _, err := renderSteps(spec, "", root, nil, nil)
+	steps, _, _, err := renderSteps(spec, "", root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +244,7 @@ func TestRenderEscapesHostileContent(t *testing.T) {
 		delete(st, "binds")
 		st["prose"] = []map[string]any{{"t": "plain"}}
 	})
-	steps, _, err := renderSteps(spec, "", root, nil, nil)
+	steps, _, _, err := renderSteps(spec, "", root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +270,7 @@ func TestRenderStepsGlossaryRuns(t *testing.T) {
 			{"t": "raw string", "bind": "raw"},
 		}
 	})
-	steps, glossary, err := renderSteps(spec, "", root, nil, nil)
+	steps, glossary, _, err := renderSteps(spec, "", root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +308,7 @@ func TestRenderStepsLeadAndClose(t *testing.T) {
 		}
 		st["close"] = []map[string]any{{"t": "And the lexer once more, still plain."}}
 	})
-	steps, _, err := renderSteps(spec, "", root, nil, nil)
+	steps, _, _, err := renderSteps(spec, "", root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,5 +321,56 @@ func TestRenderStepsLeadAndClose(t *testing.T) {
 	}
 	if len(st.Close) != 1 || st.Close[0].Runs != nil {
 		t.Errorf("close: %+v", st.Close)
+	}
+}
+
+// Domains reach the rail as index ranges, computed here because contiguity is a
+// spec rule and Go is the side that enforces it.
+func TestDomainRowsCarryRangesAndCounts(t *testing.T) {
+	spec := &walkthrough.Spec{
+		Domains: []walkthrough.Domain{
+			{ID: "a", Title: "First", Blurb: "what it is about"},
+			{ID: "b", Title: "Second"},
+		},
+		Steps: []walkthrough.Step{
+			{ID: "s1", Kind: "code", Domain: "a"},
+			{ID: "s2", Kind: "ground", Domain: "a"},
+			{ID: "s3", Kind: "code", Domain: "b"},
+			{ID: "s4", Kind: "check", Domain: "b"},
+		},
+	}
+	got := domainRows(spec, make([]wireStep, 4))
+	if len(got) != 2 {
+		t.Fatalf("domains = %+v", got)
+	}
+	if got[0].From != 0 || got[0].To != 1 || got[0].Counted != 1 || got[0].Blurb != "what it is about" {
+		t.Fatalf("first = %+v", got[0])
+	}
+	// Counted is over CODE steps only, the same number the header totals: a
+	// ground step riding along must not make the group's progress unreachable.
+	if got[1].From != 2 || got[1].To != 3 || got[1].Counted != 1 {
+		t.Fatalf("second = %+v", got[1])
+	}
+}
+
+func TestDomainRowsOnAnUngroupedSpec(t *testing.T) {
+	if got := domainRows(&walkthrough.Spec{Steps: []walkthrough.Step{{ID: "s1"}}}, make([]wireStep, 1)); got != nil {
+		t.Fatalf("an ungrouped spec produced %+v", got)
+	}
+	if got := domainRows(nil, nil); got != nil {
+		t.Fatalf("a nil spec produced %+v", got)
+	}
+}
+
+// A spec stored before the "no empty domain" rule existed can still hold one,
+// and a group whose range is [-1,-1] would render as a heading over nothing.
+func TestDomainRowsDropAGroupWithNothingInIt(t *testing.T) {
+	spec := &walkthrough.Spec{
+		Domains: []walkthrough.Domain{{ID: "a", Title: "First"}, {ID: "ghost", Title: "Empty"}},
+		Steps:   []walkthrough.Step{{ID: "s1", Kind: "code", Domain: "a"}},
+	}
+	got := domainRows(spec, make([]wireStep, 1))
+	if len(got) != 1 || got[0].ID != "a" {
+		t.Fatalf("domains = %+v, want the empty one dropped", got)
 	}
 }

@@ -45,6 +45,23 @@
   const unclear = $derived(counted.filter((s) => marks[s.id]?.verdict === "unclear"));
   const step = $derived(review?.steps?.[at] ?? null);
 
+  // Which group the reader is in, and where inside it. The board walks one
+  // domain at a time; these are what the banner and the domain keys read.
+  const domains = $derived(review?.domains ?? []);
+  const domainAt = $derived(domains.findIndex((d) => at >= d.from && at <= d.to));
+  const domain = $derived(domains[domainAt] ?? null);
+  const inDomain = $derived(domain ? at - domain.from + 1 : 0);
+  const ofDomain = $derived(domain ? domain.to - domain.from + 1 : 0);
+
+  // [ and ] move by domain rather than by step, which is the navigation the
+  // grouping exists to make possible: a reader who has decided a subject is not
+  // theirs should not have to press → through five steps of it.
+  function goDomain(delta) {
+    if (!domains.length || domainAt < 0) return;
+    const next = domains[Math.min(Math.max(domainAt + delta, 0), domains.length - 1)];
+    if (next) goTo(next.from);
+  }
+
   function seed(wb) {
     review = wb;
     marks = {};
@@ -328,6 +345,8 @@
       // would be a position, and a position is what FR72 removed.
       case "a": aloud(readingRegion ?? "intro"); e.preventDefault(); break;
       case "t": brief = !brief; e.preventDefault(); break;
+      case "[": goDomain(-1); e.preventDefault(); break;
+      case "]": goDomain(1); e.preventDefault(); break;
       case "g": toggleGlossary(); e.preventDefault(); break;
       case "l": bridge.showLibrary().catch(() => {}); e.preventDefault(); break;
       // Esc already means "close the thing that is open"; a reading is one of
@@ -450,8 +469,21 @@
     </header>
 
     <div class="body">
-      <Rail steps={review.steps} {marks} {at} go={goTo} />
+      <Rail steps={review.steps} {marks} {at} go={goTo} domains={review.domains ?? []} />
       <div class="column">
+          <!-- The domain banner. It is keyed on the DOMAIN, not on the step, so
+               it animates once when the reader crosses into a new subject and
+               sits still while they walk through it - which is the whole
+               difference between an opening and a flicker on every arrow press. -->
+          {#if domain}
+            {#key domain.id}
+              <div class="dbanner">
+                <span class="dtitle">{domain.title}</span>
+                <span class="dwhere">{inDomain} of {ofDomain}</span>
+                {#if domain.blurb}<p class="dblurb">{domain.blurb}</p>{/if}
+              </div>
+            {/key}
+          {/if}
         {#key step?.id}
           <Step
             {step}
@@ -486,7 +518,7 @@
     </div>
 
     <footer data-agentbox-find-exclude>
-      ← → step · u understood · x unclear · Enter next unread · n note · c comment · select code to comment · a read the opening aloud · t {brief ? "full text" : "TL;DR"}{#if hasGlossary} · g glossary{/if} · l library · s submit · q close
+      ← → step · u understood · x unclear · Enter next unread · n note · c comment · select code to comment · a read the opening aloud · t {brief ? "full text" : "TL;DR"}{#if domains.length} · [ ] domain{/if}{#if hasGlossary} · g glossary{/if} · l library · s submit · q close
     </footer>
 
     {#if tip}
@@ -519,6 +551,54 @@
     background: var(--k-ground);
     color: var(--k-ink);
   }
+  /* The domain opening. It slides up and fades in once per domain, and the
+     reader crossing from one subject to the next is the one moment on this
+     surface where a movement is doing work: it says "new subject" before a word
+     is read. Suppressed for anybody who asked for less motion - the banner is
+     still there, it just arrives instead of moving. */
+  .dbanner {
+    margin: 0 0 22px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--k-edge);
+    animation: domain-in 380ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  .dtitle {
+    font-family: var(--k-font-mono);
+    font-size: 0.78em;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--k-accent);
+  }
+  .dwhere {
+    margin-left: 10px;
+    font-family: var(--k-font-mono);
+    font-size: 0.76em;
+    color: var(--k-ink-3);
+  }
+  .dbanner .dblurb {
+    margin: 8px 0 0;
+    max-width: 68ch;
+    font-family: var(--k-font-read);
+    font-size: 1em;
+    line-height: 1.5;
+    color: var(--k-ink-2);
+    text-wrap: pretty;
+  }
+  @keyframes domain-in {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  :global([data-motion="reduced"]) .dbanner,
+  :global([data-motion="none"]) .dbanner {
+    animation: none;
+  }
+
   .load-error {
     margin: auto;
     color: var(--k-ink-2);

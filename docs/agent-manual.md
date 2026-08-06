@@ -643,8 +643,10 @@ The spec, in short:
 ```json
 {"version": 1, "title": "...", "repo_root": "/abs/path", "pinned": "commit sha",
  "base": "sha?", "diff": "the change's unified diff",
+ "domains": [{"id": "kebab-id", "title": "The migration",
+              "blurb": "one line, shown when this group opens"}],
  "out_of_scope": [{"paths": "glob", "reason": "..."}],
- "steps": [{"id": "kebab-id", "kind": "ground|code|none|check",
+ "steps": [{"id": "kebab-id", "kind": "ground|code|none|check", "domain": "kebab-id",
    "title": "...", "purpose": "Serves: which requirement. Decided by: what.",
    "tldr": {"bottom": "the one sentence that has to survive",
             "points": ["a load-bearing fact that stands on its own", "..."]},
@@ -655,6 +657,14 @@ The spec, in short:
    "checks": [{"q": "...", "a": "hidden until revealed"}],
    "cmds": [{"cmd": "make check", "expect": "...", "recorded": "YYYY-MM-DD"}]}]}
 ```
+
+`domains` group the steps into the two to four subjects a change actually has,
+and the board then shows one group at a time: the current domain's stations
+listed in the rail, the others collapsed to a line with their own progress, and
+`[` / `]` moving between them. Optional and worth skipping under about eight
+steps. Once any domain is declared every step needs one, and a domain's steps
+must be consecutive - the board walks one domain at a time, so a domain the
+order leaves and returns to would open twice.
 
 `tldr` is required on `code` and `check` steps, and **the board opens in it**.
 It is not the shortened version of the step: the reader it serves has a very

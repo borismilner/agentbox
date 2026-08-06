@@ -39,6 +39,10 @@ const (
 	MaxTLDRBottom = 220
 	MaxTLDRPoint  = 280
 	MaxTLDRPoints = 6
+	// MaxDomains is the point past which grouping stops helping. A review with
+	// eight subjects in it is two reviews, and a rail with eight collapsed groups
+	// is the clutter the grouping was meant to remove.
+	MaxDomains = 6
 )
 
 // Spec is the version-1 walkthrough: what is being reviewed, the change
@@ -46,15 +50,32 @@ const (
 // added/removed knowledge; blocks cite ranges and agentbox derives the rest
 // (FR61: nothing holds a second copy of a citation).
 type Spec struct {
-	Version    int     `json:"version"`
-	Title      string  `json:"title"`
-	RepoRoot   string  `json:"repo_root"`
-	Pinned     string  `json:"pinned"`
-	Base       string  `json:"base,omitempty"`
-	Diff       string  `json:"diff,omitempty"`
-	OutOfScope []Scope `json:"out_of_scope,omitempty"`
-	Glossary   []Term  `json:"glossary,omitempty"`
-	Steps      []Step  `json:"steps"`
+	Version  int    `json:"version"`
+	Title    string `json:"title"`
+	RepoRoot string `json:"repo_root"`
+	Pinned   string `json:"pinned"`
+	Base     string `json:"base,omitempty"`
+	Diff     string `json:"diff,omitempty"`
+	// Domains group the steps into the two or three or five subjects a change
+	// actually has, so a twenty-step review reads as "four things" rather than as
+	// twenty. Optional: a short walk needs no grouping and gets none. Declared
+	// here rather than derived from the steps so a domain can say what it is
+	// about before its first step, and so the order is the author's rather than
+	// an accident of which step came first.
+	Domains    []Domain `json:"domains,omitempty"`
+	OutOfScope []Scope  `json:"out_of_scope,omitempty"`
+	Glossary   []Term   `json:"glossary,omitempty"`
+	Steps      []Step   `json:"steps"`
+}
+
+// Domain is one subject inside a review: the group its steps belong to, and one
+// line saying what the reader is about to be shown. Blurb is what the board puts
+// up when the domain opens, which is the moment a reader decides whether to pay
+// attention, so it is worth a sentence rather than a label.
+type Domain struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Blurb string `json:"blurb,omitempty"`
 }
 
 // Term is one glossary entry: a word the reader may not know, defined once
@@ -91,6 +112,10 @@ type Step struct {
 	Kind    string `json:"kind"` // ground | code | none | check
 	Title   string `json:"title"`
 	Purpose string `json:"purpose,omitempty"`
+	// Domain is the id of the group this step belongs to. Required once the spec
+	// declares any domain at all: a review with three grouped steps and one loose
+	// one reads as a bug in the board, not as a deliberate ungrouped step.
+	Domain string `json:"domain,omitempty"`
 	// TLDR is the step restructured for a reader with a very short attention span.
 	// It is NOT the lossy version: it has to leave that reader with mastery of what
 	// matters most here, which is why it is a shape rather than a string. Prose
@@ -270,6 +295,9 @@ func (s *Spec) validate() ([]string, error) {
 	if err := s.validateGlossary(); err != nil {
 		return nil, err
 	}
+	if err := s.validateDomains(); err != nil {
+		return nil, err
+	}
 	if len(s.Steps) == 0 || len(s.Steps) > MaxSteps {
 		return nil, fmt.Errorf("steps must hold 1-%d entries, got %d", MaxSteps, len(s.Steps))
 	}
@@ -293,6 +321,87 @@ func (s *Spec) validate() ([]string, error) {
 	}
 	warnings = append(warnings, s.glossaryWarnings()...)
 	return warnings, nil
+}
+
+// validateDomains keeps the grouping total. Domains are optional, but a spec
+// that declares them and then leaves a step out of them renders as a review with
+// a hole in its rail, which reads as a defect in the board rather than as a
+// choice - so the rule is all or nothing.
+func (s *Spec) validateDomains() error {
+	if len(s.Domains) == 0 {
+		for i := range s.Steps {
+			if s.Steps[i].Domain != "" {
+				return fmt.Errorf("step %q names domain %q, but the spec declares no domains - add a domains list with that id, or drop the field",
+					s.Steps[i].ID, s.Steps[i].Domain)
+			}
+		}
+		return nil
+	}
+	if len(s.Domains) > MaxDomains {
+		return fmt.Errorf("%d domains; the cap is %d - past that the grouping is the clutter it was meant to remove, and a review with that many subjects is more than one review",
+			len(s.Domains), MaxDomains)
+	}
+	known := make(map[string]bool, len(s.Domains))
+	used := make(map[string]bool, len(s.Domains))
+	for i := range s.Domains {
+		d := &s.Domains[i]
+		if !stepIDRe.MatchString(d.ID) {
+			return fmt.Errorf("domain id %q must match ^[a-z0-9][a-z0-9_-]{0,31}$", d.ID)
+		}
+		if known[d.ID] {
+			return fmt.Errorf("domain id %q appears twice", d.ID)
+		}
+		known[d.ID] = true
+		if strings.TrimSpace(d.Title) == "" || len(d.Title) > 80 {
+			return fmt.Errorf("domain %q needs a title, up to 80 characters", d.ID)
+		}
+		if len(d.Blurb) > 300 {
+			return fmt.Errorf("domain %q: blurb is over 300 characters - it is the line the reader gets when the domain opens, not its summary", d.ID)
+		}
+	}
+	for i := range s.Steps {
+		st := &s.Steps[i]
+		if st.Domain == "" {
+			return fmt.Errorf("step %q has no domain, but this spec groups its steps - every step needs one, or the rail shows a review with a hole in it. Domains declared: %s",
+				st.ID, strings.Join(domainIDs(s.Domains), ", "))
+		}
+		if !known[st.Domain] {
+			return fmt.Errorf("step %q names domain %q, which is not declared. Domains declared: %s",
+				st.ID, st.Domain, strings.Join(domainIDs(s.Domains), ", "))
+		}
+		used[st.Domain] = true
+	}
+	for _, d := range s.Domains {
+		if !used[d.ID] {
+			return fmt.Errorf("domain %q has no steps in it - an empty group is a heading the reader opens onto nothing", d.ID)
+		}
+	}
+	// Contiguity is the whole point: the board shows one domain at a time, so a
+	// domain the step order leaves and comes back to would open twice and finish
+	// neither time.
+	seen := map[string]bool{}
+	last := ""
+	for i := range s.Steps {
+		d := s.Steps[i].Domain
+		if d == last {
+			continue
+		}
+		if seen[d] {
+			return fmt.Errorf("step %q returns to domain %q after leaving it - the board walks one domain at a time, so a domain's steps must be consecutive. Reorder the steps, or split it into two domains",
+				s.Steps[i].ID, d)
+		}
+		seen[d] = true
+		last = d
+	}
+	return nil
+}
+
+func domainIDs(ds []Domain) []string {
+	out := make([]string, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, d.ID)
+	}
+	return out
 }
 
 func (s *Spec) validateGlossary() error {

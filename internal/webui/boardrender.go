@@ -39,12 +39,31 @@ type wireBoard struct {
 	Pos    int    `json:"pos"`
 	// RevMS bumps on every snapshot so the surface can tell its own echo
 	// from a real change (the wireDoc pattern).
-	RevMS    int64      `json:"revMs"`
-	Steps    []wireStep `json:"steps"`
-	Glossary []wireTerm `json:"glossary,omitempty"`
+	RevMS int64      `json:"revMs"`
+	Steps []wireStep `json:"steps"`
+	// Domains group the steps, when the author grouped them. Empty means an
+	// ungrouped review, which the board renders exactly as it always did. The
+	// step index range is computed here rather than in the surface because
+	// contiguity is a spec rule and Go is the side that enforces it.
+	Domains  []wireDomain `json:"domains,omitempty"`
+	Glossary []wireTerm   `json:"glossary,omitempty"`
 
 	Marks    map[string]wireMark `json:"marks"`
 	Comments []wireComment       `json:"comments"`
+}
+
+// wireDomain is one group of steps as the rail needs it: what to call it, the
+// line it opens with, and where its steps are.
+type wireDomain struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Blurb string `json:"blurb,omitempty"`
+	// From and To are inclusive indexes into Steps, and Counted is how many of
+	// those are code steps - the rail's progress is over what counts, the same
+	// number the header totals.
+	From    int `json:"from"`
+	To      int `json:"to"`
+	Counted int `json:"counted"`
 }
 
 type wireStep struct {
@@ -79,6 +98,45 @@ func tldrOf(t *walkthrough.TLDR) *wireTLDR {
 		return nil
 	}
 	return &wireTLDR{Bottom: t.Bottom, Points: t.Points}
+}
+
+// domainRows walks the steps once and hands the rail each group's index range.
+// The spec already guarantees a domain's steps are consecutive, so one pass is
+// enough and the surface never has to scan for a group's boundaries while it
+// paints.
+func domainRows(spec *walkthrough.Spec, steps []wireStep) []wireDomain {
+	if spec == nil || len(spec.Domains) == 0 {
+		return nil
+	}
+	at := make(map[string]int, len(spec.Domains))
+	out := make([]wireDomain, 0, len(spec.Domains))
+	for _, d := range spec.Domains {
+		at[d.ID] = len(out)
+		out = append(out, wireDomain{ID: d.ID, Title: d.Title, Blurb: d.Blurb, From: -1, To: -1})
+	}
+	for i := range spec.Steps {
+		j, ok := at[spec.Steps[i].Domain]
+		if !ok || i >= len(steps) {
+			continue
+		}
+		if out[j].From < 0 {
+			out[j].From = i
+		}
+		out[j].To = i
+		if spec.Steps[i].Kind == "code" {
+			out[j].Counted++
+		}
+	}
+	// A domain with no steps cannot pass validation, but a spec stored before the
+	// rule existed could still hold one, and a group whose range is [-1,-1] would
+	// render as a heading over nothing.
+	kept := out[:0]
+	for _, d := range out {
+		if d.From >= 0 {
+			kept = append(kept, d)
+		}
+	}
+	return kept
 }
 
 // wireProse is one prose segment. T always carries the whole text - find and
@@ -190,10 +248,13 @@ var boardFmt = chromahtml.New(
 // steps. Render never fails whole: a block that cannot be read carries an
 // honest Err and the walk goes on. renderMiss reports each such block for
 // the log (path may be empty for snippet-shaped failures).
-func renderSteps(specJSON, diff, root string, pinned []store.Excerpt, renderMiss func(step, path, reason string)) ([]wireStep, []wireTerm, error) {
+// renderSteps also hands back the parsed spec, because the grouping the rail
+// needs is spec-level and re-parsing the JSON to read six titles off it would be
+// a second source for the same thing.
+func renderSteps(specJSON, diff, root string, pinned []store.Excerpt, renderMiss func(step, path, reason string)) ([]wireStep, []wireTerm, *walkthrough.Spec, error) {
 	var spec walkthrough.Spec
 	if err := json.Unmarshal([]byte(specJSON), &spec); err != nil {
-		return nil, nil, fmt.Errorf("stored spec does not parse: %w", err)
+		return nil, nil, nil, fmt.Errorf("stored spec does not parse: %w", err)
 	}
 	manifest := change.Parse(diff)
 	files := newFileCache(root, pinned)
@@ -266,7 +327,7 @@ func renderSteps(specJSON, diff, root string, pinned []store.Excerpt, renderMiss
 		t := &spec.Glossary[i]
 		glossary = append(glossary, wireTerm{Key: t.Key(), Term: t.Term, Short: t.Short, Body: t.Body})
 	}
-	return steps, glossary, nil
+	return steps, glossary, &spec, nil
 }
 
 func renderBlock(b *walkthrough.Block, manifest change.Set, files *fileCache, noteNum *int) wireCode {
@@ -475,14 +536,15 @@ func displayRepo(root string) string {
 // boardSnapshot assembles the full wire model from stored state.
 func boardSnapshot(w store.Walkthrough, marks []store.Mark, comments []store.Comment, revMS int64,
 	renderMiss func(step, path, reason string)) (*wireBoard, error) {
-	steps, glossary, err := renderSteps(w.Spec, w.Diff, w.RepoRoot, w.Excerpts, renderMiss)
+	steps, glossary, spec, err := renderSteps(w.Spec, w.Diff, w.RepoRoot, w.Excerpts, renderMiss)
 	if err != nil {
 		return nil, err
 	}
 	wb := &wireBoard{
 		ID: w.ID, Title: w.Title, Repo: displayRepo(w.RepoRoot), Root: w.RepoRoot,
 		Pinned: w.PinnedSHA, State: w.State, Rev: w.SpecRev, Pos: w.Pos, RevMS: revMS,
-		Steps: steps, Glossary: glossary, Marks: map[string]wireMark{}, Comments: []wireComment{},
+		Steps: steps, Domains: domainRows(spec, steps), Glossary: glossary,
+		Marks: map[string]wireMark{}, Comments: []wireComment{},
 	}
 	for _, m := range marks {
 		wb.Marks[m.StepID] = wireMark{Verdict: m.Verdict, Note: m.Note, Revealed: m.Revealed, Stale: m.Stale}

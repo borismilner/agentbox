@@ -59,7 +59,7 @@ func TestCapturedSourceWinsOverTheFileOnDisk(t *testing.T) {
 		Text: "what it said when the review was written", Source: store.ExcerptWorktree,
 	}}
 
-	steps, _, err := renderSteps(pinnedSpec(t, "a.go", 1, 1), "", root, pinned, nil)
+	steps, _, _, err := renderSteps(pinnedSpec(t, "a.go", 1, 1), "", root, pinned, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestWithoutACaptureTheFileIsStillRead(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("on disk\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	steps, _, err := renderSteps(pinnedSpec(t, "a.go", 1, 1), "", root, nil, nil)
+	steps, _, _, err := renderSteps(pinnedSpec(t, "a.go", 1, 1), "", root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestACaptureSurvivesTheFileBeingDeleted(t *testing.T) {
 		Path: "cmd/gone/main.go", FromLine: 10, ToLine: 11,
 		Text: "func main() {\n}", Source: store.ExcerptGit,
 	}}
-	steps, _, err := renderSteps(pinnedSpec(t, "cmd/gone/main.go", 10, 11), "", root, pinned, nil)
+	steps, _, _, err := renderSteps(pinnedSpec(t, "cmd/gone/main.go", 10, 11), "", root, pinned, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestACaptureSurvivesTheFileBeingDeleted(t *testing.T) {
 func TestAMissingCaptureAndAMissingFileStillReportsHonestly(t *testing.T) {
 	root := t.TempDir()
 	var missed []string
-	steps, _, err := renderSteps(pinnedSpec(t, "cmd/gone/main.go", 10, 11), "", root, nil,
+	steps, _, _, err := renderSteps(pinnedSpec(t, "cmd/gone/main.go", 10, 11), "", root, nil,
 		func(step, path, reason string) { missed = append(missed, reason) })
 	if err != nil {
 		t.Fatal(err)

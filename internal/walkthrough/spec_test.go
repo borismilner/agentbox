@@ -427,3 +427,111 @@ func TestTLDRSurvivesTheRoundTrip(t *testing.T) {
 		t.Fatalf("tldr = %+v", got.TLDR)
 	}
 }
+
+// Domains (2026-08-06). The board walks one group at a time, which is what
+// makes contiguity a rule rather than a preference.
+func TestDomainsValid(t *testing.T) {
+	m := good()
+	m["domains"] = []map[string]any{{"id": "core", "title": "The guard", "blurb": "what stops the swap"}}
+	m["steps"].([]map[string]any)[0]["domain"] = "core"
+	s, _, err := Parse(mustRaw(t, m))
+	if err != nil {
+		t.Fatalf("a grouped spec was refused: %v", err)
+	}
+	if len(s.Domains) != 1 || s.Step("xkb").Domain != "core" {
+		t.Fatalf("domains = %+v", s.Domains)
+	}
+}
+
+func TestDomainsAreOptional(t *testing.T) {
+	// A short walk needs no grouping, and that is the right answer rather than a
+	// fallback: the rail it gets is the one it always had.
+	if _, _, err := Parse(mustRaw(t, good())); err != nil {
+		t.Fatalf("an ungrouped spec was refused: %v", err)
+	}
+}
+
+func TestDomainTeachingErrors(t *testing.T) {
+	two := func() map[string]any {
+		m := good()
+		first := m["steps"].([]map[string]any)[0]
+		second := map[string]any{}
+		for k, v := range first {
+			second[k] = v
+		}
+		second["id"] = "second"
+		m["steps"] = []map[string]any{first, second}
+		return m
+	}
+	cases := []struct {
+		name  string
+		build func() map[string]any
+		wants string
+	}{
+		{"a step names a domain nothing declares", func() map[string]any {
+			m := good()
+			m["steps"].([]map[string]any)[0]["domain"] = "ghost"
+			return m
+		}, "declares no domains"},
+		{"an undeclared id with domains present", func() map[string]any {
+			m := good()
+			m["domains"] = []map[string]any{{"id": "core", "title": "Core"}}
+			m["steps"].([]map[string]any)[0]["domain"] = "ghost"
+			return m
+		}, "is not declared"},
+		{"a step left out of the grouping", func() map[string]any {
+			m := two()
+			m["domains"] = []map[string]any{{"id": "core", "title": "Core"}}
+			m["steps"].([]map[string]any)[0]["domain"] = "core"
+			return m
+		}, "a review with a hole in it"},
+		{"an empty domain", func() map[string]any {
+			m := good()
+			m["domains"] = []map[string]any{{"id": "core", "title": "Core"}, {"id": "spare", "title": "Spare"}}
+			m["steps"].([]map[string]any)[0]["domain"] = "core"
+			return m
+		}, "no steps in it"},
+		{"a domain with no title", func() map[string]any {
+			m := good()
+			m["domains"] = []map[string]any{{"id": "core"}}
+			m["steps"].([]map[string]any)[0]["domain"] = "core"
+			return m
+		}, "needs a title"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, err := Parse(mustRaw(t, c.build()))
+			if err == nil {
+				t.Fatal("accepted")
+			}
+			if !strings.Contains(err.Error(), c.wants) {
+				t.Fatalf("got %v, want it to say %q", err, c.wants)
+			}
+		})
+	}
+}
+
+func TestDomainStepsMustBeConsecutive(t *testing.T) {
+	// A B A. The board opens a domain when the reader enters it, so a domain that
+	// is left and returned to would open twice and finish neither time.
+	m := good()
+	first := m["steps"].([]map[string]any)[0]
+	mk := func(id, dom string) map[string]any {
+		st := map[string]any{}
+		for k, v := range first {
+			st[k] = v
+		}
+		st["id"] = id
+		st["domain"] = dom
+		return st
+	}
+	m["domains"] = []map[string]any{{"id": "a", "title": "A"}, {"id": "b", "title": "B"}}
+	m["steps"] = []map[string]any{mk("one", "a"), mk("two", "b"), mk("three", "a")}
+	_, _, err := Parse(mustRaw(t, m))
+	if err == nil {
+		t.Fatal("an interleaved grouping was accepted")
+	}
+	if !strings.Contains(err.Error(), "must be consecutive") {
+		t.Fatalf("got %v", err)
+	}
+}
