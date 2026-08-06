@@ -167,6 +167,21 @@ type Config struct {
 	Markdown struct {
 		CodeTheme string `toml:"code_theme"` // auto | nord | gruvbox | github | onedark | dracula
 	} `toml:"markdown"`
+	// Editor opens a cited file at its line, from the review board (FR65).
+	// Command is an argv template, not a command line, so a path with a space in
+	// it stays one argument: the placeholders are {dir}, {file}, {line} and
+	// {column}, substituted inside a word as well as as a whole one. Empty means
+	// agentbox looks for a launcher it knows the argument shape of, and falls back
+	// to xdg-open (which loses the line). The argument ORDER is per editor and
+	// unforgiving - `goland --line 12 f.go` is rejected outright - so set this
+	// rather than assume:
+	//   command = ["goland", "{dir}", "--line", "{line}", "--column", "{column}", "{file}"]
+	//   command = ["code", "--goto", "{file}:{line}:{column}"]
+	// $EDITOR is deliberately not consulted: it is usually a terminal editor and
+	// the daemon has no terminal to give it. Name the terminal here instead.
+	Editor struct {
+		Command []string `toml:"command"`
+	} `toml:"editor"`
 	Font struct {
 		SizePt  float64 `toml:"size_pt"`
 		Family  string  `toml:"family"`  // interface chrome; empty = system

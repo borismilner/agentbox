@@ -220,6 +220,28 @@ chart_palette = "theme"    # chart colors come from the active theme
                            # [window] measure_px / viewer_width / viewer_height
 watch_default = false      # `agentbox show --watch` opts in per call
 
+[editor]                   # the open button on a cited code block (FR65)
+command = []               # an argv TEMPLATE, not a command line, so a path with
+                           # a space in it stays one argument. Placeholders are
+                           # {dir} (the review's repo root), {file} (absolute),
+                           # {line} and {column}, substituted inside a word as
+                           # well as as a whole one:
+                           #   ["goland", "{dir}", "--line", "{line}", "--column", "{column}", "{file}"]
+                           #   ["code", "--goto", "{file}:{line}:{column}"]
+                           #   ["kitty", "-e", "nvim", "+{line}", "{file}"]
+                           # The order is per editor and unforgiving - GoLand
+                           # rejects --line before the project directory - so an
+                           # empty value does NOT guess an order: it looks for a
+                           # launcher whose shape agentbox knows (the JetBrains
+                           # family first, because with the project already open
+                           # theirs routes to that window instead of a second
+                           # one), then falls back to xdg-open, which opens the
+                           # file and loses the line. $EDITOR is deliberately not
+                           # consulted: it is usually a terminal editor and the
+                           # daemon has no terminal to give it, so honouring it
+                           # would be a click that silently does nothing. Name
+                           # the terminal here instead, as in the third example
+
 [theme]
 mode = "auto"              # auto | dark | light; auto follows the desktop live
 ground = "graphite"        # graphite | ink | slate; hand-tuned dark/light pairs
