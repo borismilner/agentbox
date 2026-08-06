@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -528,5 +529,97 @@ func TestPauseTwiceDoesNotRestartTheClockOrDeadlock(t *testing.T) {
 	c.Resume("the strip")
 	if paused, _ := c.Paused(); paused {
 		t.Error("one resume did not clear a doubled pause")
+	}
+}
+
+func TestAForgottenPauseRaisesOneCardWithSomebodyParked(t *testing.T) {
+	// FR94's escalation. The strip has already gone amber, so this is for the
+	// human who walked away from the screen - which is why it goes through the
+	// item path and chimes rather than being another thing on the strip.
+	c, _ := newTestControl()
+	type card struct {
+		title, body string
+		actions     []proto.Action
+	}
+	got := make(chan card, 4)
+	c.SetNag(func(title, body string, a []proto.Action) { got <- card{title, body, a} })
+
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	c.Activity(agentA, "clicking through the settings surface")
+	c.Pause("the hotkey")
+	c.mu.Lock()
+	c.pausedAt = time.Now().Add(-pauseNagAfter) // as if it had been held that long
+	c.mu.Unlock()
+	c.nag()
+
+	select {
+	case k := <-got:
+		if !strings.Contains(k.title, agentA.Agent) {
+			t.Errorf("the card does not name who is parked: %q", k.title)
+		}
+		if !strings.Contains(k.body, "clicking through the settings surface") {
+			t.Errorf("the card does not say what it is parked mid-way through: %q", k.body)
+		}
+		if len(k.actions) != 1 || !strings.Contains(k.actions[0].Exec, "control resume") {
+			t.Errorf("the card's button is %+v, want one that resumes", k.actions)
+		}
+	default:
+		t.Fatal("a three-minute pause with an agent parked raised nothing")
+	}
+}
+
+func TestAnIdlePauseIsNeverNagged(t *testing.T) {
+	// He latched an idle desktop on purpose. Telling him an agent is waiting when
+	// none is would be the same lie the strip's warm state was caught telling on
+	// screen, and this is the version of it that also makes a noise.
+	c, _ := newTestControl()
+	raised := 0
+	c.SetNag(func(string, string, []proto.Action) { raised++ })
+
+	c.Pause("the hotkey")
+	c.nag()
+	if raised != 0 {
+		t.Errorf("an idle latch raised %d cards", raised)
+	}
+
+	// And the same once an agent has released while he held the desktop: nobody
+	// is waiting any more, so there is nothing left to be nagged about.
+	c.Resume("the strip")
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	c.Pause("the hotkey")
+	c.Release(agentA)
+	c.nag()
+	if raised != 0 {
+		t.Errorf("a latch with its run released raised %d cards", raised)
+	}
+}
+
+func TestResumingBeforeTheNagCancelsIt(t *testing.T) {
+	// The ordinary case: he takes the desktop for twenty seconds and hands it
+	// back. A card arriving after that would be about nothing.
+	c, _ := newTestControl()
+	raised := make(chan struct{}, 4)
+	c.SetNag(func(string, string, []proto.Action) { raised <- struct{}{} })
+
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	c.Pause("the hotkey")
+	c.mu.Lock()
+	armed := c.nagTimer != nil
+	c.mu.Unlock()
+	if !armed {
+		t.Fatal("pausing with a run parked did not arm the card")
+	}
+
+	c.Resume("the strip")
+	c.mu.Lock()
+	stillArmed := c.nagTimer != nil
+	c.mu.Unlock()
+	if stillArmed {
+		t.Error("the card is still armed after a resume")
+	}
+	select {
+	case <-raised:
+		t.Error("a card was raised for a pause that had already ended")
+	case <-time.After(50 * time.Millisecond):
 	}
 }

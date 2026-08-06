@@ -555,6 +555,12 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	// asks the table for holds and waits when it renders a row. Each direction
 	// takes only its own lock, which is what keeps the pair from deadlocking.
 	d.locks.SetObservers(d.roster.announced, d.roster.agentOf, d.askingKeys, d.lockWarn, d.roster.changed)
+	// The forgotten-pause card (FR94). It goes through the item path rather than
+	// the strip, because the strip is already saying this to a screen he is not
+	// looking at - the card is for the one who walked away, and it chimes.
+	d.control.SetNag(func(title, body string, actions []proto.Action) {
+		d.surfaceNotify(proto.LevelWarning, proto.Identity{Agent: "agentbox"}, title, body, actions...)
+	})
 	// An attach dropping is a session dying, and its locks must not silently
 	// free the resources its work may still be using (locks.go, the orphan rule).
 	// The signal hub is told too, so a machine that has run all day is not holding
@@ -1909,10 +1915,10 @@ func (d *Daemon) surfaceError(agent, title, body string) {
 // surfaceNotify enqueues a daemon-originated notify toast (an action error, a
 // progress completion) through the normal display path so it chimes, shows and
 // lands in history.
-func (d *Daemon) surfaceNotify(level proto.Level, id proto.Identity, title, body string) {
+func (d *Daemon) surfaceNotify(level proto.Level, id proto.Identity, title, body string, actions ...proto.Action) {
 	it := &proto.Item{
 		ID: newID(), Kind: proto.KindNotify, Level: level,
-		Title: title, Body: body, Identity: id,
+		Title: title, Body: body, Identity: id, Actions: actions,
 	}
 	if err := d.st.CreateItem(it); err != nil {
 		d.log.Error("store.create_failed", "component", "daemon", "item_id", it.ID, "err", err.Error())

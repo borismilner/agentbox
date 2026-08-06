@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -49,6 +50,12 @@ type control struct {
 	// Waiters take a copy under the lock and select on it, so a resume wakes
 	// everybody parked at once without the daemon tracking who they are.
 	resumed chan struct{}
+	// nag fires once, pauseNagAfter into a pause with somebody parked behind it.
+	// A timer rather than a ticker because a pause is a discrete event with a
+	// discrete end: there is nothing to poll for, and a clock running all day to
+	// notice something that happens on a state change would be the wrong shape.
+	nagTimer *time.Timer
+	nagWith  func(title, body string, actions []proto.Action)
 }
 
 // pauseWait is how long an agent parks on a latched desktop before it is told to
@@ -57,6 +64,16 @@ type control struct {
 // minutes is past any interruption Boris described when he asked for this. The
 // run is not ended when it elapses - only the waiting is.
 const pauseWait = 10 * time.Minute
+
+// pauseNagAfter is when a forgotten pause becomes worth a card. The strip has
+// already gone amber at two minutes and it is always on screen and always on
+// top, so this is not for the human looking at his desktop - it is for the one
+// who walked away from it, and it chimes for that reason.
+//
+// It fires once and never repeats. An agent parked behind a latch is not an
+// emergency: it gives up on its own at pauseWait with its run intact, so a
+// second and third card would be nagging about a situation that resolves itself.
+const pauseNagAfter = 3 * time.Minute
 
 // errPaused is what a parked caller is told when its wait runs out. It says the
 // run is still its own, because the failure mode this whole feature exists to
@@ -304,6 +321,7 @@ func (c *control) Pause(how string) proto.ControlResult {
 	if run != nil {
 		agent = run.identity.Agent
 	}
+	c.nagTimer = time.AfterFunc(pauseNagAfter, c.nag)
 	c.mu.Unlock()
 
 	c.log.Info(logging.EvControl, "component", "daemon", "control", "paused",
@@ -331,6 +349,12 @@ func (c *control) Resume(how string) proto.ControlResult {
 		close(c.resumed) // wakes everybody parked, at once
 		c.resumed = nil
 	}
+	// Before anything else can observe the resume: a card that arrives a beat
+	// after he has already handed the desktop back is worse than no card.
+	if c.nagTimer != nil {
+		c.nagTimer.Stop()
+		c.nagTimer = nil
+	}
 	run, show, hide := c.run, c.show, c.hide
 	c.mu.Unlock()
 
@@ -343,6 +367,55 @@ func (c *control) Resume(how string) proto.ControlResult {
 		hide()
 	}
 	return c.State()
+}
+
+// SetNag wires the card a forgotten pause raises. Separate from the surface
+// because it goes through the ordinary item path - it chimes, it queues and it
+// lands in history like anything else - while show/hide paint one window
+// directly.
+func (c *control) SetNag(fn func(title, body string, actions []proto.Action)) {
+	c.mu.Lock()
+	c.nagWith = fn
+	c.mu.Unlock()
+}
+
+// nag is the three-minute card. It only speaks when somebody is actually parked:
+// a latch he put on an idle desktop is a decision, not a thing that has been
+// forgotten, and a card telling him an agent is waiting when none is would be
+// the same lie the strip's warm state was caught telling.
+func (c *control) nag() {
+	c.mu.Lock()
+	paused, run, with := c.paused, c.run, c.nagWith
+	held := time.Since(c.pausedAt)
+	c.nagTimer = nil
+	c.mu.Unlock()
+	if !paused || run == nil || with == nil {
+		return
+	}
+
+	agent := nameOr(run.identity.Agent, "an agent")
+	c.log.Info(logging.EvControl, "component", "daemon", "control", "nagged",
+		"agent", run.identity.Agent, "paused_s", int(held.Seconds()))
+	// One button, and it is the one that undoes this. There is deliberately no
+	// "end the run" here: the agent gives up on its own at pauseWait and is told
+	// its run survived, which is a gentler end than cutting it off mid-sequence,
+	// and a button that fires an irreversible thing from a card he may be reading
+	// in passing is the wrong shape for a state that resolves itself.
+	with(
+		fmt.Sprintf("%s has been parked for %s", agent, roundDur(held)),
+		fmt.Sprintf("It is waiting on your desktop, part way through a run%s. "+
+			"It gives up on its own in %s - the run survives, it just stops waiting. "+
+			"Resume whenever you are done; nothing resumes it but you.",
+			activitySuffix(run.activity), roundDur(pauseWait-held)),
+		[]proto.Action{{Label: "Resume now", Exec: "agentbox control resume"}},
+	)
+}
+
+func activitySuffix(activity string) string {
+	if activity == "" {
+		return ""
+	}
+	return " (" + activity + ")"
 }
 
 // Paused reports the latch and how long it has been on, without blocking. The
