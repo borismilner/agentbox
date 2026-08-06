@@ -924,9 +924,9 @@ not pick.
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. [../HANDOFF.md](../HANDOFF.md)
-carries the current short order (FR95's mock, now that FR94 shipped on
-2026-08-06); the numbered list below is the long tail behind it, kept for the
-items nothing else records.
+carries the current short order (FR95's cards half, now that its other three
+answers shipped on 2026-08-06); the numbered list below is the long tail behind
+it, kept for the items nothing else records.
 
 1. **FR74's fullscreen marker was watched on 2026-08-06 and is half right.**
    Session 49 held the desktop, put a `gnome-terminal` fullscreen and looked. The

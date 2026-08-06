@@ -10,7 +10,9 @@ recommendation), built three of the four, and found the fourth question itself.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean; 8 commits ahead of origin unless Boris pushed
+git status -sb              # expect clean; ahead of origin/main unless Boris pushed
+                            # origin is gitlab and IS main's upstream; the `github`
+                            # remote is 46 behind and is not where this goes
 make deployed               # expect e0a54250a579 or later
 agentbox control state      # expect "no run: the desktop is the human's", no quiet suffix
 agentbox pending            # expect "nothing pending"
@@ -127,15 +129,19 @@ worth writing carefully:
   somewhere else on screen, or release the desktop first.
 
 The probe that answered all this is **not committed**; a copy is
-`fr95-probe-main.go.txt` in the scratchpad below. It has to live under
-`internal/` to resolve the module's xgb dependency.
+`fr95-probe-main.go.txt` in the scratchpad below. It has to live under `internal/`
+to resolve the module's xgb dependency. **Nothing is lost if the scratchpad goes**:
+what it measured is in "Mechanics discovered" and what it taught is in the four
+bullets above, so a fresh probe is half an hour and needs no archaeology.
 
 ## The mock, and how it was checked before he saw it
 
 [docs/mocks/fr95-recording-mode.html](docs/mocks/fr95-recording-mode.html), and
 it was **driven headless in Chrome over the DevTools protocol before it went on
 his screen** - 35 assertions over every state, the settle path included. The
-driver is `drive_mock.py` in the scratchpad and it is worth reusing:
+driver is `drive_mock.py` in the scratchpad. It is not committed and does not need
+to be recovered - the three things worth knowing are here - but if a third mock gets
+this treatment it has earned a place under `tools/`:
 
 - `google-chrome --headless=new --remote-debugging-port=N --user-data-dir=...`,
   then the websocket from `http://127.0.0.1:N/json`. **`websocket-client` must be
@@ -151,13 +157,20 @@ driver is `drive_mock.py` in the scratchpad and it is worth reusing:
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `e0a54250a579`, which is HEAD~1. The only commit after it is
-  docs, so nothing is owed - but check `make deployed` against `git log` before
-  assuming.
-- **Git:** `main`, clean, **8 commits ahead of `origin/main`** at handoff and
-  **not pushed** - Boris pushes `main` himself. Oldest first: `60b766d` `ab8e64f`
-  `ed0a1f8` `1e98d79` `fd45c09` `9f49ec8` `e0a5425` `5764e68`, plus this
-  handoff's own commit. Run `git status -sb`: that is the only truthful answer.
+- **Deployed:** `e0a54250a579`. Every commit after it is docs, so no deploy is
+  owed - but check `make deployed` against `git log` before assuming, and remember
+  a replaced binary is not a deployed binary (`make deployed` asks the running
+  daemon, the file cannot answer).
+- **Git:** `main`, clean, **9 commits ahead of `origin/main`** and **not pushed** -
+  Boris pushes `main` himself. Oldest first: `60b766d` `ab8e64f` `ed0a1f8`
+  `1e98d79` `fd45c09` `9f49ec8` `e0a5425` `5764e68` `f7f3603`, plus whatever a
+  later `/handoff` adds. Run `git status -sb`: that is the only truthful answer.
+- **Two remotes, and only one of them is the tree.** `origin` is
+  `git@gitlab.com:fu-bar/agentbox.git` and is `main`'s upstream. `github`
+  (`git@github.com:borismilner/agentbox.git`) is **46 commits behind** and is not
+  where this work goes. A bare `git push` is fine because the upstream is set; a
+  `git push github main` is not what you want, and reading `git remote -v` top-down
+  gives you the wrong one first.
 - **One commit was amended after its deploy.** `e0a5425` was `83e39fb` before its
   message was corrected, so a binary built at `83e39fb` was briefly deployed with
   a sha that is no longer in history. Redeployed at `e0a5425`; nothing to do.
@@ -179,11 +192,11 @@ driver is `drive_mock.py` in the scratchpad and it is worth reusing:
   (`w1-demoted.png`, `x1-kiosk.png`, `x2-uncovered.png`, `x3-paused.png`,
   `y1-final.png` are the states above; `drive_mock.py`, `measure.py`,
   `fr95-probe-main.go.txt` are the tools). Deliberately not committed.
-- **Usage at handoff:** session **81%**, resets 2026-08-06 18:39 Asia/Jerusalem
-  (minutes away, so a cap here costs nothing); week (all models) **25%**, resets
-  2026-08-12 05:00. This is a stopping point, not a rescue - item 1 was left
-  because it is the biggest slice and the session budget was thin, not because
-  anything blocks it.
+- **Usage at handoff:** session **82%**, resetting 2026-08-06 18:40
+  Asia/Jerusalem, which is minutes away - so a fresh session starts with a full
+  budget whatever this says; week (all models) **25%**, resets 2026-08-12 05:00.
+  This is a stopping point, not a rescue: item 1 was left because it is the biggest
+  slice and this session's budget was thin, not because anything blocks it.
 - **In-flight edits: none.**
 
 ## Blocked on you (Boris)
