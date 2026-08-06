@@ -144,6 +144,7 @@
   // after every layout-affecting change and let Go resize; ResizeObserver
   // catches the reflow that markdown, a reply box or a form row causes.
   let shell = $state(null);
+  let remeasure = () => {};
   $effect(() => {
     if (!shell) return;
     // The measurement has to be taken with min-height off, or it is circular:
@@ -165,10 +166,30 @@
       measuring = false;
       bridge.fit(h);
     };
+    remeasure = report;
     const ro = new ResizeObserver(report);
     ro.observe(shell);
     report();
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      remeasure = () => {};
+    };
+  });
+
+  // The observer sees the card GROW and cannot see it shrink: past the window's
+  // height the content pushes the shell out and the observer fires, but under it
+  // min-height holds the shell at the window's size and nothing changes to
+  // observe. So anything that can make the card shorter says so itself. Without
+  // this, folding the reasoning away left the window as tall as it had been with
+  // the reasoning open - which is the same defect from the other side, and the
+  // one that survived the first fix.
+  $effect(() => {
+    void proseOpen;
+    void stackOpen;
+    void replying;
+    void view?.item?.id;
+    void view?.graced;
+    queueMicrotask(() => remeasure());
   });
 
   function choose(i) {
