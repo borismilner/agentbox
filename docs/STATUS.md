@@ -851,6 +851,15 @@ which still renders with its own count.
   clean, and quietly a different thing when it is not. Comparing the two at
   create time and warning on a mismatch is the obvious next step; it was left
   out to keep create free of a git subprocess.
+- **`MaxSpecBytes` is documented but never enforced on its own** (session 53).
+  `Parse` checks the whole payload against `MaxSpecBytes+MaxDiffBytes` and then
+  the diff against `MaxDiffBytes`, so a spec carrying no diff may be 3 MB - three
+  times the 1 MB the constant reads as. The worst case measured is a 2.8 MB spec
+  with a full 48-term glossary of near-miss spellings: **940 ms in `Parse`**,
+  nearly all of it the glossary scan, which is O(prose x spellings). Bounded and
+  one-shot on create, so it is a documented bound rather than a patch: the
+  obvious check (`len(raw) - len(s.Diff)`) counts a heavily-escaped diff against
+  the spec's half and would refuse honest specs at the extreme.
 - **Nothing in the UI says whether a block came from the capture or the live
   file.** `wireCode.Pinned` travels on the wire and the surface ignores it. It
   matters the moment a margin note stops matching its code, because that is the
