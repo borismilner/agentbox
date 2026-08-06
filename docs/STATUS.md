@@ -794,6 +794,17 @@ which still renders with its own count.
   heuristic: markup with a `<script>` runs, a table does not. The
   interaction channel is verified through the CLI and unit tests, not yet
   through an MCP host.
+- **The drop-down panel is not an inline host, and it is not clear that is
+  right.** `inlineRoutable` requires the APP window (`AppOpen()`), so a question
+  from a conversation shown in the drop-down panel opens as a card instead -
+  seen on 2026-08-06 with `webui-demo ask panel`, the card landing at 470x258
+  squarely over the panel's lower half. That is the exact thing FR49 exists to
+  prevent ("the context the question is about is what a card would cover"), and
+  the panel has the same transcript and the same composer the rule is written
+  about. Nothing in the docs says the exclusion was decided, only that the rule
+  says `appOpen`; it may simply be what got built. **A question for Boris, not a
+  fix to make unasked** - it changes where his questions appear. Whichever way it
+  goes, `rerouteAsk` would need the panel's close as well as the app's.
 - Session surface, deliberate scope cuts: the stream-json permission
   control_request protocol is not handled (so only the non-stalling modes
   plan/Full are offered, not default/acceptEdits); whether `plan` mode lets
@@ -1077,10 +1088,22 @@ automatic minimum is its content, so the panel held its full height whatever the
 window did. The transcript went to nothing and the overflow came off the bottom -
 which is the composer. At 1000x520 the reply box was a clipped sliver with no
 Send button, so a long question could be read and not answered. The panel now
-yields: the body is the only part that shrinks (`flex: 0 1 auto`, `min-height: 0`,
-260px still the cap when there is room) and `.composer` never shrinks at all.
+yields, in two stages, and both were arrived at on screen rather than on paper:
+its body absorbs the squeeze first (`min-height: 0`, 260px still the cap when
+there is room) so the controls stay put, and past that the panel scrolls as a
+unit. `.composer` never shrinks at all.
+
+The second stage is not belt-and-braces, it is a defect the first version
+shipped with: at 22pt in a 900x560 window the body reached zero and the controls
+carried on past the panel's own edge, over the composer and the status bar.
+Leaning on the automatic minimum instead of `min-height: 0` does not fix it - the
+panel's min-content includes the body's text, so nothing shrinks at all and the
+composer goes straight back off the window. Both wrong shapes were built and
+looked at before the right one.
+
 `webui-demo ask`'s second item is a long-bodied one, added so the case is looked
-at rather than reasoned about.
+at rather than reasoned about, and `webui-demo ask panel` puts the same items in
+the drop-down panel.
 
 **The 2026-08-01 priority reset is spent:** it put the main panel and recurring
 assignments (FR81/FR82) first, and both shipped by 2026-08-04. FR95 closed on

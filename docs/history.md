@@ -55,6 +55,27 @@ the composer never does - and it was seen at 1000x520 before and after, scrolled
 inside its own body, and re-checked at 1180x860 to confirm nothing moved where
 there was already room.
 
+**The first fix for it was wrong, and only the screen said so.** Letting the
+panel shrink is not the same as telling it where to stop. At 22pt in a 900x560
+window the body reached zero and the controls kept going past the panel's own
+border, over the composer and the status bar - worse than the clipping they
+replaced. The obvious correction, dropping `min-height: 0` and trusting the
+automatic minimum, does not work either: the panel's min-content includes the
+body's text, so nothing shrinks and the composer goes straight back off the
+window. Both were built and looked at before the shape that holds: the body
+absorbs the squeeze first, and past that the panel scrolls as a unit, so nothing
+ever paints outside it. Three build-and-look cycles, which is what this surface
+seems to cost.
+
+**One thing was found and deliberately not fixed.** Reaching the drop-down panel
+from a demo for the first time (`webui-demo ask panel`, added for it) showed that
+a question there opens as a card - 470x258, landing over the panel's lower half.
+`inlineRoutable` requires the app window, and the panel does not count. That is
+the exact thing FR49 exists to prevent, and the panel has the same transcript and
+composer the rule is written about, but nothing in the docs says the exclusion
+was decided rather than just built. It changes where Boris's questions appear, so
+it is a question for him and it is in STATUS's known gaps.
+
 The lesson is the same one session 54 wrote down, arriving from the other
 direction: neither defect was in the thing being worked on. One came from a
 property test asking a question nobody had asked in prose, the other from putting
