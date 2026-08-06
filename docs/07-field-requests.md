@@ -2729,6 +2729,59 @@ plus the desktop lock in the daemon are where a run's state lives today.
 
 ---
 
+## FR95 [field] Get the strip out of a screen recording
+
+**Session.** 2026-08-06, session 50, while FR94 was being built. Boris:
+*"The hands off panel should also be hidable for cases when we need to record
+the screen and don't want it to be shown over the recording."*
+
+**What AgentBox cannot do.** The strip has no way off the screen short of ending
+the run. That is deliberate and it is FR74's central rule - "it is not in the
+taskbar and has no close button. It is state, not a card: dismissing it would be
+lying to yourself about whose desktop it is." The rule was written against a
+human dismissing an inconvenient warning. A recording is a different reason, and
+the rule does not distinguish them.
+
+**What he does instead.** Records with a 620x62 amber card pinned over the top
+of the frame, or does not run the agent while recording. Both are bad: the first
+puts an internal tool in every demo, the second is the feature getting in the
+way of the work it exists to support.
+
+**The shape.** This is the fullscreen case again, and it should reuse its
+answer rather than invent one. FR74 already faces "the strip is in the way and
+the guarantee must not lapse", and settles it by stepping the card aside and
+leaving a 4px amber line on the very top edge of that monitor. A recording wants
+exactly that trade: the sign has to stay (an agent IS driving, and a viewer of
+the recording arguably needs to know that more than anyone), but it must stop
+being a UI element sitting in the shot.
+
+So: **a recording mode that drops the strip to the marker.** Not a hide - a
+demotion, to the thinnest thing that still says the desktop is not the human's.
+Four pixels at the very top edge crops out of most recordings and reads as a
+window-manager accent in the rest.
+
+Open questions for the mock:
+
+- **What turns it on.** A knob (`[control] recording = true`), a CLI verb
+  (`agentbox control quiet`), a hotkey, or automatically when a known recorder
+  is running - the last is the only one that cannot be forgotten in the on
+  position, and the only one that needs a process list.
+- **Whether it survives a restart.** A recording mode left on after the
+  recording is a hands-off sign nobody can see, which is the one wrong answer
+  FR74 names.
+- **Whether the marker is enough**, or whether a recording should get nothing at
+  all. Boris said "hidable", and this entry proposes reading that as demoted;
+  that reading needs his word.
+- **How it interacts with FR94's pause.** A paused, recording desktop has two
+  things to say in four pixels. The colour can carry one of them.
+
+Related: FR74 (the strip, its guarantee and the fullscreen marker it already
+steps aside for), FR94 (the pause latch, which added a second thing the strip
+has to say). Both live in `internal/webui/control.go`; the marker's own window
+is `openMark` there.
+
+---
+
 ## Mechanics discovered
 
 Verified facts from field sessions, kept so a later session does not re-derive
