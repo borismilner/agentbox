@@ -124,8 +124,10 @@ Not read off the diff.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `8b6344f1af55`, which is `main`'s head. `make deployed` asks the
-  running daemon, and a replaced binary is not a deployed binary.
+- **Deployed:** `8b6344f1af55`. Every commit after it is docs and tests, so no
+  deploy is owed - but check `make deployed` against `git log` before assuming,
+  and remember that `make deployed` asks the running daemon because a replaced
+  binary is not a deployed binary.
 - **Git:** `main`, clean, **pushed to `origin`** (gitlab). Nine commits this
   session, oldest first: `6617403` (FR95 cards), `8473edb` + `d62d616` (FR95
   docs), `36fbc04` (panic guard), `cb52c59` (held count), `f73b0e6` (settings
@@ -178,9 +180,10 @@ Nothing - proceed autonomously. Four things stay yours and block nothing:
 2. **The frontend parser's lying-hunk fix** (queue item 2) - also needs a screen,
    because it changes the render path.
 3. **The four older unseen surfaces** (queue item 3).
-4. **More fuzz targets.** The first one paid for itself in thirty seconds.
-   `walkthrough.Cover`, `walkthrough.Parse` and the payload builder are the next
-   three worth pointing it at.
+4. **More fuzz targets.** The first paid for itself in thirty seconds and
+   `FuzzCover` followed it (both clean now: 11.8M and 6.9M executions).
+   `walkthrough.Parse` and the payload builder are the next two worth pointing it
+   at - both read agent-authored text straight off the wire.
 
 ## Facts - verified vs assumed
 

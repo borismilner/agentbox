@@ -165,3 +165,35 @@ func TestPathsAreComparableWhicheverWayTheyArrive(t *testing.T) {
 		t.Error("a ./-prefixed citation missed the hunk it is standing on")
 	}
 }
+
+// FuzzCover guards the arithmetic that now runs on every walkthrough create AND
+// every read: a panic here is a review that cannot be opened, and the input is a
+// diff somebody's agent wrote. The invariants are the ones a caller reads off the
+// report without checking - that the parts add up to the whole, and that no hunk
+// comes back with an inverted span.
+func FuzzCover(f *testing.F) {
+	f.Add(twoFileDiff)
+	f.Add("")
+	f.Add("@@ -1 +1 @@\n-a\n+b\n")
+	f.Add("@@ -10,4 +9,0 @@\n-cut\n")
+	f.Add("diff --git a/x b/x\ndeleted file mode 100644\n--- a/x\n+++ /dev/null\n@@ -1 +0,0 @@\n-gone\n")
+	f.Add("@@ -1,99999999999999999999 +1,1 @@\n+overflowing\n")
+
+	cites := []Citation{{Path: "internal/daemon/daemon.go", From: 1, To: 20}, {Path: "", From: 0, To: 0}}
+	scopes := []Scope{{Paths: "internal/webui/**", Reason: "surface"}, {Path: "a.go", Lines: [2]int{2, 1}, Reason: "inverted on purpose"}}
+
+	f.Fuzz(func(t *testing.T, diff string) {
+		c := Cover(diff, cites, scopes)
+		if c.Covered+c.OutOfScope+len(c.Uncovered) != c.Hunks {
+			t.Fatalf("the parts do not add up: %+v", c)
+		}
+		if c.Uncovered == nil {
+			t.Fatal("uncovered came back nil, so silence would read as covered")
+		}
+		for _, h := range c.Uncovered {
+			if h.From > h.To || h.From < 0 {
+				t.Fatalf("inverted or negative span: %+v", h)
+			}
+		}
+	})
+}
