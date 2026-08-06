@@ -2,6 +2,7 @@ package walkthrough
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -191,4 +192,101 @@ func TestPayloadCommentsChecksAndOrphans(t *testing.T) {
 	if p.Tally.Comments != 3 {
 		t.Errorf("comment tally counts orphans too: %d", p.Tally.Comments)
 	}
+}
+
+// FuzzBuildPayload guards the handback. This is the last thing that happens to
+// a review the human has already spent an hour on: the marks arrive from the
+// board and the spec off disk, and if the assembly panics or produces something
+// json.Marshal refuses, the whole review is lost at the moment of submitting it.
+// So the invariants here are the ones the receiving agent reads without
+// checking - that the tallies match the lists under them, that no comment is
+// dropped or doubled, that absence travels as [] rather than null, and that an
+// unclear step is never handed over without the words it exists to carry.
+func FuzzBuildPayload(f *testing.F) {
+	f.Add([]byte(``), "understood", "reads fine", "one", uint8(0))
+	f.Add([]byte(``), "unclear", "", "vanished", uint8(3))
+	f.Add([]byte(``), "unclear", "   ", "one", uint8(255))
+	f.Add([]byte(``), "seen", "", "", uint8(7))
+	f.Add(mustRawB(good()), "understood", "", "xkb", uint8(1))
+	f.Add(mustRawB(withDiff(good())), "unclear", "why here?", "nope", uint8(2))
+
+	f.Fuzz(func(t *testing.T, raw []byte, verdict, note, stepID string, k uint8) {
+		// A spec the fuzzer talks Parse into accepting varies the shape too; the
+		// fixture keeps every other input reaching the builder rather than
+		// skipping, since the marks are the dimension under test.
+		spec, _, err := Parse(raw)
+		if err != nil {
+			spec = payloadSpec(t)
+		}
+
+		verdicts := []string{"", "understood", "unclear", "seen", verdict}
+		var marks []proto.WalkthroughMark
+		for i := range spec.Steps {
+			if int(k)&(1<<(i%8)) != 0 {
+				continue // this step was never marked at all
+			}
+			marks = append(marks, proto.WalkthroughMark{
+				StepID:   spec.Steps[i].ID,
+				Verdict:  verdicts[(i+int(k))%len(verdicts)],
+				Note:     note,
+				Revealed: []int{i, -1, 1 << 30},
+			})
+		}
+		// A mark and a comment on a step the spec no longer says: the amendment
+		// case, which is what orphaned_comments exists for.
+		marks = append(marks, proto.WalkthroughMark{StepID: stepID, Verdict: verdict, Note: note})
+		comments := []proto.WalkthroughComment{
+			{StepID: stepID, Body: note, Path: "a/b.go", Side: "new", FromLine: 1, ToLine: 2},
+			{StepID: spec.Steps[0].ID, Body: note},
+			{StepID: "", Body: note},
+		}
+
+		p, err := BuildPayload(sub(), spec, marks, comments)
+		if err != nil {
+			// The gate is the only refusal, and it fires only on a blank note.
+			var gate *GateError
+			if !errors.As(err, &gate) {
+				t.Fatalf("refused for something other than the gate: %v", err)
+			}
+			if strings.TrimSpace(note) != "" {
+				t.Fatalf("gated a step whose note was %q", note)
+			}
+			return
+		}
+
+		if len(p.Steps) != len(spec.Steps) {
+			t.Fatalf("payload has %d steps for a spec of %d", len(p.Steps), len(spec.Steps))
+		}
+		if len(p.Unclear) != p.Tally.Unclear || len(p.NotReviewed) != p.Tally.NotReviewed {
+			t.Fatalf("tally disagrees with the lists under it: %+v", p.Tally)
+		}
+		if p.Tally.Comments != len(comments) {
+			t.Fatalf("comment tally %d against %d comments", p.Tally.Comments, len(comments))
+		}
+		if p.Tally.Understood+p.Tally.Unclear+p.Tally.NotReviewed > len(p.Steps) {
+			t.Fatalf("tallies count more steps than exist: %+v", p.Tally)
+		}
+		for _, h := range p.Unclear {
+			if strings.TrimSpace(h.Note) == "" {
+				t.Fatalf("unclear step %q went out with no words: the gate is what makes unclear a question", h.StepID)
+			}
+		}
+		// Silence must never read as reviewed, so the shapes are always present.
+		if p.Unclear == nil || p.NotReviewed == nil || p.OrphanedComments == nil ||
+			p.Coverage.UncoveredHunks == nil || p.Drift.Moved == nil || p.Drift.Stale == nil {
+			t.Fatalf("a nil slice would marshal as null and read as unknown: %+v", p)
+		}
+		// Every remark the human wrote lands exactly once - on its step, or in
+		// orphaned_comments when the step it was attached to is gone.
+		got := len(p.OrphanedComments)
+		for _, ps := range p.Steps {
+			got += len(ps.Comments)
+		}
+		if got != len(comments) {
+			t.Fatalf("%d comments in, %d out: a remark was dropped or doubled", len(comments), got)
+		}
+		if _, err := json.Marshal(p); err != nil {
+			t.Fatalf("payload does not marshal, so the submission cannot be delivered: %v", err)
+		}
+	})
 }

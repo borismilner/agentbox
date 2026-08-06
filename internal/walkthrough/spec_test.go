@@ -532,3 +532,120 @@ func TestDomainStepsMustBeConsecutive(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// FuzzSpecParse guards the door every walkthrough comes through. The spec is a
+// model's JSON, and Parse is the only thing standing between it and the
+// subsystems that trust whatever it accepted - the worktree capture, the
+// coverage arithmetic that now runs on every read, and the glossary marking
+// that runs on every render. So this asserts the promises those callers make
+// without checking, not just the absence of a panic.
+func FuzzSpecParse(f *testing.F) {
+	f.Add([]byte(``))
+	f.Add([]byte(`{}`))
+	f.Add([]byte(`{"version":1}`))
+	f.Add(mustRawB(good()))
+	f.Add(mustRawB(withDiff(good())))
+	f.Add(mustRawB(withGlossary(good())))
+	f.Add(mustRawB(withSnippet(good())))
+	f.Add([]byte(`{"version":1,"title":"t","repo_root":"/r","pinned":"aaaaaaa",
+		"out_of_scope":[{"paths":"**/*_test.go","reason":"tests"},{"path":"a.go","lines":[9,2],"reason":"inverted"}],
+		"steps":[{"id":"g","kind":"ground","title":"G","prose":[{"t":"x"}]}]}`))
+
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		s, _, err := Parse(raw)
+		if err != nil {
+			return
+		}
+
+		// The capture and the coverage arithmetic both read citations straight
+		// off an accepted spec and slice files with them.
+		for _, c := range s.Citations() {
+			if c.Path == "" || c.From < 1 || c.To < c.From {
+				t.Fatalf("accepted spec yielded an unusable citation: %+v", c)
+			}
+		}
+		if n := s.CountedSteps(); n < 0 || n > len(s.Steps) {
+			t.Fatalf("counted steps %d against %d steps", n, len(s.Steps))
+		}
+		for i := range s.Steps {
+			if StepHash(&s.Steps[i]) == "" {
+				t.Fatalf("step %q has no hash, so no amendment could ever go stale against it", s.Steps[i].ID)
+			}
+			for j := range s.Steps[i].Code {
+				lo, hi := s.Steps[i].Code[j].lineBounds()
+				if lo < 1 || hi < lo {
+					t.Fatalf("step %q block %d bounds [%d,%d]", s.Steps[i].ID, j, lo, hi)
+				}
+			}
+		}
+
+		// The whole read path in one line: an accepted spec's own diff, its own
+		// citations and its own scopes, through the arithmetic every open runs.
+		cov := Cover(s.Diff, s.Citations(), s.OutOfScope)
+		if cov.Covered+cov.OutOfScope+len(cov.Uncovered) != cov.Hunks {
+			t.Fatalf("coverage parts do not add up on an accepted spec: %+v", cov)
+		}
+
+		// Glossary marking is a partition of the author's text, never a rewrite
+		// of it: whatever the board shows must read back as what was written.
+		idx := NewTermIndex(s.Glossary)
+		for i := range s.Steps {
+			seen := map[string]bool{}
+			for _, segs := range [][]Seg{s.Steps[i].Prose, s.Steps[i].Close} {
+				for _, seg := range segs {
+					at := 0
+					for _, m := range idx.Find(seg.T) {
+						if m.From < at || m.To > len(seg.T) || m.From >= m.To {
+							t.Fatalf("match %+v is out of order or out of bounds in %q", m, seg.T)
+						}
+						at = m.To
+					}
+					runs := idx.Split(seg.T, seen)
+					if runs == nil {
+						continue
+					}
+					var b strings.Builder
+					for _, r := range runs {
+						b.WriteString(r.T)
+					}
+					if b.String() != seg.T {
+						t.Fatalf("glossary marking rewrote the text: %q became %q", seg.T, b.String())
+					}
+				}
+			}
+		}
+	})
+}
+
+// mustRawB is mustRaw without a *testing.T, for seed corpora.
+func mustRawB(m map[string]any) []byte {
+	b, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+func withDiff(m map[string]any) map[string]any {
+	m["diff"] = "diff --git a/internal/hand/xkb.go b/internal/hand/xkb.go\n" +
+		"--- a/internal/hand/xkb.go\n+++ b/internal/hand/xkb.go\n" +
+		"@@ -118,4 +118,5 @@\n context\n+added\n"
+	return m
+}
+
+func withGlossary(m map[string]any) map[string]any {
+	m["glossary"] = []map[string]any{
+		{"term": "group lock", "short": "the per-stroke keyboard group guard", "also": []string{"lock"}},
+	}
+	return m
+}
+
+func withSnippet(m map[string]any) map[string]any {
+	st := m["steps"].([]map[string]any)[0]
+	st["code"] = []map[string]any{
+		{"snippet": map[string]any{"lang": "go", "text": "one\ntwo\nthree", "added": []int{2},
+			"del": []map[string]any{{"after": 1, "old": 7, "lines": []string{"gone"}}}}},
+	}
+	st["binds"] = map[string]any{"planned": map[string]any{"lines": []int{1, 2}}}
+	return m
+}
