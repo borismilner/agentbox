@@ -207,3 +207,37 @@ test("every line is data, never markup", () => {
   assert.equal(m.files[0].lines[1].text, "-<script>alert(1)</script>");
 });
 
+
+test("a lying hunk header cannot swallow the files after it", () => {
+  // The header is a claim about how much body follows, and the diff is
+  // agent-authored text. Consuming on trust lets one wrong count eat every file
+  // after it, and the reader loses them with nothing on screen to say why.
+  const m = parseDiff(`diff --git a/a.go b/a.go
+--- a/a.go
++++ b/a.go
+@@ -1,9000 +1,9000 @@
++one
+diff --git a/b.go b/b.go
+--- a/b.go
++++ b/b.go
+@@ -1,1 +1,1 @@
++two
+`);
+  assert.deepEqual(
+    m.files.map((f) => f.name),
+    ["a.go", "b.go"],
+  );
+  assert.equal(m.add, 2);
+});
+
+test("an empty line is still context", () => {
+  // A context line whose trailing space was stripped on the way here. Reading it
+  // as structure would end a hunk in the middle of an ordinary patch, which is a
+  // far more common shape than a lying header.
+  const m = parseDiff("--- a/x\n+++ b/x\n@@ -1,3 +1,3 @@\n one\n\n-two\n+three\n");
+  assert.equal(m.files.length, 1);
+  assert.deepEqual(
+    m.files[0].lines.map((l) => l.cls),
+    ["hunk", "ctx", "ctx", "del", "add"],
+  );
+});

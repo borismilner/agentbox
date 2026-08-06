@@ -186,3 +186,45 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+func TestALyingHunkHeaderCannotSwallowTheFilesAfterIt(t *testing.T) {
+	// The header is a claim, not a fact. Unclamped trust here means one bad count
+	// eats every following file - and for the coverage arithmetic that is worse
+	// than a garbled render, because the hunks it ate are hunks nobody is told
+	// are uncovered.
+	set := Parse(`diff --git a/a.go b/a.go
+--- a/a.go
++++ b/a.go
+@@ -1,9000 +1,9000 @@
++one
+diff --git a/b.go b/b.go
+--- a/b.go
++++ b/b.go
+@@ -1,1 +1,1 @@
++two
+`)
+	if len(set.Files) != 2 {
+		t.Fatalf("files: %d, want both", len(set.Files))
+	}
+	for i, want := range []string{"a.go", "b.go"} {
+		if set.Files[i].Path != want {
+			t.Errorf("file %d is %q, want %q", i, set.Files[i].Path, want)
+		}
+		if len(set.Files[i].Hunks) != 1 {
+			t.Errorf("file %q has %d hunks, want 1", want, len(set.Files[i].Hunks))
+		}
+	}
+}
+
+func TestAnEmptyLineIsStillContext(t *testing.T) {
+	// A context line whose trailing space was stripped between the generator and
+	// here. Reading it as structure would end a hunk in the middle of an ordinary
+	// patch, which is a far more common shape than a lying header.
+	set := Parse("--- a/x\n+++ b/x\n@@ -1,3 +1,3 @@\n one\n\n-two\n+three\n")
+	if len(set.Files) != 1 || len(set.Files[0].Hunks) != 1 {
+		t.Fatalf("the blank context line split the hunk: %+v", set.Files)
+	}
+	if got := len(set.Files[0].Hunks[0].Lines); got != 4 {
+		t.Errorf("hunk has %d lines, want 4", got)
+	}
+}

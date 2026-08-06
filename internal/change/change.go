@@ -73,6 +73,22 @@ func strip(p string) string {
 // was ever going to be found.
 const maxLine = 1 << 31
 
+// isBody reports whether a line can be part of a hunk's body at all. A unified
+// diff gives every body line a marker: ' ', '+', '-', or the `\` of "no newline
+// at end of file". An empty line is a context line whose trailing space was
+// stripped somewhere between the generator and here, which happens often enough
+// that treating it as structure would break ordinary patches.
+func isBody(t string) bool {
+	if t == "" {
+		return true
+	}
+	switch t[0] {
+	case ' ', '+', '-', '\\':
+		return true
+	}
+	return false
+}
+
 func atoi(s string, def int) int {
 	if s == "" {
 		return def
@@ -108,6 +124,15 @@ func Parse(raw string) Set {
 		}
 	}
 	for t := range strings.SplitSeq(strings.TrimSuffix(raw, "\n"), "\n") {
+		if (remOld > 0 || remNew > 0) && !isBody(t) {
+			// The header claimed more body than it has. Consuming on trust here is
+			// what lets one lying hunk swallow every file after it - and for the
+			// coverage arithmetic that is worse than a garbled render, because the
+			// hunks it ate are hunks nobody is told are uncovered. The header is a
+			// claim; a line that cannot be a body line is the evidence against it.
+			remOld, remNew = 0, 0
+			closeHunk()
+		}
 		if remOld > 0 || remNew > 0 {
 			switch {
 			case strings.HasPrefix(t, "+"):

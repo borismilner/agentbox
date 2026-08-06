@@ -18,6 +18,13 @@
 // says so.
 export const DIFF_CAP = 400;
 
+// isBody: can this line be part of a hunk's body at all? A unified diff marks
+// every body line (' ', '+', '-', or the `\` of "no newline at end of file"),
+// and an empty line is a context line whose trailing space was stripped
+// somewhere on the way here - common enough that reading it as structure would
+// break ordinary patches.
+const isBody = (t) => t === "" || " +-\\".includes(t[0]);
+
 export function parseDiff(raw, cap = DIFF_CAP) {
   const model = { files: [], add: 0, del: 0 };
   if (!raw.trim()) return model;
@@ -35,6 +42,12 @@ export function parseDiff(raw, cap = DIFF_CAP) {
   };
   const strip = (p) => p.replace(/^[ab]\//, "").split("\t")[0]; // plain diffs put "\tTIMESTAMP" after the path
   for (const t of raw.replace(/\n$/, "").split("\n")) {
+    // A hunk header is a claim about how much body follows, and the diff is
+    // agent-authored text. Consuming on trust lets one wrong count eat every
+    // file after it, and the reader loses them with nothing on screen to say
+    // why. A line that cannot be a body line is the evidence against the claim.
+    // internal/change ends a hunk on exactly the same rule.
+    if ((remOld > 0 || remNew > 0) && !isBody(t)) remOld = remNew = 0;
     if (remOld > 0 || remNew > 0) {
       if (t.startsWith("+")) {
         remNew--;
