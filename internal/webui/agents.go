@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/borismilner/agentbox/internal/proto"
+	"github.com/borismilner/agentbox/internal/store"
 )
 
 // The Agents surface (FR83): every live agent session, what it is for, what it
@@ -317,6 +318,11 @@ type Roster interface {
 	// rather than here for the reason pidStillThere gives: a second opinion from the
 	// surface could disagree with the answer an agent was given a moment ago.
 	Shared() []proto.SharedValue
+	// AgentDetail is what one OPENED row asks for. It is a call rather than four
+	// more fields on the pushed roster because the roster goes out on every change
+	// and once a second while anything moves - twenty ticks per agent in each of
+	// those is paid for by every row nobody opened.
+	AgentDetail(key string) proto.SyncAgentDetail
 }
 
 // SetRoster wires it.
@@ -335,6 +341,85 @@ func (u *UI) rosterSrc() Roster {
 // Agents is the surface asking for the roster to paint on mount, so a window
 // opened between two pushes does not start blank.
 func (b *Bridge) Agents() wireRoster { return b.ui.agents.snapshot() }
+
+// wireAgentDetail is what an opened row shows under the meta list. It exists as
+// a payload of its own because the roster is pushed and this is pulled: see the
+// note on Roster.AgentDetail.
+type wireAgentDetail struct {
+	Key string `json:"key"`
+	// Found says the session has left the board rather than done nothing, which
+	// are the same empty picture otherwise.
+	Found    bool          `json:"found"`
+	Timeline []wireTick    `json:"timeline,omitempty"`
+	Signals  []wireSignal  `json:"signals,omitempty"`
+	Items    []wireItemRef `json:"items,omitempty"`
+	Pending  string        `json:"pending,omitempty"`
+}
+
+// AgentDetail answers one opened row. Three owners meet here and none of them
+// knows about the others: the daemon's roster holds what this session has been
+// doing, its signal hub holds what it heard (the store cannot know - a signal is
+// fanned out by meaning and the same row is read by every listener), and the
+// store holds what it raised.
+//
+// A build with no daemon behind it - the demo fixture - falls back to the canned
+// fields the fixture already puts on its rows, so `agentbox webui-demo agents`
+// still shows a full detail and there is exactly one code path in the surface.
+func (b *Bridge) AgentDetail(key string) wireAgentDetail {
+	out := wireAgentDetail{Key: key}
+	src := b.ui.rosterSrc()
+	if src == nil {
+		return b.ui.agents.cannedDetail(key)
+	}
+
+	d := src.AgentDetail(key)
+	out.Found = d.Found
+	for _, t := range d.Timeline {
+		out.Timeline = append(out.Timeline, wireTick{Line: t.Line, SinceMS: t.SinceMS})
+	}
+	for _, s := range d.Signals {
+		out.Signals = append(out.Signals, wireSignal{Topic: s.Topic, Dir: s.Dir, SinceMS: s.SinceMS, Data: s.Data})
+	}
+
+	if s := b.ui.source(); s != nil {
+		items, err := s.RecentBySession(key, agentDetailItems)
+		if err != nil {
+			b.ui.log.Warn("webui.agent_detail_items_failed", "component", "webui", "key", key, "err", err.Error())
+		}
+		now := time.Now()
+		for _, it := range items {
+			out.Items = append(out.Items, wireItemRef{
+				Title: it.Title, Kind: string(it.Kind), State: it.State,
+				SinceMS: max(0, now.Sub(it.CreatedAt).Milliseconds()),
+			})
+			// The first pending one is what the human is being waited on for, and it
+			// is the line the block leads with. Items come back newest first, so the
+			// LAST one seen is the oldest still waiting - the one that has been
+			// blocking this agent longest, which is the one worth naming.
+			if it.State == store.StatePending {
+				out.Pending = it.Title
+			}
+		}
+	}
+	return out
+}
+
+// agentDetailItems bounds the items block on an opened row.
+const agentDetailItems = 12
+
+// cannedDetail serves the demo fixture's own rows, which carry these four things
+// inline because the fixture predates the daemon that now answers them.
+func (a *agents) cannedDetail(key string) wireAgentDetail {
+	r := a.snapshot()
+	for _, row := range r.Agents {
+		if row.Key != key {
+			continue
+		}
+		return wireAgentDetail{Key: key, Found: true, Timeline: row.Timeline,
+			Signals: row.Signals, Items: row.Items, Pending: row.Pending}
+	}
+	return wireAgentDetail{Key: key}
+}
 
 // BreakLock is the human taking a lock away from whoever holds it. It answers
 // with "" or a sentence to show, the shape the assignment editor uses.

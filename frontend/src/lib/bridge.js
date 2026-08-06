@@ -126,6 +126,9 @@ export const bridge = {
   // arrives on agentbox:agents whenever it changes. breakLock answers "" or a
   // sentence to show, and it reassigns the lock without stopping its holder.
   agents: () => Call.ByName(svc("Agents")),
+  // One opened row's history, pulled per row rather than carried in every push -
+  // the roster goes out once a second while anything moves.
+  agentDetail: (key) => Call.ByName(svc("AgentDetail"), key),
   breakLock: (name) => Call.ByName(svc("BreakLock"), name),
 
   // The hands-off strip (FR74). control() is the run to paint on mount, so a

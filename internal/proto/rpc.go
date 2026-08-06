@@ -530,6 +530,41 @@ type Signal struct {
 	AtMS    int64           `json:"at_ms,omitempty"`
 }
 
+// SyncAgentDetail is what OPENING a row on the Agents board asks for, and it is
+// deliberately not part of the roster payload: the roster is pushed on every
+// change (a lock taken, an activity line, a second) and carrying twenty ticks and
+// twenty signals per agent in each push would pay for a hundred rows nobody has
+// opened. Fetched per opened row instead, the same shape FR73's ItemDetail
+// settled on for the inbox.
+type SyncAgentDetail struct {
+	Key string `json:"key"`
+	// Found separates "this session ended" from "this session has done nothing
+	// yet", which look identical when both come back empty.
+	Found bool `json:"found"`
+	// Timeline is the activity lines this session has moved past, oldest first.
+	Timeline []SyncTick `json:"timeline,omitempty"`
+	// Signals are the ones it posted and the ones it was handed, merged and newest
+	// last. Direction is on each entry because the two answer different questions
+	// and a row that mixed them silently would be worse than either alone.
+	Signals []SyncSignalTick `json:"signals,omitempty"`
+}
+
+// SyncTick is one thing a session was doing, with how long ago it started. Ages
+// travel as ages here for the same reason they do everywhere on this surface: a
+// wall-clock time would be the one thing on the board that lies after a suspend.
+type SyncTick struct {
+	Line    string `json:"line"`
+	SinceMS int64  `json:"since_ms"`
+}
+
+// SyncSignalTick is one signal on a session's row.
+type SyncSignalTick struct {
+	Topic   string `json:"topic"`
+	Dir     string `json:"dir"` // posted | received
+	SinceMS int64  `json:"since_ms"`
+	Data    string `json:"data,omitempty"`
+}
+
 // SyncAwaitResult is a batch and the cursor to resume from.
 //
 // Gap is the honesty bit, and it is the reason retention can be finite at all. A

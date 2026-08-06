@@ -195,9 +195,18 @@ type fakeSource struct {
 }
 
 func (f *fakeSource) RecentItems(int) ([]store.StoredItem, error) { return f.items, f.err }
-func (f *fakeSource) Promote(id string)                           { f.promoted = append(f.promoted, id) }
-func (f *fakeSource) MutedAgents() []string                       { return f.muted }
-func (f *fakeSource) Stats(time.Time) (proto.Stats, error)        { return proto.Stats{}, nil }
+func (f *fakeSource) RecentBySession(key string, _ int) ([]store.StoredItem, error) {
+	var out []store.StoredItem
+	for _, it := range f.items {
+		if it.Identity.Key == key {
+			out = append(out, it)
+		}
+	}
+	return out, f.err
+}
+func (f *fakeSource) Promote(id string)                    { f.promoted = append(f.promoted, id) }
+func (f *fakeSource) MutedAgents() []string                { return f.muted }
+func (f *fakeSource) Stats(time.Time) (proto.Stats, error) { return proto.Stats{}, nil }
 
 type fakeResolver struct {
 	answers map[string]string

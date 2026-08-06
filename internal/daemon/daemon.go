@@ -530,6 +530,8 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	d.locks.SetObservers(d.roster.announced, d.roster.agentOf, d.askingKeys, d.lockWarn, d.roster.changed)
 	// An attach dropping is a session dying, and its locks must not silently
 	// free the resources its work may still be using (locks.go, the orphan rule).
+	// The signal hub is told too, so a machine that has run all day is not holding
+	// the topics of sessions that ended hours ago - wired below, once it exists.
 	d.roster.SetOnGone(d.locks.SessionGone)
 	d.roster.SetLocks(d.locks.rows)
 	// Signals (FR83 slice 3). The store is the whole point - a signal is delivered
@@ -542,6 +544,14 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	// What a session is parked on, so a listening row says so instead of looking
 	// hung. Read-only from the roster's side, like every other observer.
 	d.roster.SetListens(d.signals.listens)
+	// Now that both exist, a departure reaches them both. Chained here rather than
+	// as a second setter: "what happens when a session goes" is one list, and two
+	// registration points is how one of them gets forgotten.
+	sessionGone := d.locks.SessionGone
+	d.roster.SetOnGone(func(key string) {
+		sessionGone(key)
+		d.signals.forgetReceived(key)
+	})
 	// The built-in topics, both of them the same mechanism: a join, an announce or
 	// a departure is itself a signal, so an agent that is genuinely idle can park on
 	// its area instead of polling the roster. A lock changing hands is the other
@@ -2037,4 +2047,11 @@ func (d *Daemon) ReapStaleProgress() {
 		d.log.Warn("progress.stale_reaped", "component", "daemon", "progress_id", id)
 	}
 	d.ui.ShowProgress(reports)
+}
+
+// RecentBySession backs the Agents board's opened row: the items ONE session
+// raised, matched on the session key rather than on the agent/project/session
+// triple every Claude session in a repo shares.
+func (d *Daemon) RecentBySession(key string, limit int) ([]store.StoredItem, error) {
+	return d.st.RecentBySession(key, limit)
 }

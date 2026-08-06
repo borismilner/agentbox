@@ -60,6 +60,11 @@ type demoSource struct{}
 func (demoSource) Promote(id string)     { fmt.Printf("  ← promote %s\n", id) }
 func (demoSource) MutedAgents() []string { return []string{"codex"} }
 
+// The demo has no store to narrow, and the Agents fixture carries its own items
+// inline, so this answers nothing rather than the whole canned list under every
+// row.
+func (demoSource) RecentBySession(string, int) ([]store.StoredItem, error) { return nil, nil }
+
 func (demoSource) RecentItems(limit int) ([]store.StoredItem, error) {
 	now := time.Now()
 	at := func(d time.Duration) time.Time { return now.Add(-d) }

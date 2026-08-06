@@ -20,6 +20,13 @@
 
   let roster = $state(null); // null until the first payload: empty is a real answer
   let open = $state(null); // the expanded row's key
+  // What Go said about the opened row. Pulled rather than pushed: the roster
+  // goes out on every change and once a second while anything moves, and
+  // twenty ticks per agent in each of those is paid for by every row nobody
+  // opened. `detFor` is the key `det` describes, so a reply that arrives after
+  // the reader has moved on is dropped instead of painted under another row.
+  let det = $state(null);
+  let detFor = $state(null);
   let openVal = $state(null); // the expanded shared value's key
   let breaking = $state(null); // the lock name awaiting a break confirmation
   let flash = $state(null); // a row jumped to from a wait, briefly lit
@@ -148,6 +155,31 @@
     breaking = null;
     open = open === key ? null : key;
   }
+
+  // The one place a detail is fetched, so opening a row and a row closing under
+  // the reader take the same path. A row that LEFT the roster closes above, and
+  // this clears what it was showing - a detail left behind would sit under
+  // whichever row now occupies that place, which is the mistake the inbox
+  // already paid for.
+  $effect(() => {
+    const key = open;
+    if (!key) {
+      det = null;
+      detFor = null;
+      return;
+    }
+    if (detFor === key) return;
+    detFor = key;
+    det = null;
+    bridge
+      .agentDetail(key)
+      .then((d) => {
+        if (detFor === key) det = d;
+      })
+      .catch(() => {
+        if (detFor === key) det = { key, found: false };
+      });
+  });
 
   // A shared value is worth opening when its line cannot hold the whole story: a
   // value wider than the 40ch the line clips it to, or an owner whose row is
@@ -444,8 +476,8 @@
 
                 {#if open === a.key}
                   <div class="detail">
-                    {#if a.pending}
-                      <p class="pending">Parked on your answer: <b>{a.pending}</b></p>
+                    {#if det?.pending}
+                      <p class="pending">Parked on your answer: <b>{det.pending}</b></p>
                     {/if}
 
                     <dl class="meta">
@@ -484,10 +516,10 @@
                       </div>
                     {/if}
 
-                    {#if a.timeline?.length}
+                    {#if det?.timeline?.length}
                       <div class="block">
                         <span class="label">Activity</span>
-                        {#each a.timeline as t}
+                        {#each det.timeline as t}
                           <div class="tick">
                             <span class="tage">{ago(t.since_ms)}</span>
                             <span>{t.line}</span>
@@ -496,10 +528,10 @@
                       </div>
                     {/if}
 
-                    {#if a.signals?.length}
+                    {#if det?.signals?.length}
                       <div class="block">
                         <span class="label">Signals</span>
-                        {#each a.signals as s}
+                        {#each det.signals as s}
                           <div class="tick">
                             <span class="tage">{ago(s.since_ms)}</span>
                             <span class="dir {s.dir}">{s.dir === "posted" ? "→" : "←"}</span>
@@ -510,10 +542,10 @@
                       </div>
                     {/if}
 
-                    {#if a.items?.length}
+                    {#if det?.items?.length}
                       <div class="block">
                         <span class="label">Recent items</span>
-                        {#each a.items as it}
+                        {#each det.items as it}
                           <div class="tick">
                             <span class="tage">{ago(it.since_ms)}</span>
                             <span>{it.title}</span>
@@ -521,6 +553,18 @@
                           </div>
                         {/each}
                       </div>
+                    {/if}
+
+                    <!-- An empty history is a real answer and has to be said, or
+                         a fresh session reads as a surface that failed to load -
+                         which is exactly what these three blocks looked like
+                         while nothing filled them. -->
+                    {#if !det}
+                      <p class="quiet">reading this session's history…</p>
+                    {:else if !det.found}
+                      <p class="quiet">This session has left the board; its history went with it.</p>
+                    {:else if !det.timeline?.length && !det.signals?.length && !det.items?.length}
+                      <p class="quiet">Nothing behind it yet: no activity line has changed, no signal has passed, and it has asked you nothing.</p>
                     {/if}
                   </div>
                 {/if}
@@ -944,6 +988,12 @@
     gap: 12px;
     /* So a long value inside cannot widen the row, and through it the board. */
     min-width: 0;
+  }
+  .quiet {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--k-ink-3);
+    text-wrap: pretty;
   }
   .pending {
     margin: 0;

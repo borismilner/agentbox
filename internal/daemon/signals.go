@@ -99,16 +99,84 @@ type signals struct {
 	keep     int
 	keepDays int
 
+	// received is who HEARD what, per session key, newest last. The store cannot
+	// answer this: sync_signals records the poster's session_key and nothing about
+	// delivery, because a signal is fanned out by meaning to whoever happens to be
+	// listening and the same row is read by every one of them. So the only place
+	// the fact exists is here, at the moment a wait resolves.
+	//
+	// In memory and bounded, like the roster's activity ring and for the same
+	// reason: it is a glance backwards over a live session, not an audit trail.
+	received map[string][]receivedTick
+
 	stop chan struct{}
+}
+
+// receivedTick is one signal a session was handed.
+type receivedTick struct {
+	topic string
+	data  string
+	at    time.Time
 }
 
 func newSignals(log *slog.Logger) *signals {
 	return &signals{
 		log:      log,
 		waiters:  map[*signalWaiter]struct{}{},
+		received: map[string][]receivedTick{},
 		keep:     1000,
 		keepDays: 7,
 	}
+}
+
+// recordReceived notes a batch handed to one session. The data is kept short: an
+// opened row shows the topic and a glimpse, and the payload itself is the
+// caller's to read from the tool result.
+func (s *signals) recordReceived(key string, sigs []proto.Signal) {
+	if strings.TrimSpace(key) == "" || len(sigs) == 0 {
+		return
+	}
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ticks := s.received[key]
+	for _, sig := range sigs {
+		at := now
+		if sig.AtMS > 0 {
+			at = time.UnixMilli(sig.AtMS)
+		}
+		ticks = append(ticks, receivedTick{topic: sig.Topic, data: glimpse(string(sig.Data)), at: at})
+	}
+	if n := len(ticks); n > signalsKeep {
+		ticks = append([]receivedTick(nil), ticks[n-signalsKeep:]...)
+	}
+	s.received[key] = ticks
+}
+
+// receivedBy answers what one session has been handed, oldest first.
+func (s *signals) receivedBy(key string) []receivedTick {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]receivedTick(nil), s.received[key]...)
+}
+
+// forgetReceived drops a session's ring when its row leaves the roster, so a
+// machine that has run all day is not holding the topics of sessions that ended
+// hours ago.
+func (s *signals) forgetReceived(key string) {
+	s.mu.Lock()
+	delete(s.received, key)
+	s.mu.Unlock()
+}
+
+// glimpse is as much of a payload as a row can show without becoming a log.
+func glimpse(data string) string {
+	const max = 80
+	data = strings.TrimSpace(data)
+	if len(data) <= max {
+		return data
+	}
+	return data[:max] + "…"
 }
 
 // SetStore wires persistence. Separate from the constructor because a daemon
@@ -275,6 +343,7 @@ func (s *signals) Await(ctx context.Context, p proto.SyncAwaitParams, waitMax ti
 	// The catch-up read, before parking: a waiter that was busy while the signal it
 	// needs fired must not wait for a second one.
 	if out, rpcErr, done := s.batch(st, topics, cursor); done || rpcErr != nil {
+		s.recordReceived(key, out.Signals)
 		return out, rpcErr
 	}
 
@@ -292,6 +361,7 @@ func (s *signals) Await(ctx context.Context, p proto.SyncAwaitParams, waitMax ti
 	// Registered, so now re-read: a signal that landed between the first read and
 	// the registration rang nobody's bell.
 	if out, rpcErr, done := s.batch(st, topics, cursor); done || rpcErr != nil {
+		s.recordReceived(key, out.Signals)
 		return out, rpcErr
 	}
 	s.log.Info(logging.EvSync, "component", "daemon", "sync", "signal_awaiting",
@@ -318,6 +388,7 @@ func (s *signals) Await(ctx context.Context, p proto.SyncAwaitParams, waitMax ti
 			// if a trim took it back in between, keep waiting rather than returning an
 			// empty batch that reads as "the event happened".
 			if out, rpcErr, done := s.batch(st, topics, cursor); done || rpcErr != nil {
+				s.recordReceived(key, out.Signals)
 				return out, rpcErr
 			}
 

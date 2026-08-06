@@ -86,6 +86,37 @@ const rosterEmitEvery = 250 * time.Millisecond
 // stops lying within a second of the truth changing.
 const rosterTickEvery = time.Second
 
+// activityTick is one line a session moved past, with when it started saying it.
+type activityTick struct {
+	line string
+	at   time.Time
+}
+
+// pushHistory records the line a session is leaving behind, with the time it
+// STARTED saying it - that is what makes the block readable as a sequence rather
+// than a list of "when it stopped". The empty first line (a row that has not
+// reported yet) is not history and is skipped. Caller holds the roster lock.
+func (row *rosterRow) pushHistory(line string, at time.Time) {
+	if strings.TrimSpace(line) == "" {
+		return
+	}
+	row.history = append(row.history, activityTick{line: line, at: at})
+	if n := len(row.history); n > historyKeep {
+		// Copy rather than reslice: a reslice keeps the whole backing array alive
+		// for the life of the session, which for a chatty agent is the leak this
+		// bound exists to prevent.
+		row.history = append([]activityTick(nil), row.history[n-historyKeep:]...)
+	}
+}
+
+// historyKeep bounds the per-session activity ring. Twenty is what an opened row
+// can show without becoming a log: enough to see the shape of the last stretch of
+// work, few enough that the block stays readable beside the meta list.
+const historyKeep = 20
+
+// signalsKeep bounds the per-session received-signal ring, sized to match.
+const signalsKeep = 20
+
 type rosterRow struct {
 	identity proto.Identity
 	cwd      string
@@ -102,6 +133,14 @@ type rosterRow struct {
 	activityAt time.Time
 	attachedAt time.Time
 	announced  bool
+
+	// history is the activity lines this session has already moved past, oldest
+	// first, so an opened row on the board answers "what has it been doing" and
+	// not only "what is it doing". Bounded and in memory on purpose: it is a
+	// glance backwards over a live session, not an audit trail, and a session's
+	// whole point is that it ends. Only a CHANGED line is recorded - the same rule
+	// that keeps an unchanged line from resetting the age, for the same reason.
+	history []activityTick
 
 	// attached says a live connection is holding this row open. False for a row
 	// created by a hook or a CLI call on behalf of a session whose own child has
@@ -476,7 +515,8 @@ func (r *roster) Announce(p proto.SyncAnnounceParams) (proto.SyncResult, *proto.
 	row.touched = now
 	row.purpose = strings.TrimSpace(p.Purpose)
 	row.announced = true
-	if p.Activity != "" {
+	if p.Activity != "" && p.Activity != row.activity {
+		row.pushHistory(row.activity, row.activityAt)
 		row.activity, row.activityAt = p.Activity, now
 	}
 	// The cwd only fills a hole: an attached row already has the one its own
@@ -527,6 +567,7 @@ func (r *roster) Activity(p proto.SyncActivityParams) (proto.SyncResult, *proto.
 	// agent looks busy forever. Same rule the control strip already applies.
 	row.touched = now
 	if line != row.activity {
+		row.pushHistory(row.activity, row.activityAt)
 		row.activity, row.activityAt = line, now
 	}
 	r.mu.Unlock()

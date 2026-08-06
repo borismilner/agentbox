@@ -18,6 +18,11 @@ import (
 // package at the cutover touches nothing here. *daemon.Daemon satisfies both.
 type Source interface {
 	RecentItems(limit int) ([]store.StoredItem, error)
+	// RecentBySession is the same read narrowed to one session key, for the Agents
+	// board's opened row. Narrowed in SQL rather than by filtering RecentItems: a
+	// quiet agent's last item can be a hundred items down, and a filter over the
+	// recent hundred would show its row as having raised nothing.
+	RecentBySession(key string, limit int) ([]store.StoredItem, error)
 	Promote(id string)
 	MutedAgents() []string                      // FR47: agents to badge "(muted)"
 	Stats(since time.Time) (proto.Stats, error) // FR35: the history surface

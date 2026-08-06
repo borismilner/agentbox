@@ -106,6 +106,43 @@ func (s *Store) SignalsSince(after int64, patterns []string, limit int) ([]proto
 	return out, false, nil
 }
 
+// SignalsPostedBy returns the newest signals one session posted, for the Agents
+// board's opened row. Posting is the only half of a signal's life this table
+// records: delivery is a fan-out by meaning to whoever happens to be listening,
+// and the same row is read by every one of them, so who HEARD it is not a
+// property of the row and is kept in the daemon instead.
+//
+// An empty key returns nothing rather than everything, for the same reason
+// RecentBySession does: ” is a signal posted by the daemon itself or by a caller
+// with no session, and it belongs to no row on the board.
+func (s *Store) SignalsPostedBy(key string, limit int) ([]proto.Signal, error) {
+	if strings.TrimSpace(key) == "" {
+		return nil, nil
+	}
+	if limit <= 0 || limit > SignalBatchMax {
+		limit = SignalBatchMax
+	}
+	rows, err := s.db.Query(`SELECT seq, topic, agent, project, session_key, data, at_ms
+		FROM sync_signals WHERE session_key = ? ORDER BY seq DESC LIMIT ?`, key, limit)
+	if err != nil {
+		return nil, fmt.Errorf("read signals by session: %w", err)
+	}
+	defer rows.Close()
+	var out []proto.Signal
+	for rows.Next() {
+		var sig proto.Signal
+		var data string
+		if err := rows.Scan(&sig.Seq, &sig.Topic, &sig.Agent, &sig.Project, &sig.Key, &data, &sig.AtMS); err != nil {
+			return nil, fmt.Errorf("scan signal: %w", err)
+		}
+		if data != "" {
+			sig.Data = []byte(data)
+		}
+		out = append(out, sig)
+	}
+	return out, rows.Err()
+}
+
 // topicPredicate turns patterns into a SQL OR-list. An exact name compares; a
 // prefix uses LIKE with the wildcards inside the prefix escaped, because a topic
 // containing a literal % or _ must not turn into a wildcard the caller never

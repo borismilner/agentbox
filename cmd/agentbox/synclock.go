@@ -49,6 +49,13 @@ func (r rosterBridge) BreakLock(name string) error {
 	return nil
 }
 
+// AgentDetail is what one opened row on the board asks for: the activity this
+// session has moved past and the signals it posted and heard. A call rather than
+// four more fields on the pushed roster - see the note on webui.Roster.
+func (r rosterBridge) AgentDetail(key string) proto.SyncAgentDetail {
+	return r.d.AgentDetail(key)
+}
+
 // lockCLI is what `sync lock` needs from the command line, gathered so the two
 // forms (wrap a command, or take a detached hold) share one path.
 type lockCLI struct {
