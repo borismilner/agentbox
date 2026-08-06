@@ -2812,11 +2812,29 @@ monitor), because the whole shape rested on the first of these:
   Session 49's finding, re-measured and unchanged. So giving up that window type
   is the only route to a coverable sign, which is exactly the relaxation Boris
   asked for.
-- **Still open, on purpose:** whether AgentBox's own marker window, with the type
-  dropped, is then covered. A bare probe window stayed above a fullscreen window
-  however it was hinted, so the probe is not a faithful stand-in for the Wails
-  window. This gets watched at the top of the build, before anything is designed
-  around it.
+- **The demoted marker IS covered by a fullscreen window.** Watched on screen,
+  session 51: with recording mode on, a kiosk-fullscreen browser window over the
+  top edge left the whole column blue, and the marker window was still mapped
+  (`1920x4+0+0`) behind it and reappeared when the window went. Nothing of
+  AgentBox is in that frame.
+- **And the thing that stopped it working the first time is worth more than the
+  result.** `plain()` declined the notification type and `_NET_WM_STATE_ABOVE`
+  before the map, and then `unlisted()` added ABOVE straight back as a post-map
+  client message - the one route Mutter honours. The code read exactly right and
+  the screen showed four amber pixels on top of a fullscreen window. Two
+  measurement traps had to be cleared before that was even visible: see
+  "Mechanics discovered".
+
+**Settled at the mock, all four as recommended** (2026-08-06, session 51). Boris
+drove it and took every recommendation: a **hotkey plus the same verb in the
+shell**, a mode that **dies with the daemon and expires after 30 minutes**,
+**colour** carrying the pause on four pixels, and **cards queueing** while the
+sign is demoted.
+
+**Shipped** (session 51, deployed): the mode in the daemon with its fuse and
+`agentbox control quiet|loud`, `Ctrl+Alt+Q` (fired end to end through XTEST), the
+demoted marker, and green on the marker while paused. **Not yet built:** the
+fourth answer, cards queueing while demoted and draining when it goes loud.
 
 The mock is [docs/mocks/fr95-recording-mode.html](mocks/fr95-recording-mode.html):
 the stage is 1920x1200 at 40%, so 620x62 against 4px is to scale, and the panel
@@ -2850,7 +2868,24 @@ minutes, and both produce a plausible wrong answer rather than an error:
   under test. Measure a candidate window somewhere else on the screen, or release
   the desktop first.
 
-And one about the probe itself: **Mutter decorates a bare X11 window**, so a 4px
+**A pre-map `_NET_WM_STATE` is ignored, in both directions**, and it cost a wrong
+answer twice in one session (2026-08-06). `internal/webui/x11.go` already said it
+about ABOVE - the WM owns that property once a window is mapped, so a client
+message is the supported route - and the same is true of FULLSCREEN: a test window
+that set it before mapping came up at `y=102` and the "fullscreen covers the
+marker" test proved nothing while looking like it had. `wmctrl -r NAME -b
+add,fullscreen` after the map is the route that works. The mirror of it is the bug
+this found: a window that carefully declined ABOVE before mapping had it added
+back by the next line, as a client message, and no amount of reading the diff
+showed it.
+
+**`wmctrl -lG` reports doubled coordinates on this desktop.** A window `xwininfo`
+puts at `620x62+650+48` is listed by wmctrl as `620 62` at `1300 96`, exactly 2x
+on both axes. The pixels agree with xwininfo. Read one as a placement bug and you
+will go looking for a bug in code that is correct - which happened, in session 51,
+to the hands-off strip.
+
+And one about probes themselves: **Mutter decorates a bare X11 window**, so a 4px
 window comes back roughly 30px tall with a title bar, and the first set of
 measurements read that title bar. A notification-type window is undecorated by
 spec, which is why the two treatments cannot be compared until the candidate is

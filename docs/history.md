@@ -9,6 +9,75 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fifty-first session (2026-08-06): FR95 mocked, settled and mostly built, and three of its four measurements lied first
+
+FR95 is "get the hands-off strip out of a screen recording". Its shape was already
+settled in the entry - demoted to FR74's four pixels rather than hidden, and the
+demoted marker gives up being top-most so a window can cover it - so this session
+measured the mechanic, mocked it, had Boris settle four questions at the mock, and
+built three of the four answers.
+
+**The measurement came before the mock, and that was the right order.** The whole
+shape rests on one thing: dropping the notification type is what makes the sign
+coverable, and if GNOME's own top bar then drew over the four pixels, a demoted
+marker would be no sign at all - the one wrong answer FR74 names. It does not: a
+frameless 4px window at `+0+0` is visible over the top bar with no window type and
+no ABOVE. So the mock could promise it rather than hedge.
+
+**Three of the four measurements were wrong the first time**, each in a way that
+produced a plausible answer rather than an error. All three are now in "Mechanics
+discovered":
+
+- **Mutter decorates a bare X11 window.** The first probe measured its own 30px
+  title bar and reported the top bar covering the marker.
+- **`import -window root` cannot see a fullscreen window at all** (Mutter
+  unredirects it for direct scanout), so the same probe read "covered" and "not
+  covered" depending only on the capture tool. `gnome-screenshot` sees the
+  composited output.
+- **A pre-map `_NET_WM_STATE_FULLSCREEN` is silently ignored**, so the "fullscreen"
+  test window came up at `y=102` and covered nothing near the top edge. Twice:
+  once with a raw window, once with Chrome's `--start-fullscreen`, which does
+  nothing in `--app` mode. `--kiosk` and `wmctrl -b add,fullscreen` are the routes
+  that work.
+
+And one confound that is AgentBox's own: **while an agent holds the desktop, a
+fullscreen window makes AgentBox open ITS marker at `+0+0`**, so any measurement
+of the top edge mid-run is measuring AgentBox rather than the thing under test.
+
+**The mock was driven headless before it went on his screen**, in Chrome over the
+DevTools protocol: 35 assertions over every state, including "no option title is
+squeezed into a column", which is what caught the two layout defects. The second
+was the interesting one - **a class collision**. The recording-frame panel was
+`.rec` and the badge modifier is `.tag.rec`, so the panel's `width: 320px` landed
+on every RECOMMENDED badge on the page. Fully styled, wrong on screen, and
+invisible to every behavioural check.
+
+**Boris took all four recommendations**: a hotkey plus the same verb in the shell,
+a mode that dies with the daemon and expires after 30 minutes, colour carrying the
+pause on four pixels, and cards queueing while the sign is demoted. The fourth
+question was the mock's own find: FR94's three-minute nag lands in the same
+top-centre column the strip was in, so demoting the strip alone still leaves a card
+in the shot.
+
+**Built and deployed:** the mode in the daemon (`quiet`/`loud`, the fuse,
+independent of FR94's latch), `Ctrl+Alt+Q` as the third grab beside the panel's and
+the pause key, `agentbox control quiet|loud`, the demoted marker as a second
+window treatment, and green on four pixels while paused. **Not built:** the cards
+half, which is the biggest of the four because it touches the presentation path.
+
+**The defect only the screen could find, again.** `x11.plain` was written to
+decline the notification type and `_NET_WM_STATE_ABOVE`, and then `unlisted()` -
+the next line - added ABOVE straight back as a post-map client message, the one
+route Mutter honours. Everything read correctly and a kiosk-fullscreen window
+still had four amber pixels sitting on top of it. That is three sessions in a row
+where a hands-off surface passed every test and lied on screen.
+
+**And one bug that was not a bug.** `wmctrl -lG` reports doubled coordinates on
+this desktop: the strip at `+650+48` is listed as `1300 96`. It was read as a
+placement regression, chased, and disproved by `xwininfo` and the pixels, which
+agree with each other. The commit written against it was reworded to say what was
+actually observed rather than what it looked like.
+
 ## Fiftieth session (2026-08-06): FR94 shipped, and the hotkey it shipped with was dead on arrival
 
 Resumed from session 49's handoff. Everything in it verified clean on arrival -

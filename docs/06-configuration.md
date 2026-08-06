@@ -63,7 +63,8 @@ slide_ms = 0                 # 0 (the default) = the panel simply appears. Set a
 measure_px = 980             # the panel is wider than the app window, so its
                              # reading column can be too
 
-[control]                    # the hands-off strip (FR74) and its pause (FR94)
+[control]                    # the hands-off strip (FR74), its pause (FR94) and
+                             # its recording mode (FR95)
 pause_hotkey = "Ctrl+Alt+Escape"
                              # takes the keyboard and mouse back mid-run, and
                              # the same key hands them on again. Grabbed by the
@@ -75,6 +76,19 @@ pause_hotkey = "Ctrl+Alt+Escape"
                              # every one of them before a core X grab sees it,
                              # and it fails silently (see 07-field-requests.md,
                              # "Mechanics discovered")
+quiet_hotkey = "Ctrl+Alt+Q"  # recording mode (FR95): demotes the strip to the
+                             # 4px marker so an agent can drive while the screen
+                             # is being recorded, and the same key puts it back.
+                             # Demoted, the marker gives up being top-most, so a
+                             # window over the top edge covers it - the guarantee
+                             # is deliberately weaker in this mode because Boris
+                             # asked for it to be. It is NOT persisted and it
+                             # expires after 30 minutes, because a recording mode
+                             # left on is a hands-off sign nobody can see.
+                             # `agentbox control quiet|loud` is the same thing
+                             # from a shell, for the line above `obs` in a
+                             # recording script. Not an R: GNOME binds
+                             # Ctrl+Alt+Shift+R to its own screencast
 
 [session]                    # the Claude child a session spawns (FR49)
 default_mode = "plan"        # plan (read-only) | full; the prompting modes are

@@ -1,7 +1,18 @@
 # STATUS
 
-Updated: 2026-08-06, fiftieth session (**FR94 shipped; FR95 is the one open
-field request, and its shape is already settled**).
+Updated: 2026-08-06, fifty-first session (**FR95 settled at the mock and three of
+its four answers shipped; the cards half is what remains**).
+
+Session 51 measured FR95's one load-bearing mechanic before mocking it, mocked it,
+had Boris settle four questions at the mock (he took every recommendation), and
+built three of the four. Recording mode exists and is deployed: `Ctrl+Alt+Q` or
+`agentbox control quiet` demotes the hands-off strip to FR74's four pixels, the
+demoted marker gives up being top-most so a fullscreen window covers it (watched
+on screen), the marker turns green while he has the desktop paused, and the mode
+dies with the daemon and expires after 30 minutes so it cannot be left on. **What
+is not built is the fourth answer: cards queueing while demoted.** FR94's own
+three-minute nag lands in the same top-centre column the strip was in, so a
+recording is clean right up to the moment an agent has something to say.
 
 Session 50 mocked FR94, had Boris settle it at the mock, and built it: he can now
 take his keyboard and mouse back mid-run with `Ctrl+Alt+Escape` or the strip's own
@@ -947,15 +958,22 @@ items nothing else records.
    ran its two steps to the exact pixel on resume. The decisions and their
    reasons are in the FR94 entry; the mock is
    [mocks/fr94-pause-resume.html](mocks/fr94-pause-resume.html).
-1c. **FR95 - get the strip out of a screen recording.** Filed 2026-08-06 by
-   Boris while FR94 was being built, and the only open field request. Settled in
-   shape already: the strip is **demoted, not hidden** - it drops to FR74's 4px
-   top-edge marker - and the demoted marker **gives up being top-most**, so a
-   window over the top edge covers it and the recording is clean. That second
-   half also removes the one thing FR74 could never make work (Mutter will not
-   put a fullscreen window above a notification window). Still needs a mock: what
-   turns it on, whether it survives a restart, and what it says when the desktop
-   is also paused.
+1c. **FR95 - get the strip out of a screen recording. THREE QUARTERS SHIPPED
+   2026-08-06, session 51.** Mocked, settled by Boris at the mock (all four
+   recommendations taken), and built except the cards. What exists and was
+   exercised on the real desktop: `Ctrl+Alt+Q` (fired end to end through XTEST)
+   and `agentbox control quiet|loud` demote the strip to a `1920x4` amber line at
+   `+0+0`; a kiosk-fullscreen window over the top edge covers it completely, with
+   the marker still mapped behind it and reappearing when the window goes; the
+   marker is `#4FB286` green while the desktop is paused; the mode is not
+   persisted and a 30-minute fuse takes it back to loud. **What is left is the
+   fourth answer: while demoted, cards queue instead of appearing and drain when
+   it goes loud** - the earcon still plays, nothing is lost, and an urgent card
+   waits. It is the biggest of the four because it is the first one to touch the
+   presentation path (`d.present`, `viewLocked`, the DND suppression beside it),
+   and the shape to copy is the existing DND hold with the chime kept. The mock is
+   [mocks/fr95-recording-mode.html](mocks/fr95-recording-mode.html); the entry
+   carries the four decisions and the measurements.
 2. **The re-record.** Boris has said go on a from-scratch re-record and
    re-upload (the uploaded take is missing the slide-11 progress bar AND
    wears the old brand end to end); scheduling is his call, ~21 minutes of
