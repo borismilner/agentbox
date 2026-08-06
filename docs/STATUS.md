@@ -126,8 +126,9 @@ rather than by reading the diff. Each slice's record in
 minted session key that four sessions missed by reading the hook recipe instead of
 installing it. Sessions 40 to 45 in [history.md](history.md) say what each cost.
 
-What else remains is the showcase re-record (decided, not yet scheduled) and the
-verification and refinement queue.
+What remains is the verification and refinement queue. The showcase re-record was
+dropped for good on 2026-08-06 (priority 2 below says what that means for
+`tools/showcase/` and its docs).
 
 This file is the current state. The session-by-session narrative - what each
 session shipped, broke, learned and verified - is in [history.md](history.md).
@@ -977,6 +978,27 @@ above the new ones - three wrapped lines against one, and the Signals block back
 in the first screenful. The ellipsis is what says a line was cut, which `cut` never
 did.
 
+**`webui-demo agents` was the last unseen surface and it was watched on
+2026-08-06 (session 54), with nothing wrong on it.** All four areas render, the
+orphan lock carries its `1 waiting` count and its Break lock button, shared values
+show the abandoned claim beside the held one and the ownerless value, the wait
+chain names its holder and its place in the queue, and every state badge the
+roster can produce appears at least once (working, blocked, asking you, listening,
+quiet, driving desktop, reporting a percentage, never announced, seen not
+attached). An opened row paints all four blocks off the canned fixture - meta,
+HOLDS, ACTIVITY, SIGNALS, RECENT ITEMS - and Break lock opens its inline confirm
+("Reassigns the lock. It does not stop this agent."), which Keep dismisses. The
+one thing to know before repeating it: the footer counts inbox sessions and the
+header counts roster rows, so `2 sessions` under `10 agents` is two populations,
+not a miscount.
+
+Two mechanics cost the sitting more time than the looking did, and both are about
+the harness rather than the app. `import -window` captures window-relative
+coordinates while `xdotool` clicks in screen coordinates, so every click must be
+offset by the window's absolute origin (`xwininfo -id ID`) or it lands on the rail
+and silently changes surface. And a click only reaches the page once the window
+holds focus: `xdotool windowactivate` first, then move and click.
+
 **The field defects this feature turned up are all closed.** FR86 (a project named
 after whatever directory the agent stood in) and FR85 (two identity hues that
 disagreed) were fixed together in session 46, which is also where a third
@@ -1043,21 +1065,16 @@ behind it, kept for the items nothing else records.
    [mocks/fr95-recording-mode.html](mocks/fr95-recording-mode.html); the entry
    carries the four decisions, the measurements, and the silent race the delivery
    had to be hardened against.
-2. **The re-record.** Boris has said go on a from-scratch re-record and
-   re-upload (the uploaded take is missing the slide-11 progress bar AND
-   wears the old brand end to end); scheduling is his call, ~21 minutes of
-   his screen. The blocker is gone: the top-most fix was seen working over a
-   fullscreen stage on 2026-07-26 (session 24), and since session 25 the
-   rehearsal itself asserts it - perform.py's `("above", title)` steps check
-   `_NET_CLIENT_LIST_STACKING` for the progress bar, artifact, report, app
-   window and panel, so a covered window fails the run instead of the film.
-   Mechanics: `tools/showcase/take.sh`, preflight and traps in
-   `docs/showcase.md`, the recorder in `docs/recording.md`. After a take,
-   re-time the chapters in `docs/youtube.md` from the take's log, and listen
-   to slide 1 in the rehearsal - the TTS spells out the product name where
-   the narration names it. Before the camera rolls, refresh the tool count in
-   `tools/showcase/deck.py` and the one-page argument in `docs/showcase.md`:
-   both still say "fourteen tools" and the binary serves thirty.
+2. ~~**The re-record.**~~ **Dropped by Boris on 2026-08-06, for good.** The
+   showcase and its docs are no longer maintained: no re-record, no re-upload,
+   and nothing in this file or the handoff should ask about scheduling one
+   again. The uploaded take stays up as it is, missing the slide-11 progress bar
+   and wearing the old brand. `tools/showcase/`, `docs/showcase.md`,
+   `docs/recording.md` and `docs/youtube.md` are kept but frozen - their
+   contents describe a pipeline nobody is going to run, so treat any number in
+   them (the "fourteen tools" the deck still claims, the chapter timings) as
+   stale by design rather than as a defect to fix. Deleting them outright is
+   Boris's call and he has not made it.
 3. **Resize affordance for frameless surfaces** (owner, 2026-07-28, from the
    FR58 mock round): a maximized artifact window can only be resized through
    WM chords (Alt+F8, Super+middle-drag), which is undiscoverable. Wanted:

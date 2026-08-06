@@ -1,5 +1,8 @@
 # The video recorder
 
+> **Frozen on 2026-08-06.** The showcase was dropped for good, so these scripts
+> are no longer run or maintained. Kept for the record.
+
 Four scripts, each with one job. `tools/showcase/record.sh` runs the camera;
 `tools/showcase/perform.py` runs the show (and rehearses it); `tools/showcase/verify.sh`
 says whether the finished file is usable; `tools/showcase/take.sh` is all three in one

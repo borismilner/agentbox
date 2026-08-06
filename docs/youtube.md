@@ -1,5 +1,8 @@
 # The YouTube listing
 
+> **Frozen on 2026-08-06.** The showcase was dropped for good. The uploaded take
+> stays up as it is; these chapter timings will never be re-cut.
+
 What was pasted into the upload form for
 `agentbox-showcase-20260725-2344.mp4` on 2026-07-26 (the take was recorded under
 the old brand; the file was renamed with the project, but the uploaded film
