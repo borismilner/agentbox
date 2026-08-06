@@ -500,14 +500,34 @@
   }
 
   /* The panel shares the composer's column, so the question, its answers and the
-   * reply box all line up on the same measure. */
+   * reply box all line up on the same measure.
+   *
+   * min-height: 0 is what lets it give way. A flex item's automatic minimum is
+   * its content, so without this the panel keeps its full height whatever the
+   * window does, the transcript goes to nothing, and the overflow comes off the
+   * bottom - which is the composer. A long question would leave the human
+   * looking at it with nowhere to type. The panel yields instead (its body
+   * scrolls; see AskPanel), because a question you can still answer beats a
+   * question you can read all of. */
   .askwrap {
     padding: 0 28px 10px;
+    display: flex;
+    min-height: 0;
+  }
+  .askwrap > .inner {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
   }
 
+  /* Never shrink: the reply box is the one thing on this surface that must stay
+   * whole, and a clipped textarea reads as a broken window rather than a full
+   * one. */
   .composer {
     border-top: 1px solid var(--k-edge-soft);
     padding: 12px 28px 14px;
+    flex-shrink: 0;
   }
   .inner {
     max-width: var(--k-measure, 700px);

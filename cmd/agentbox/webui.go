@@ -652,6 +652,30 @@ func demoAsks() []proto.Item {
 			Default: "Migrate on read", TimeoutS: 300, Identity: claude,
 		},
 		{
+			// Long enough to trip the card's FR84 fold (240 characters), so the one
+			// question the fixture could not answer - what a long body does to the
+			// inline panel, which does not fold - can be looked at rather than
+			// reasoned about.
+			ID: "ask-long", Kind: proto.KindChoice, Level: proto.LevelWarning,
+			Title: "Take the lock before the migration, or let it run unguarded?",
+			Body: "The migration rewrites every row in `items` and takes about four minutes " +
+				"on this store. Nothing else writes to it during a normal session, so an " +
+				"unguarded run has never actually collided.\n\n" +
+				"But two agents on one machine is the case that keeps costing us: the " +
+				"second one blocks for the whole four minutes if we take the lock, and " +
+				"corrupts a half-migrated table if we do not. The lock is cheap to take " +
+				"and expensive to have skipped.\n\n" +
+				"There is also the daemon's own restart to think about. If it comes back " +
+				"mid-migration the lock is orphaned rather than free, so somebody has to " +
+				"break it from the board before the retry can start.",
+			Options: []proto.Option{
+				{Label: "Take the lock", Desc: "blocks a second agent for four minutes"},
+				{Label: "Run unguarded", Desc: "faster, corrupts on a collision"},
+				{Label: "Ask me again when it matters"},
+			},
+			Default: "Take the lock", TimeoutS: 300, Identity: claude,
+		},
+		{
 			ID: "ask-confirm", Kind: proto.KindConfirm, Level: proto.LevelError,
 			Title:    "Delete the old state files?",
 			Body:     "14 files under `~/.local/state/grabbit`, none newer than the schema change.",
