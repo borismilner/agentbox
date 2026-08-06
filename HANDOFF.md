@@ -11,7 +11,7 @@ mid-build.*
 ```bash
 cd ~/me/projects/agentbox
 git status -sb              # expect clean; see Live state about ahead-of-origin
-make deployed               # expect 31da412e9df4 or later
+make deployed               # expect 9156e474f2a0 or later
 agentbox control state      # expect "no run: the desktop is the human's"
 agentbox pending            # expect "nothing pending"
 agentbox sync agents        # your row; ghosts from `claude -p` checks are harmless
@@ -154,7 +154,7 @@ Not read off the diff. Captures are in the scratchpad listed under Live state.
 
 ## Live state (volatile - verify on resume)
 
-- **Deployed:** `31da412e9df4`. Anything committed after it is docs; check
+- **Deployed:** `9156e474f2a0`. Anything committed after it is docs; check
   `make deployed` against `git log` before assuming a deploy is owed.
 - **Git:** `main`, clean. **Ahead of `origin/main` and NOT pushed** - session 49
   left the tree pushed, this one did not, because pushing was never asked for.
