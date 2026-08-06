@@ -83,8 +83,14 @@ func inlineSupported(k proto.Kind) bool {
 // about, because there a session died with its window. Here a session outlives
 // the window, so a question routed into a conversation nobody can see would be an
 // agent waiting forever.
-func inlineRoutable(it *proto.Item, sessionShown, appOpen bool) bool {
-	if it == nil || !appOpen || !sessionShown {
+// hostOpen means a surface that renders conversations is on screen: the app
+// window or the drop-down panel. Either is somewhere to put the question, and
+// which one it is does not change the argument - both carry the transcript the
+// question is about and the composer the answer would go in, which is exactly
+// what a card would cover. The panel used to be excluded, so a question asked
+// while it was down opened a card over its lower half.
+func inlineRoutable(it *proto.Item, sessionShown, hostOpen bool) bool {
+	if it == nil || !hostOpen || !sessionShown {
 		return false
 	}
 	if it.Identity.Session == "" {
@@ -237,8 +243,10 @@ func (s *sessions) attachAsk(list []wireSession, ask daemon.View) []wireSession 
 }
 
 // rerouteAsk re-presents the current item now that the conversation which was
-// going to answer it has gone away - the app window closed. Present runs the
-// routing rule again, sees no window, and gives the item its card.
+// going to answer it may have gone away - the app window closed, or the panel
+// rolled up. Present runs the routing rule again; if no host is left it gives
+// the item its card, and if the other one is still open the question simply
+// stays where it is.
 func (u *UI) rerouteAsk() {
 	if _, ok := u.sess.pendingAsk(); !ok {
 		return

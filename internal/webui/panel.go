@@ -174,6 +174,11 @@ func (p *panel) Hide() {
 			w.Hide()
 			w.SetSize(p.w, panelShutHeight) // shut, ready to grow again
 		})
+		// A question being answered in this conversation has just lost its
+		// surface, so it needs somewhere else to be - a card, unless the app
+		// window is up and can still hold it. After slide(), never before: slide
+		// is what clears p.open, and routing asked any earlier still sees a host.
+		p.ui.rerouteAsk()
 	}()
 }
 
@@ -290,6 +295,10 @@ func (p *panel) openWindow() {
 			p.mu.Lock()
 			p.win, p.open = nil, false
 			p.mu.Unlock()
+			// Same reason as Hide's: an inline question here has lost its surface.
+			// Off this goroutine because rerouting places a window and this is the
+			// main loop closing one.
+			go p.ui.rerouteAsk()
 		})
 
 		// Prepared and pinned to the top edge before it is ever visible, so the map

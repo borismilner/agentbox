@@ -39,7 +39,7 @@ func TestInlineRoutableDecidesPanelOrCard(t *testing.T) {
 		{"urgent keeps its card and its escalation", ask(proto.KindChoice, proto.LevelUrgent, "s1"), true, true, false},
 		{"an untagged item was not asked by a session", ask(proto.KindChoice, proto.LevelInfo, ""), true, true, false},
 		{"a session this surface is not showing cannot answer", ask(proto.KindChoice, proto.LevelInfo, "s9"), false, true, false},
-		{"a closed window has nowhere to put it", ask(proto.KindChoice, proto.LevelInfo, "s1"), true, false, false},
+		{"no host at all has nowhere to put it", ask(proto.KindChoice, proto.LevelInfo, "s1"), true, false, false},
 		{"nothing to route", nil, true, true, false},
 	}
 	for _, tc := range tests {
@@ -48,6 +48,40 @@ func TestInlineRoutableDecidesPanelOrCard(t *testing.T) {
 				t.Fatalf("inlineRoutable = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// Either host will do, and the routing rule must not be able to tell them apart.
+// The drop-down panel was excluded until 2026-08-06, so a question asked while it
+// was down opened a card over the very conversation it was about - the thing FR49
+// exists to prevent, in the host nobody had checked.
+func TestEitherHostCanHoldTheQuestion(t *testing.T) {
+	it := ask(proto.KindChoice, proto.LevelInfo, "s1")
+	for _, tc := range []struct {
+		name             string
+		appOpen, panOpen bool
+		want             bool
+	}{
+		{"the app window alone", true, false, true},
+		{"the drop-down panel alone", false, true, true},
+		{"both, which is not a conflict - the same question in two places", true, true, true},
+		{"neither, so it gets its card", false, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := inlineRoutable(it, true, tc.appOpen || tc.panOpen); got != tc.want {
+				t.Fatalf("inlineRoutable = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// PanelOpen has to be safe to ask before there is a panel, because Present calls
+// it on every item and the first one can arrive before any surface exists.
+func TestPanelOpenOnAUIWithNoPanel(t *testing.T) {
+	u := testUI(&fakeResolver{}, nil)
+	u.pan = nil
+	if u.PanelOpen() {
+		t.Fatal("a UI with no panel reported one open")
 	}
 }
 

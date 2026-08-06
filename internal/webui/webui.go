@@ -399,7 +399,7 @@ func (u *UI) Present(v daemon.View) {
 	// in that conversation, not in a card over the top of it (FR49, inline.go).
 	// This call also clears a panel the last item left, so it runs whatever the
 	// view holds - including nothing.
-	if u.sess.routeAsk(v, u.AppOpen()) {
+	if u.sess.routeAsk(v, u.AppOpen() || u.PanelOpen()) {
 		u.closeCard()
 		return
 	}
