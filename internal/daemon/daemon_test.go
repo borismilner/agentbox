@@ -1943,11 +1943,16 @@ type fakeDriver struct {
 	speed   float64
 	wpm     int
 	err     error
+	// blocked records whether the latch was on when the script reached the
+	// driver, which is how the pause tests tell "parked before driving" from
+	// "drove and then parked" (FR94).
+	blocked []bool
 }
 
-func (f *fakeDriver) Drive(script string, speed float64, wpm int) (int, error) {
+func (f *fakeDriver) Drive(script string, speed float64, wpm int, park Park) (int, error) {
 	f.scripts = append(f.scripts, script)
 	f.speed, f.wpm = speed, wpm
+	f.blocked = append(f.blocked, park != nil && park.Blocked())
 	if f.err != nil {
 		return 0, f.err
 	}
@@ -2059,6 +2064,67 @@ func TestDriveRunsTheScriptAndReportsItsSteps(t *testing.T) {
 	}
 	if drv.speed != 2 || drv.wpm != 200 {
 		t.Errorf("pacing arrived as speed %v wpm %d", drv.speed, drv.wpm)
+	}
+}
+
+func TestAPausedDesktopHoldsADriveBeforeItsFirstStep(t *testing.T) {
+	// FR94. A script that arrives while the latch is already on must not get one
+	// free click in before it notices: the check is before the driver is called,
+	// not only between the steps inside it.
+	d, _, _, _ := newTestDaemon(t, Config{})
+	drv := &fakeDriver{}
+	d.SetDriver(drv)
+	d.control.Pause("the hotkey")
+
+	type reply struct {
+		res any
+		err *proto.RPCError
+	}
+	done := make(chan reply, 1)
+	go func() {
+		res, rpcErr := d.Handle(context.Background(), proto.MethodDrive,
+			mustJSON(t, proto.DriveRequest{Script: "click 10 10"}))
+		done <- reply{res, rpcErr}
+	}()
+
+	select {
+	case r := <-done:
+		t.Fatalf("a drive ran on a paused desktop: %#v %v", r.res, r.err)
+	case <-time.After(80 * time.Millisecond):
+	}
+	if len(drv.scripts) != 0 {
+		t.Fatalf("the script reached the driver while paused: %q", drv.scripts)
+	}
+
+	d.control.Resume("the strip")
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("the drive failed after the resume: %v", r.err)
+		}
+		if len(drv.scripts) != 1 {
+			t.Errorf("the driver saw %d scripts after the resume", len(drv.scripts))
+		}
+		if len(drv.blocked) != 1 || drv.blocked[0] {
+			t.Errorf("the latch was still on when the script ran: %v", drv.blocked)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the resume did not release the parked drive")
+	}
+}
+
+func TestAnUnpausedDesktopHandsTheDriverALatchItCanAsk(t *testing.T) {
+	// The park is never nil, so a driver does not have to check - and on the
+	// ordinary path it answers "not blocked" without pacing anything.
+	d, _, _, _ := newTestDaemon(t, Config{})
+	drv := &fakeDriver{}
+	d.SetDriver(drv)
+	if _, rpcErr := d.Handle(context.Background(), proto.MethodDrive,
+		mustJSON(t, proto.DriveRequest{Script: "click 10 10"})); rpcErr != nil {
+		t.Fatalf("drive: %v", rpcErr)
+	}
+	if len(drv.blocked) != 1 || drv.blocked[0] {
+		t.Errorf("the driver was handed a blocked latch on a free desktop: %v", drv.blocked)
 	}
 }
 

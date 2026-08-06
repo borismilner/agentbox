@@ -68,6 +68,42 @@ type Hand struct {
 	// Trace, when set, is called with one line per step. The CLI prints it under
 	// --verbose; the daemon logs it.
 	Trace func(string)
+
+	// park is the pause latch (FR94), or nil for a script nothing can interrupt.
+	park Park
+}
+
+// Park is where a running script stops when the human takes his desktop back
+// mid-run. It is two methods rather than one blocking call because the check
+// happens between every keystroke: Blocked has to be cheap enough to run
+// thousands of times in a script, and Wait is only reached when it is true.
+//
+// Wait returning an error abandons the rest of the script, with the steps that
+// did run reported - the human kept the desktop past the waiting budget, which is
+// his right and not a failure of the run.
+type Park interface {
+	Blocked() bool
+	Wait() error
+}
+
+// SetPark installs the latch. Boris's rule, settled at the mock: a script parks
+// at the end of the step it is on, EXCEPT a type, which parks between characters.
+// Every other step is one movement, one click or one drag - all under a tenth of
+// a second, and stopping a drag half way is what leaves a button held down on his
+// desktop. A type is the one step whose length is its text rather than a fixed
+// beat, so finishing it can be seconds of typing into whatever he just switched
+// to, which is the opposite of what he asked for.
+func (h *Hand) SetPark(p Park) { h.park = p }
+
+// parked is the check itself. It returns nil instantly on the overwhelmingly
+// common path (no latch, or a latch that is off), so it can sit inside the
+// keystroke loop without pacing it.
+func (h *Hand) parked() error {
+	if h.park == nil || !h.park.Blocked() {
+		return nil
+	}
+	h.trace("parked: the human has the desktop")
+	return h.park.Wait()
 }
 
 // modifier keysyms, by the mask hotkey.Parse reports.
@@ -404,6 +440,16 @@ func (h *Hand) Type(text string) error {
 	defer release()
 
 	for _, s := range strokes {
+		// The one sub-step park (FR94). Shift comes up first: a latch held for
+		// minutes with Shift still pressed would be a stuck modifier on his
+		// keyboard, which is exactly the mess parking is supposed to avoid. The
+		// next stroke presses it again if it needs it.
+		if h.park != nil && h.park.Blocked() {
+			release()
+			if err := h.parked(); err != nil {
+				return err
+			}
+		}
 		time.Sleep(s.After)
 		if s.Shift && !held && shiftOK {
 			guard.hold()
@@ -497,13 +543,22 @@ func (h *Hand) modCode(mask uint16) (byte, bool) {
 
 // Run executes a parsed script. Errors name the line, because a script that
 // stops in the middle needs to say where.
-func (h *Hand) Run(steps []Step) error {
-	for _, st := range steps {
+// Run walks the script and reports how many steps actually ran, which is not
+// always all of them: a latched desktop stops it part way (FR94), and the count
+// is what tells the caller where to pick up.
+func (h *Hand) Run(steps []Step) (int, error) {
+	for i, st := range steps {
+		// Between steps, before the next one starts: the pointer is where the last
+		// step left it, no button is down and no modifier is held, which is the
+		// only state it is safe to hand a desktop back in (FR94).
+		if err := h.parked(); err != nil {
+			return i, fmt.Errorf("stopped after %d of %d steps: %w", i, len(steps), err)
+		}
 		if err := h.step(st); err != nil {
-			return fmt.Errorf("line %d (%s): %w", st.Line, st.Raw, err)
+			return i, fmt.Errorf("line %d (%s): %w", st.Line, st.Raw, err)
 		}
 	}
-	return nil
+	return len(steps), nil
 }
 
 func (h *Hand) step(st Step) error {

@@ -386,12 +386,37 @@ func (b *Bridge) ControlAllow(id string) proto.ControlResult {
 	return proto.ControlResult{OK: true}
 }
 
-// Handover is the daemon's control as the surface needs it: the two answers the
+// ControlPause is the human taking the desktop back mid-run from the strip
+// itself (FR94). The strip is the one target that exists by construction - it is
+// always on screen and always on top while a run is live - which is why the
+// button belongs here and not on a card somewhere. The hotkey is the fast path;
+// this is the discoverable one.
+func (b *Bridge) ControlPause() proto.ControlResult {
+	v := b.ui.handoverSrc()
+	if v == nil {
+		return proto.ControlResult{}
+	}
+	return v.Pause("the strip")
+}
+
+// ControlResume hands it back, and is deliberately the only way out of a pause
+// together with the hotkey and the CLI: no agent can un-pause itself.
+func (b *Bridge) ControlResume() proto.ControlResult {
+	v := b.ui.handoverSrc()
+	if v == nil {
+		return proto.ControlResult{}
+	}
+	return v.Resume("the strip")
+}
+
+// Handover is the daemon's control as the surface needs it: the answers the
 // human can give. Its own keyhole, like Voice, so the surface cannot reach
 // anything else on the way.
 type Handover interface {
 	Deny(id string)
 	Allow(id string)
+	Pause(how string) proto.ControlResult
+	Resume(how string) proto.ControlResult
 }
 
 // SetHandover wires it. Nil is valid: a demo build has a strip to look at and

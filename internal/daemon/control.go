@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -35,7 +36,32 @@ type control struct {
 
 	mu  sync.Mutex
 	run *controlRun
+
+	// The pause latch (FR94). It belongs to the desktop rather than to the run,
+	// which is Boris's answer at the mock and the better one: there is only ever
+	// one run because there is only one desktop, so a pause that only touched the
+	// current run would hand the desktop to the next agent in the queue the moment
+	// that run released - while he is still typing. Latched, it parks the live run
+	// AND holds off every Request, and it is legal with no run at all.
+	paused   bool
+	pausedAt time.Time
+	// resumed is closed when the human resumes, and replaced on the next pause.
+	// Waiters take a copy under the lock and select on it, so a resume wakes
+	// everybody parked at once without the daemon tracking who they are.
+	resumed chan struct{}
 }
+
+// pauseWait is how long an agent parks on a latched desktop before it is told to
+// go and do something else. It is deliberately long: a run that dies because its
+// human needed the mouse is a worse outcome than a run that waits, and ten
+// minutes is past any interruption Boris described when he asked for this. The
+// run is not ended when it elapses - only the waiting is.
+const pauseWait = 10 * time.Minute
+
+// errPaused is what a parked caller is told when its wait runs out. It says the
+// run is still its own, because the failure mode this whole feature exists to
+// prevent is an agent concluding it has lost the desktop and starting over.
+var errPaused = errors.New("the human paused the desktop and has not resumed it yet; your run is still yours, so wait again or do something else")
 
 // controlRun is one live handover. denied is closed by the human pressing Deny,
 // which is what releases the blocked request; grant is closed when the countdown
@@ -65,6 +91,15 @@ type ControlState struct {
 	SinceMs  int64          `json:"since_ms"`            // ms since the activity last changed
 	LeftMs   int64          `json:"left_ms,omitempty"`   // ms left on the countdown, while asking
 	WindowMs int64          `json:"window_ms,omitempty"` // the countdown's full length
+	// FR94. Paused overrides everything above on the strip: the run's own state
+	// stays what it was, because resuming has to put it back, but while this is
+	// true the desktop is the human's and the strip says so. PausedMs is derived
+	// here for the same reason SinceMs is - a strip that reopens mid-pause must
+	// not restart the clock. Waiting is true when a run is parked behind the
+	// latch, false when the human latched an idle desktop pre-emptively.
+	Paused   bool  `json:"paused,omitempty"`
+	PausedMs int64 `json:"paused_ms,omitempty"`
+	Waiting  bool  `json:"waiting,omitempty"`
 }
 
 // Handover exposes the two answers the human can give, and nothing else, so the
@@ -100,6 +135,21 @@ func (c *control) SetSurface(show func(*ControlState), hide func()) {
 func (c *control) Request(ctx context.Context, id proto.Identity, reason string, window time.Duration) proto.ControlResult {
 	if window <= 0 {
 		window = 20 * time.Second
+	}
+
+	// The latch comes first, and it blocks rather than refusing (FR94). Asking a
+	// paused human "may I take the desktop?" is the wrong question at the wrong
+	// moment: he paused *because* he needed it. So the request parks here, with
+	// nothing on his screen, and only starts its countdown once he has resumed.
+	if paused, _ := c.Paused(); paused {
+		c.log.Info(logging.EvControl, "component", "daemon", "control", "parked",
+			"agent", id.Agent, "reason", reason)
+		if err := c.gate(ctx, pauseWait); err != nil {
+			// Not granted, and the result says why without pretending: Paused is
+			// still true, so the caller can tell "he is using his desktop" from
+			// "another agent has it" and wait again instead of giving up.
+			return c.State()
+		}
 	}
 	now := time.Now()
 
@@ -220,12 +270,121 @@ func (c *control) Release(id proto.Identity) proto.ControlResult {
 func (c *control) State() proto.ControlResult {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.run == nil {
-		return proto.ControlResult{OK: true}
+	res := proto.ControlResult{OK: true}
+	if c.paused {
+		res.Paused = true
+		res.PausedS = int(time.Since(c.pausedAt).Seconds())
 	}
-	return proto.ControlResult{
-		OK: true, Live: true, State: c.run.state,
-		Activity: c.run.activity, HeldBy: c.run.identity.Agent, Reason: c.run.reason,
+	if c.run == nil {
+		return res
+	}
+	res.Live, res.State = true, c.run.state
+	res.Activity, res.HeldBy, res.Reason = c.run.activity, c.run.identity.Agent, c.run.reason
+	return res
+}
+
+// Pause is the human taking the desktop back mid-run (FR94), from the strip, the
+// hotkey or the CLI. It never ends the run: the agent keeps its place, its
+// activity line keeps painting, and the moment Resume is called it carries on
+// from the step it parked at.
+//
+// how is what fired it, for the log only - "the hotkey" and "the strip" fail in
+// different ways and telling them apart afterwards is worth one string.
+func (c *control) Pause(how string) proto.ControlResult {
+	c.mu.Lock()
+	if c.paused {
+		c.mu.Unlock()
+		return c.State() // already latched; saying so twice is not an error
+	}
+	c.paused = true
+	c.pausedAt = time.Now()
+	c.resumed = make(chan struct{})
+	run, show := c.run, c.show
+	agent := ""
+	if run != nil {
+		agent = run.identity.Agent
+	}
+	c.mu.Unlock()
+
+	c.log.Info(logging.EvControl, "component", "daemon", "control", "paused",
+		"how", how, "agent", agent)
+	if show != nil {
+		show(c.snapshot(run, 0))
+	}
+	return c.State()
+}
+
+// Resume hands the desktop back. Only the human can reach it - there is no MCP
+// verb for this and there must not be one, or the pause is a suggestion.
+//
+// A resume with no run left (the agent released or timed out while parked) takes
+// the strip off the screen, because presence is still the whole signal.
+func (c *control) Resume(how string) proto.ControlResult {
+	c.mu.Lock()
+	if !c.paused {
+		c.mu.Unlock()
+		return c.State()
+	}
+	c.paused = false
+	held := time.Since(c.pausedAt)
+	if c.resumed != nil {
+		close(c.resumed) // wakes everybody parked, at once
+		c.resumed = nil
+	}
+	run, show, hide := c.run, c.show, c.hide
+	c.mu.Unlock()
+
+	c.log.Info(logging.EvControl, "component", "daemon", "control", "resumed",
+		"how", how, "paused_s", int(held.Seconds()))
+	switch {
+	case run != nil && show != nil:
+		show(c.snapshot(run, 0))
+	case run == nil && hide != nil:
+		hide()
+	}
+	return c.State()
+}
+
+// Paused reports the latch and how long it has been on, without blocking. The
+// pointer-and-keyboard path calls this between every keystroke, so it stays a
+// lock and two reads.
+func (c *control) Paused() (bool, time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.paused {
+		return false, 0
+	}
+	return true, time.Since(c.pausedAt)
+}
+
+// gate blocks while the latch is on and returns when the desktop is free again.
+// It is the whole of "the agent has to learn it, and wait rather than fail":
+// errPaused after wait, ctx.Err() if the caller went away, nil if it may proceed.
+//
+// The loop re-reads the latch after each wake rather than trusting one signal,
+// because the human can pause again between the resume and this goroutine being
+// scheduled, and a caller that drove into that window would be driving during a
+// pause - the one thing this must never do.
+func (c *control) gate(ctx context.Context, wait time.Duration) error {
+	if wait <= 0 {
+		wait = pauseWait
+	}
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	for {
+		c.mu.Lock()
+		paused, ch := c.paused, c.resumed
+		c.mu.Unlock()
+		if !paused {
+			return nil
+		}
+		select {
+		case <-ch:
+		case <-deadline.C:
+			return errPaused
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }
 
@@ -284,11 +443,20 @@ func (c *control) end(run *controlRun, why string) {
 		return
 	}
 	c.run = nil
-	hide := c.hide
+	hide, show, paused := c.hide, c.show, c.paused
 	c.mu.Unlock()
 
 	c.log.Info(logging.EvControl, "component", "daemon", "control", "ended",
 		"agent", run.identity.Agent, "why", why)
+	// A run ending under a live latch does not clear the screen (FR94). The
+	// desktop is still held - by the human, now with nobody waiting on it - and a
+	// strip that vanished here would say "agents may drive again" while they may
+	// not. It flips to the no-one-waiting wording instead, and only Resume
+	// takes it down.
+	if paused && show != nil {
+		show(c.snapshot(nil, 0))
+		return
+	}
 	if hide != nil {
 		hide()
 	}
@@ -300,14 +468,24 @@ func (c *control) end(run *controlRun, why string) {
 func (c *control) snapshot(run *controlRun, window time.Duration) *ControlState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	st := &ControlState{
-		ID:       run.id,
-		State:    run.state,
-		Reason:   run.reason,
-		Activity: run.activity,
-		Identity: run.identity,
-		SinceMs:  time.Since(run.since).Milliseconds(),
+	st := &ControlState{}
+	if c.paused {
+		st.Paused = true
+		st.PausedMs = time.Since(c.pausedAt).Milliseconds()
+		st.Waiting = run != nil
 	}
+	// A latch with no run behind it is legal (FR94): the human pre-empting the
+	// desktop is a state worth painting, and it is the only case where the strip
+	// is on screen with nobody driving.
+	if run == nil {
+		return st
+	}
+	st.ID = run.id
+	st.State = run.state
+	st.Reason = run.reason
+	st.Activity = run.activity
+	st.Identity = run.identity
+	st.SinceMs = time.Since(run.since).Milliseconds()
 	if run.state == proto.ControlAsking {
 		st.LeftMs = max(time.Until(run.deadline).Milliseconds(), 0)
 		st.WindowMs = window.Milliseconds()

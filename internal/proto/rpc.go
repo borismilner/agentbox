@@ -228,6 +228,12 @@ const (
 	ControlActivity = "activity"
 	ControlRelease  = "release"
 	ControlState    = "state"
+	// The human's own two verbs (FR94): pause latches the desktop back to him
+	// mid-run without ending the run, resume hands it on. They are reachable from
+	// the strip, the hotkey and the CLI, and deliberately NOT from MCP - an agent
+	// that could resume its own pause would make the pause a suggestion.
+	ControlPause  = "pause"
+	ControlResume = "resume"
 )
 
 // The states a live run can be in. There are only two, and that is a rule: the
@@ -714,6 +720,12 @@ type ControlResult struct {
 	Activity string `json:"activity,omitempty"`
 	HeldBy   string `json:"held_by,omitempty"` // the agent holding it, when not you
 	Reason   string `json:"reason,omitempty"`  // what that agent said it was doing
+	// FR94. Paused says the human has latched the desktop back to himself: the
+	// run is alive and its place is kept, but nothing may drive until he resumes.
+	// It is a property of the desktop rather than of the run, so it can be true
+	// with no run live at all - a pre-emptive "not now" to every agent.
+	Paused  bool `json:"paused,omitempty"`
+	PausedS int  `json:"paused_s,omitempty"` // how long it has been latched
 }
 
 // ProgressUpdate creates or updates a live progress report (FR21). An empty

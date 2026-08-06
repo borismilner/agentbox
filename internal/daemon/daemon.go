@@ -124,9 +124,36 @@ type Sounder interface {
 // stays free of X11 and testable with a fake - and it is nil on any machine that
 // has no display to drive, which the handler reports rather than pretending.
 type Driver interface {
-	// Drive parses and runs a script, returning how many steps ran.
-	Drive(script string, speed float64, wpm int) (int, error)
+	// Drive parses and runs a script, returning how many steps ran. park is the
+	// pause latch (FR94): the driver asks it at every point where handing the
+	// desktop back is safe, and abandons the rest of the script when it errors.
+	// It is never nil - a daemon with no latch passes one that is never blocked -
+	// so an implementation does not have to check.
+	Drive(script string, speed float64, wpm int, park Park) (int, error)
 }
+
+// Park is the boundary check a running script parks on, satisfied by the control
+// latch and by internal/hand's identical interface (the two never import each
+// other; cmd/agentbox is where they meet).
+type Park interface {
+	Blocked() bool
+	Wait() error
+}
+
+// pauseGate is the latch as one script sees it. It carries the caller's context
+// so a parked script dies with the connection that asked for it rather than
+// holding a slot for an agent that has gone.
+type pauseGate struct {
+	c   *control
+	ctx context.Context
+}
+
+func (g pauseGate) Blocked() bool {
+	paused, _ := g.c.Paused()
+	return paused
+}
+
+func (g pauseGate) Wait() error { return g.c.gate(g.ctx, pauseWait) }
 
 // Presence reports the desktop signals behind FR29. IdleFor backs FR44 (a
 // toast that lapses while the user is idle is flagged "missed while away")
@@ -735,6 +762,14 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			return d.control.Activity(id, req.Activity), nil
 		case proto.ControlRelease:
 			return d.control.Release(id), nil
+		case proto.ControlPause:
+			// No identity check, and that is the point (FR94): this verb is the
+			// human's, and it reaches the daemon from his strip, his hotkey and his
+			// shell. The socket is his own, so anything that can call this is
+			// already him.
+			return d.control.Pause(req.Reason), nil
+		case proto.ControlResume:
+			return d.control.Resume(req.Reason), nil
 		default:
 			return d.control.State(), nil
 		}
@@ -759,7 +794,18 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 		// The shape of the script, never its text: a `type` step can carry a
 		// password, and a log that would leak one is a log nobody can keep.
 		shape := driveShape(req.Script)
-		n, err := drv.Drive(req.Script, req.Speed, req.WPM)
+		gate := pauseGate{c: d.control, ctx: ctx}
+		// Before the first step as well as between them (FR94): a script that
+		// arrived while the desktop was already latched must not get one free
+		// click in before it notices.
+		if gate.Blocked() {
+			d.log.Info(logging.EvControl, "component", "daemon", "control", "parked",
+				"shape", shape)
+			if err := gate.Wait(); err != nil {
+				return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: err.Error()}
+			}
+		}
+		n, err := drv.Drive(req.Script, req.Speed, req.WPM, gate)
 		if err != nil {
 			d.log.Warn("input.drive_failed", "component", "daemon", "shape", shape, "err", err.Error())
 			return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: err.Error()}

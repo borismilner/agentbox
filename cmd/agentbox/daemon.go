@@ -203,7 +203,7 @@ func (a audio) ReadWait(ctx context.Context, text string) {
 // one more thing to keep alive across a suspend for no gain.
 type driver struct{}
 
-func (driver) Drive(script string, speed float64, wpm int) (int, error) {
+func (driver) Drive(script string, speed float64, wpm int, park daemon.Park) (int, error) {
 	steps, err := hand.ParseScript(script)
 	if err != nil {
 		return 0, err
@@ -215,10 +215,15 @@ func (driver) Drive(script string, speed float64, wpm int) (int, error) {
 	defer h.Close()
 	h.SetSpeed(speed)
 	h.SetWPM(wpm)
-	if err := h.Run(steps); err != nil {
-		return 0, err
+	// daemon.Park and hand.Park are the same two methods declared in two packages
+	// that must not import each other; this is the one line where they meet.
+	if park != nil {
+		h.SetPark(park)
 	}
-	return len(steps), nil
+	// The count comes from Run rather than from len(steps): a script the human
+	// paused part way through ran fewer than it was given, and saying otherwise
+	// would tell the agent work happened that did not.
+	return h.Run(steps)
 }
 
 func applySound(snd *sound.Player, cfg config.Config) {

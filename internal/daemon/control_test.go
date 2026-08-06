@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -325,5 +326,207 @@ func TestControlWorksWithNoSurfaceAtAll(t *testing.T) {
 	c.Release(agentA)
 	if c.State().Live {
 		t.Error("headless release left the run live")
+	}
+}
+
+// --- FR94: the pause latch ---------------------------------------------------
+
+func TestPauseKeepsTheRunAndResumeGivesItBack(t *testing.T) {
+	// The whole point of the feature: the human takes the desktop back and the
+	// run is still there afterwards. A pause that ended the run would be the
+	// thing he already had (release), and worse.
+	c, spy := newTestControl()
+	if res := c.Request(context.Background(), agentA, "driving", 10*time.Millisecond); !res.Granted {
+		t.Fatalf("request was not granted: %+v", res)
+	}
+
+	res := c.Pause("the hotkey")
+	if !res.Paused {
+		t.Fatalf("pause did not latch: %+v", res)
+	}
+	if !res.Live || res.HeldBy != agentA.Agent {
+		t.Errorf("the run was lost to the pause: %+v", res)
+	}
+	st, ok := spy.last()
+	if !ok || !st.Paused || !st.Waiting {
+		t.Errorf("the strip was not told it is paused with somebody waiting: %+v", st)
+	}
+	if st.State != proto.ControlDriving {
+		t.Errorf("the run's own state changed under the latch: %q", st.State)
+	}
+	if spy.hidden() != 0 {
+		t.Error("the strip came off the screen for a pause; presence must not lapse")
+	}
+
+	res = c.Resume("the strip")
+	if res.Paused {
+		t.Errorf("resume did not clear the latch: %+v", res)
+	}
+	if !res.Live || res.State != proto.ControlDriving {
+		t.Errorf("the run did not come back driving: %+v", res)
+	}
+	if st, _ := spy.last(); st.Paused {
+		t.Error("the strip is still painting paused after a resume")
+	}
+}
+
+func TestAPausedDesktopParksADriveUntilItIsResumed(t *testing.T) {
+	// "Paused must actually stop the input, not just ask nicely." The gate is
+	// what a running script asks between steps.
+	c, _ := newTestControl()
+	c.Pause("the hotkey")
+
+	if blocked, _ := c.Paused(); !blocked {
+		t.Fatal("the latch is not on")
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- c.gate(context.Background(), time.Minute) }()
+
+	select {
+	case err := <-done:
+		t.Fatalf("the gate let a script through while paused: %v", err)
+	case <-time.After(60 * time.Millisecond):
+	}
+
+	c.Resume("the strip")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("the gate errored on a resume: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a resume did not wake the parked script")
+	}
+}
+
+func TestAParkedScriptGivesUpWithoutEndingItsRun(t *testing.T) {
+	// The wait has a budget, and running it out must not read as "you lost the
+	// desktop" - the run is still the agent's and the strip is still up.
+	c, _ := newTestControl()
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	c.Pause("the hotkey")
+
+	err := c.gate(context.Background(), 20*time.Millisecond)
+	if !errors.Is(err, errPaused) {
+		t.Fatalf("a run-out wait reported %v, want errPaused", err)
+	}
+	if got := c.State(); !got.Live || got.HeldBy != agentA.Agent || !got.Paused {
+		t.Errorf("the run did not survive its own wait running out: %+v", got)
+	}
+}
+
+func TestAParkedScriptDiesWithItsCaller(t *testing.T) {
+	// The connection is the agent. One that went away must not hold a slot behind
+	// a latch that could be up for minutes.
+	c, _ := newTestControl()
+	c.Pause("the hotkey")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- c.gate(ctx, time.Minute) }()
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("a dead caller got %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a dead caller stayed parked")
+	}
+}
+
+func TestTheLatchHoldsOffASecondAgentsRequest(t *testing.T) {
+	// Boris's answer at the mock: pause is desktop-wide, not per-run. A request
+	// that arrived while he had the desktop must wait for HIM, not be granted the
+	// moment the parked run releases.
+	c, _ := newTestControl()
+	c.Pause("the hotkey")
+
+	got := make(chan proto.ControlResult, 1)
+	go func() {
+		got <- c.Request(context.Background(), agentB, "clicking through chrome", 10*time.Millisecond)
+	}()
+
+	select {
+	case res := <-got:
+		t.Fatalf("a paused desktop was handed to a second agent: %+v", res)
+	case <-time.After(80 * time.Millisecond):
+	}
+
+	c.Resume("the strip")
+	select {
+	case res := <-got:
+		if !res.Granted {
+			t.Errorf("the request was not granted after the resume: %+v", res)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the resume did not release the waiting request")
+	}
+}
+
+func TestPausingAnIdleDesktopIsLegalAndPaintsIt(t *testing.T) {
+	// The pre-emptive "not now": no run, and he wants the desktop kept. It is the
+	// one case where the strip is on screen with nobody driving, so Waiting is
+	// what tells the surface which sentence to write.
+	c, spy := newTestControl()
+	res := c.Pause("the hotkey")
+	if !res.Paused || res.Live {
+		t.Fatalf("an idle pause reported %+v", res)
+	}
+	st, ok := spy.last()
+	if !ok || !st.Paused {
+		t.Fatalf("nothing was painted for an idle pause: %+v", st)
+	}
+	if st.Waiting {
+		t.Error("an idle pause claims somebody is waiting on it")
+	}
+
+	c.Resume("the strip")
+	if spy.hidden() == 0 {
+		t.Error("resuming an idle pause left the strip on screen")
+	}
+}
+
+func TestAReleaseUnderTheLatchLeavesTheLatchUp(t *testing.T) {
+	// The agent gives up and releases while he is still paused. The desktop is
+	// still HIS, so a strip that vanished here would say "agents may drive again"
+	// at the exact moment they may not.
+	c, spy := newTestControl()
+	c.Request(context.Background(), agentA, "driving", 10*time.Millisecond)
+	c.Pause("the hotkey")
+	before := spy.hidden()
+
+	c.Release(agentA)
+	if spy.hidden() != before {
+		t.Error("a release under the latch took the strip off the screen")
+	}
+	st, _ := spy.last()
+	if !st.Paused || st.Waiting {
+		t.Errorf("the strip did not flip to nobody-waiting: %+v", st)
+	}
+	if got := c.State(); !got.Paused || got.Live {
+		t.Errorf("state after a release under the latch is %+v", got)
+	}
+}
+
+func TestPauseTwiceDoesNotRestartTheClockOrDeadlock(t *testing.T) {
+	// The hotkey is a key he can lean on, and the strip's button is one click
+	// away from a double click. Neither may reset how long he has been holding
+	// the desktop, or the escalation on the surface never arrives.
+	c, _ := newTestControl()
+	c.Pause("the hotkey")
+	time.Sleep(30 * time.Millisecond)
+	_, first := c.Paused()
+	c.Pause("the hotkey")
+	_, second := c.Paused()
+	if second < first {
+		t.Errorf("a second pause rewound the clock: %v then %v", first, second)
+	}
+	// And resuming once is enough, however many times it was paused.
+	c.Resume("the strip")
+	if paused, _ := c.Paused(); paused {
+		t.Error("one resume did not clear a doubled pause")
 	}
 }

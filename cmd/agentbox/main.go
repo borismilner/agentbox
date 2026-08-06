@@ -1095,7 +1095,10 @@ func runDrive(args []string) int {
 			return exitError
 		}
 	}
-	if err := h.Run(steps); err != nil {
+	// No latch on this path: `agentbox drive` is the human driving his own
+	// desktop from his own shell, and pausing himself is not a thing to protect
+	// against. The daemon's drive is the one an agent reaches, and that one parks.
+	if _, err := h.Run(steps); err != nil {
 		fmt.Fprintf(os.Stderr, "agentbox drive: %v\n", err)
 		return exitError
 	}
@@ -1204,6 +1207,16 @@ func partitionControlFlags(args []string) (flags, words []string) {
 	return flags, words
 }
 
+// waitingSuffix names who is parked behind a latch, when anyone is. A pause with
+// an agent waiting and a pause on an idle desktop are different situations and
+// the line has to say which (FR94).
+func waitingSuffix(res proto.ControlResult) string {
+	if res.HeldBy == "" {
+		return ""
+	}
+	return fmt.Sprintf(" · %s is parked, waiting for you", res.HeldBy)
+}
+
 // runControl is the desktop handover from a shell (FR74). It exists beside the MCP
 // tools because not every agent speaks MCP - Boris asked for this to work "while
 // they drive my debug chrome or other automations", and a shell script is the
@@ -1213,11 +1226,16 @@ func partitionControlFlags(args []string) (flags, words []string) {
 //	agentbox control activity "reading the takeaway aloud"
 //	agentbox control release
 //
+// And the human's own two (FR94), which no agent may call:
+//
+//	agentbox control pause      # take the keyboard back; the run keeps its place
+//	agentbox control resume     # hand it on
+//
 // request exits 0 when granted and 3 when denied or held by somebody else, so a
 // script can gate on it: `agentbox control request "..." || exit`.
 func runControl(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "agentbox control: want request|activity|release|state")
+		fmt.Fprintln(os.Stderr, "agentbox control: want request|activity|release|state|pause|resume")
 		return exitError
 	}
 	verb, rest := args[0], args[1:]
@@ -1225,7 +1243,7 @@ func runControl(args []string) int {
 	fs := flag.NewFlagSet("control "+verb, flag.ExitOnError)
 	window := fs.Int("window", 20, "seconds before silence counts as consent (request only)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: agentbox control request REASON [--window N] | activity LINE | release | state")
+		fmt.Fprintln(os.Stderr, "usage: agentbox control request REASON [--window N] | activity LINE | release | state | pause | resume")
 		fmt.Fprintln(os.Stderr, "\nOne strip on screen while an agent has the desktop. While it is up, hands off;")
 		fmt.Fprintln(os.Stderr, "when it goes, the desktop is the human's again.")
 		fs.PrintDefaults()
@@ -1260,6 +1278,20 @@ func runControl(args []string) int {
 		action = proto.ControlRelease
 	case "state":
 		action = proto.ControlState
+	case "pause":
+		// The human's verb, not an agent's (FR94). It is here so the hotkey has
+		// something to call and so a compositor binding works on a desktop where
+		// no X11 grab is possible - the same reason `agentbox panel` exists beside
+		// the drop-down's own key.
+		action = proto.ControlPause
+		if text == "" {
+			text = "the command line"
+		}
+	case "resume":
+		action = proto.ControlResume
+		if text == "" {
+			text = "the command line"
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "agentbox control: unknown verb %q\n", verb)
 		return exitError
@@ -1312,8 +1344,19 @@ func runControl(args []string) int {
 	// `state` is a question, so it never takes the held-by branch below: HeldBy is
 	// always set while a run is live, and short-circuiting on it meant state could
 	// only ever answer "held by ..." even to the agent doing the holding.
+	if action == proto.ControlPause || action == proto.ControlResume {
+		if res.Paused {
+			fmt.Printf("paused: the desktop is yours%s\n", waitingSuffix(res))
+		} else {
+			fmt.Println("resumed: agents may drive again")
+		}
+		return exitOK
+	}
+
 	if action == proto.ControlState {
 		switch {
+		case res.Paused:
+			fmt.Printf("paused: the desktop is yours%s\n", waitingSuffix(res))
 		case !res.Live:
 			fmt.Println("no run: the desktop is the human's")
 		case res.Activity != "":
