@@ -30,6 +30,19 @@ touching anything.
   Point it at a copy of the state (`XDG_STATE_HOME=/tmp/x`, plus
   `XDG_CONFIG_HOME` for a theme) so Boris's own reviews and settings are not
   what you are experimenting on.
+- **A control can be fully styled in the stylesheet and unstyled on screen.**
+  A segmented control in Board.svelte rendered as two bare words while its rules
+  sat in the bundle with the right scope hash; moving it into its own component
+  fixed it. Two habits came out of it: keep a control's CSS in the component that
+  owns it rather than at the end of a seven-hundred-line stylesheet, and give
+  every `var()` a fallback - a var() that resolves to nothing takes its whole
+  declaration with it, so a control that has lost its background still reads as
+  working to everything except the screen. Three build-deploy-look cycles went
+  into believing the diff over the pixels.
+- **`agentbox walkthrough open` on an ALREADY-OPEN board retargets the window
+  without reloading the page.** After a frontend change, the surface you are
+  looking at can be the old bundle even though the deploy succeeded. Close the
+  window (or restart the daemon) before judging a UI change.
 - **Never click a list row at a coordinate read off an earlier screenshot.**
   Any queue change reflows the inbox - somebody answering a card two rows up
   collapses the Pending section and everything moves - so the row you measured

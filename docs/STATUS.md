@@ -1,12 +1,27 @@
 # STATUS
 
-Updated: 2026-08-06, forty-eighth session (**FR65 is closed: a citation opens in
-the editor**). Session 48 put an arrow beside copy in every code block header,
-so a reader stops leaving the board to paste a path and count lines; it also
-found that an editor launched by the daemon dies on the next deploy unless it is
-put in a systemd scope of its own, and that Enter on any focused button on the
-board ran the button and the board's own shortcut at once. **No field request
-Boris filed is open now.**
+Updated: 2026-08-06, forty-eighth session (**FR65, FR91, FR92 and FR93 all
+closed; no field request Boris filed is open**). Session 48 cleared a fix list
+and then took three new asks in the same sitting:
+
+- **FR65** put an arrow beside copy in every code block header, so a reader stops
+  leaving the board to paste a path and count lines. Building it found that an
+  editor launched by the daemon dies on the next deploy unless it is put in a
+  systemd scope of its own.
+- **FR91** gave every step a TL;DR - a shape, not a summary field - and the board
+  now OPENS in it, with `t` and a two-state header control switching to the full
+  text.
+- **FR92** groups steps into domains: the rail is an accordion showing one group
+  at a time, `[` and `]` move between them, and the drawer and the domain banner
+  animate (off under `theme.motion` reduced or none).
+- **FR93** made Esc dismiss a notification instead of deferring it, after two
+  urgent cards kept coming back however many times he pressed it.
+
+Also this session: migration 0012 gave items a `session_key`, a `speak` and a
+`diff`, closing the read-back gap FR73 had to leave open; the Agents board's
+three detail blocks are filled by real data for the first time; and Enter on any
+focused button on the board no longer runs the button and the board's own
+shortcut at once.
 Session 47 gave every inbox row a detail view that reads its item
 back whole - the last of Boris's own field requests still open at the time, and
 the one that mattered most, because a tool whose purpose is that a message is not

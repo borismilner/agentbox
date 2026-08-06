@@ -9,7 +9,7 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
-## Forty-eighth session (2026-08-06): a citation opens in the editor, and the editor outlives the daemon that opened it
+## Forty-eighth session (2026-08-06): a citation opens in the editor, and then the review learns two ways to be read
 
 Resumed from session 47's handoff with nothing in flight and FR65 at the head of
 the queue: the review board offered copy-the-path and copy-the-anchor and no way
@@ -54,6 +54,50 @@ is an argv array and the descriptor table has no kind for one, which is why
 `speech.command` has none either. `$EDITOR` is not consulted, against FR51's own
 proposal - it is usually a terminal editor and the daemon has no terminal to give
 it, so honouring it would be a click that silently does nothing.
+
+### Then the fix list, and three new asks
+
+Boris: "Fix everything needs fixing." What that turned out to mean:
+
+**The store was losing three things.** Migration 0012 added `session_key`,
+`speak` and `diff` to items. The first is the only identity that names ONE
+session - the agent/project/session triple is shared by every Claude session in a
+repo - and without it the Agents board could only match a row to its neighbour's
+items. The other two were written into FR73's read-back and taken straight out
+again when the insert turned out not to name them; they are readable now, and the
+unified-diff parser moved to `lib/diff.js` so the card that asks for a review and
+the detail that reads it back use the same one.
+
+**The Agents board's three detail blocks were rendered by demo.go and by nothing
+else.** They are real now, assembled per opened row rather than pushed - the
+roster goes out once a second while anything moves. Three owners meet in the call
+and none learns about the others: the roster gained a bounded ring of the
+activity lines a session has moved past, the signal hub gained a ring of what a
+session HEARD (the store cannot know - a signal is fanned out by meaning and one
+row is read by every listener), and the store answers what it posted and raised.
+An empty history is now a sentence, because three missing blocks read as a
+surface that failed to load.
+
+**FR93, mid-session, from two urgent cards on his screen.** Esc deferred a
+notification, escalation raised it again every 20 seconds, and ⇧Esc was the only
+way out and was written down nowhere. Esc dismisses a notify now.
+
+**FR91 and FR92 came as asks while the rest was in flight**, and both are in
+07-field-requests.md in full. The two things worth repeating here:
+
+The TL;DR is not the lossy version - "not necessarily less exhaustive, but
+optimally structured for a person with a very short attention span that must
+still get a mastery level of the most important aspects". That one sentence
+killed the free-text field and the total character cap, and left a shape:
+`bottom` plus up to six standalone `points`, capped per point.
+
+And the CSS lesson that cost the most time in the whole session. A segmented
+control rendered as two bare words in the header while being fully styled in the
+stylesheet. Moving it into its own component fixed it, and every `var()` in that
+component now carries a fallback: **a var() that resolves to nothing takes its
+whole declaration with it, and a control that has silently lost its background
+still reads as working to everything except the screen.** Three build-deploy-look
+cycles went into believing the diff over the pixels.
 
 ## Forty-seventh session (2026-08-05): the last of Boris's own field requests, and the store could not keep two of its promises
 

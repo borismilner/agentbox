@@ -2496,6 +2496,119 @@ One copy, three doors. Every rule that was in this section is in that file, plus
 the paragraph, note and bind rules the board can now honour. Add new rules
 there, not here.
 
+## FR91 [shipped 2026-08-06] Every step needs a TL;DR, and the board should open in it
+
+**Session.** 2026-08-06, session 48, straight after FR65 shipped. Boris: "I want
+every page in every walkthrough to have a TL;DR version for people with very
+short attention span. So a person can either read just TL;DR or switch into the
+exhaustive version and read in-depth."
+
+**The sentence that decided the design**, sent a few minutes later and worth
+quoting because the first reading of the request was wrong: "The content in
+TL;DR is not necessarily less exhaustive, but it is to be optimally structured
+for a person with a very short attention span that must still get a mastery
+level of the most important aspects discussed."
+
+So it is not a summary field. Nothing important is cut; what changes is the
+STRUCTURE. That killed both obvious designs:
+
+- **A free-text field** would have come back as the paragraph it exists to
+  replace. Prose asks to be read from the start and held to the end; this has to
+  survive being stopped anywhere.
+- **A total character cap** would have made it the lossy version, which is the
+  one thing it must not be.
+
+**What shipped.** `tldr` is a shape: `bottom`, the one sentence that has to
+survive, and up to six `points`, each a load-bearing fact standing on its own and
+in any order. The caps are PER POINT (220 / 280), which bounds the shape without
+asking the author to leave anything out - a point that will not fit is two
+points, or belongs in the prose. Required on code and check steps with a teaching
+error, because the board OPENS in TL;DR: a step without one shows the reader
+nothing until they switch.
+
+On the board: a two-state control in the header (TL;DR / Full text), `t` to
+toggle, and a step written before this existed renders in full and says why
+rather than showing an empty pane. Six rules for writing one went into
+`internal/manual/walkthrough.md`, which is what agents actually read.
+
+**Two things the screen said that the diff did not.** `all: unset` on the expand
+button wiped the grid-column the step sets on every child, so it auto-placed into
+the margin column and floated off to the right of the pane it was offering to
+expand. And the first segmented control rendered as two bare words in the header
+- styled in the stylesheet, unstyled on screen - until it was moved into its own
+component. **Every `var()` in that component now carries a fallback**: a var()
+that resolves to nothing takes its whole declaration with it, and a control that
+has silently lost its background still reads as working to everything except the
+screen.
+
+---
+
+## FR92 [shipped 2026-08-06] Group steps into domains, and show one at a time
+
+**Session.** 2026-08-06, session 48. Boris: "I think that steps can be sometimes
+grouped into domains and in such cases it must be shown visually, maybe even
+showing one domain at a time which will also make the navigation less cluttered
+when there are a lot of steps. The opening and closing of a domain and navigation
+between the domains should be elegant and eye-pleasing, maybe even animated."
+
+**What shipped.** A spec may declare two to six `domains` and give every step
+one. The rail becomes an accordion: the domain holding the current step lists its
+stations, the others collapse to a line carrying their own progress, so the shape
+of the whole review stays visible while only one part of it is detailed. `[` and
+`]` move by domain - the navigation the grouping exists to make possible, since a
+reader who has decided a subject is not theirs should not press → through five
+steps of it.
+
+**Clicking a collapsed domain opens it WITHOUT navigating there.** Looking ahead
+is a different act from going, and a rail that moved on every peek could not be
+used to survey anything.
+
+**Contiguity is validated, not assumed.** The board walks one domain at a time,
+so a domain the step order leaves and returns to would open twice and finish
+neither time. The error says to reorder or split.
+
+**On the animation, which he asked for by name.** The drawer opens on
+`grid-template-rows: 0fr -> 1fr`, so a step whose title wraps to two lines opens
+as smoothly as one that does not - no measured pixel height, nothing to go stale.
+The domain banner above the step is keyed on the DOMAIN rather than the step, so
+it arrives once when the reader crosses into a new subject instead of flickering
+on every arrow press. Both are off under `theme.motion` reduced or none.
+
+**Ungrouped reviews render exactly as they always did**, which is the right answer
+for a short walk rather than a fallback: under about eight steps the flat rail is
+better and the ceremony costs more than the clutter it removes.
+
+**One thing found on screen.** The domain blurb was printed twice - once in the
+rail's open drawer, once in the step's banner. The rail is a route; the line
+saying what a domain is about belongs where the reader is.
+
+---
+
+## FR93 [shipped 2026-08-06] Esc could not close a notification
+
+**Session.** 2026-08-06, session 48, while other work was in flight. Boris, on two
+urgent notifies another agent had raised: "Is it me or there is no way to dismiss
+messages like this" and then "No matter how many times I press Esc, it pops back
+up."
+
+**What AgentBox was doing.** Esc deferred, ⇧Esc dismissed, and the card's hint
+strip named only the first. Deferring is "not now, ask me again" - the right
+answer to a question and a trap on a notification, which has nothing to answer:
+the item stayed pending and escalation raised it again, every 20 seconds at
+urgent. He was pressing the only key the card named, and it was the one key that
+could not end it.
+
+**What shipped.** On a notify card Esc dismisses; on everything else it still
+defers and ⇧Esc forces dismiss. The hint says which of the two THIS card's Esc
+will do rather than one wording for all of them. The toast surface has always
+dismissed on Esc; the card was the odd one out.
+
+**Worth keeping.** The affordance existed and was invisible, which is the same
+failure FR65 fixed on the review board an hour earlier: a control that works and
+is never written down is a control that does not exist.
+
+---
+
 ## Mechanics discovered
 
 Verified facts from field sessions, kept so a later session does not re-derive
