@@ -1041,7 +1041,7 @@ tool grows one.
 
 ---
 
-## FR65 [field] Open a citation in the editor
+## FR65 [shipped 2026-08-06] Open a citation in the editor
 
 **Session.** 2026-07-30, same review.
 
@@ -1063,6 +1063,55 @@ JetBrains invocation is already recorded in "Mechanics discovered" below
 first, routes to an already-open window). Editor command belongs in config as a
 template, since the board cannot guess between GoLand, VS Code and a terminal
 editor.
+
+**What shipped.** `internal/editor` resolves an argv template and launches it;
+`Bridge.BoardOpenInEditor(id, rel, line)` and an arrow beside copy in every block
+header. The surface names a REVIEW and a repo-relative path, never a file: the
+root comes from the stored walkthrough on the Go side and `underRoot` refuses
+anything that resolves outside it, the treatment `OpenURL` already got for being
+the other place a surface reaches out of agentbox.
+
+**Four things building it found, in the order they cost time.**
+
+1. **An editor started as a plain child of the daemon dies on the next deploy.**
+   `agentbox.service` is `KillMode=control-group` and the Toolbox launcher script
+   *execs* the IDE rather than forking it, so the IDE **is** the child and lands
+   in the service's cgroup. The launch goes through
+   `systemd-run --user --scope --collect` to leave it. Watched for real: the
+   window opened by the button was still up after a full `make deploy`. Cold
+   start only in practice - with the IDE already running the launcher is a
+   short-lived client - which is exactly the case testing would miss.
+2. **$EDITOR is not consulted, deliberately.** FR51 proposed falling back to it;
+   it is almost always a terminal editor and the daemon has no terminal to give
+   it, so honouring it would be a click that silently does nothing. Detection
+   covers GUI launchers and `xdg-open` is the last resort (which loses the line
+   and says so). A terminal editor is still reachable by writing the terminal
+   into the template: `["kitty", "-e", "nvim", "+{line}", "{file}"]`.
+3. **Opening a project the IDE does not already have raises a modal.** GoLand
+   asks "This Window / New Window / Attach" before it does anything, so the first
+   open into a cold project is two clicks and the file lands in a background tab
+   behind whatever the restored session had open. It DOES land on the line (the
+   caret read `141:2`). The second citation, with the project now open, routed to
+   that window, switched tabs and raised it - `378:2` - which is the case that
+   matters daily.
+4. **A defect in the surface, not in this feature.** The board's shortcuts bailed
+   for INPUT and TEXTAREA only, so Enter on a focused button ran the button and
+   the board's own binding: the file opened and the board jumped to the next
+   unread step underneath the reader. True of every button on the board since the
+   shortcuts were added; fixed in the same session.
+
+**Verified on screen** (2026-08-06, deployed build): the arrow on a citation with
+no `editor.command` set at all, detection picking `goland`, the caret landing on
+the cited line both cold and warm, the failure wording beside the block for a
+template naming a program that is not there
+(`editor "nosucheditor-fr65-probe" is not on PATH`), recovery on the next click
+once the config was right, and Enter on the focused button opening the file
+without moving the step.
+
+**Not built.** No `[editor]` control in the settings tab: the value is an argv
+array and the descriptor table has no kind for one, the same reason
+`speech.command` has no control. It is a config.toml key documented in
+06-configuration.md.
 
 ---
 

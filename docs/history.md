@@ -9,6 +9,52 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Forty-eighth session (2026-08-06): a citation opens in the editor, and the editor outlives the daemon that opened it
+
+Resumed from session 47's handoff with nothing in flight and FR65 at the head of
+the queue: the review board offered copy-the-path and copy-the-anchor and no way
+to go there, so a reader left the board, pasted, and counted lines - on a file
+cited across eight steps, the motion made most.
+
+**What shipped.** `internal/editor` resolves an argv template and launches it;
+`Bridge.BoardOpenInEditor` and an arrow beside copy in every block header.
+The surface names a review and a repo-relative path, never a file - the root
+comes from the stored walkthrough and `underRoot` refuses anything resolving
+outside it, the treatment `OpenURL` already had.
+
+**The trap that would have shipped invisibly.** `agentbox.service` is
+`KillMode=control-group`, and a JetBrains Toolbox launcher *execs* the IDE rather
+than forking it, so the IDE **is** the daemon's child and lands in the service's
+cgroup: the editor a reader opened would die on the next `make deploy`. Only on a
+cold start - with the IDE already up the launcher is a client that hands over and
+exits - so it is exactly the case testing skips. The launch goes through
+`systemd-run --user --scope --collect`, and it was proved by leaving a window open
+and running a real deploy under it.
+
+**Three more things the real screen said, none of them visible in the diff.**
+Detection with no config at all picked `goland` and the caret landed on `141:2`,
+the cited line. Opening a project GoLand did not already have raises a
+This Window / New Window / Attach modal first, and the file then lands in a
+background tab behind the restored session's own - the warm case (`378:2`,
+routed to the open window, tab switched, window raised) is the one worth
+promising. And a template naming a program that is not there puts
+`editor "nosucheditor-fr65-probe" is not on PATH` in words beside the block,
+which needed Boris's own config borrowed for a minute and restored by checksum.
+
+**A defect found by using the new control, older than the control.** The board's
+shortcuts bailed for INPUT and TEXTAREA and nothing else, so Enter on a focused
+button ran the button AND the board's binding: the file opened and the board
+jumped to the next unread step underneath the reader. Watched from step 2 landing
+back on step 1, fixed, and watched again staying put while the log recorded the
+open the same Enter had triggered. True of every button on the board since the
+shortcuts were added.
+
+**Deliberately not built.** No `[editor]` control in the settings tab: the value
+is an argv array and the descriptor table has no kind for one, which is why
+`speech.command` has none either. `$EDITOR` is not consulted, against FR51's own
+proposal - it is usually a terminal editor and the daemon has no terminal to give
+it, so honouring it would be a click that silently does nothing.
+
 ## Forty-seventh session (2026-08-05): the last of Boris's own field requests, and the store could not keep two of its promises
 
 Resumed from session 46's handoff with instructions to skip the queue triage and
