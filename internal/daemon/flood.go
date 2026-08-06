@@ -53,10 +53,25 @@ func floodKey(id proto.Identity) string {
 
 // stackTitle is what the collapsed card says it is. The count is the headline
 // because the count is the complaint.
-func stackTitle(agent string, n int, within time.Duration) string {
+//
+// "notifications" only while they all are. A burst holding a question is not
+// five notifications, and the title is the line a person decides from - it read
+// "5 notifications" over a row saying "waiting on you" on the real desktop,
+// which is the card contradicting itself in its own first sentence.
+func stackTitle(agent string, entries []proto.StackEntry, within time.Duration) string {
+	n := len(entries)
 	noun := "notifications"
 	if n == 1 {
 		noun = "notification"
+	}
+	for _, e := range entries {
+		if e.Blocking {
+			noun = "items"
+			if n == 1 {
+				noun = "item"
+			}
+			break
+		}
 	}
 	return fmt.Sprintf("%s: %d %s in %s", agent, n, noun, roundSecs(within))
 }
@@ -131,7 +146,7 @@ func (d *Daemon) collapseLocked(it *proto.Item, now time.Time) (collapsed bool, 
 
 	if open != nil {
 		open.Stack = append(open.Stack, entry)
-		open.Title = stackTitle(it.Identity.Agent, len(open.Stack), stackSpan(open.Stack, now))
+		open.Title = stackTitle(it.Identity.Agent, open.Stack, stackSpan(open.Stack, now))
 		// The card wears the worst thing inside it. A burst that started as three
 		// info toasts and has since collapsed an error must not still read as the
 		// mildest of its contents - the human is being asked to judge the whole
@@ -147,7 +162,7 @@ func (d *Daemon) collapseLocked(it *proto.Item, now time.Time) (collapsed bool, 
 		ID:    newID(),
 		Kind:  proto.KindStack,
 		Level: worstLevel([]proto.StackEntry{entry}),
-		Title: stackTitle(it.Identity.Agent, 1, 0),
+		Title: stackTitle(it.Identity.Agent, []proto.StackEntry{entry}, 0),
 		// The warning FR30 asks for, said on the card that carries the burst rather
 		// than on a second card beside it. Two cards for one flood would be the
 		// noise this feature exists to stop.
@@ -265,14 +280,20 @@ func (d *Daemon) OpenStacked(stackID, itemID string) {
 
 	it := stored.Item
 	d.mu.Lock()
-	// In front of the stack card, so answering the row returns to the list rather
-	// than to whatever else has queued behind it.
-	d.queue = append([]*proto.Item{&it}, d.queue...)
+	// Order matters and it is the opposite of the obvious one. The stack card
+	// steps aside FIRST, and only then does the promoted item go to the front -
+	// so the queue is [item, stack, ...] and advance puts the item on screen with
+	// the list waiting right behind it. Written the other way round (item first,
+	// then the stack pushed in front of it) the stack card simply retook the
+	// screen and the promoted item sat behind it reading "1 waiting", which is
+	// what the number key appeared to do on the real desktop while every unit
+	// test passed - they all had the stack in the queue rather than on screen.
 	if d.current != nil && d.current.ID == stackID {
-		d.queue = append([]*proto.Item{d.current}, d.queue...)
 		d.stopTimerLocked(d.current.ID)
+		d.queue = append([]*proto.Item{d.current}, d.queue...)
 		d.current = nil
 	}
+	d.queue = append([]*proto.Item{&it}, d.queue...)
 	d.advanceLocked()
 	view := d.viewLocked()
 	d.mu.Unlock()

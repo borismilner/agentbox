@@ -364,15 +364,45 @@ func TestAQuestionCaughtInABurstStaysAnswerable(t *testing.T) {
 	if !stack.Stack[0].Blocking {
 		t.Fatal("the collapsed question does not read as blocking; the card cannot warn about it")
 	}
+	// A burst holding a question is not a burst of notifications, and the title is
+	// the line a person decides from.
+	if stack.Title != "claude: 1 item in under a second" {
+		t.Fatalf("stack title = %q, want it to stop calling a question a notification", stack.Title)
+	}
+
+	// Open it from the state the human is actually in: the stack card ON SCREEN,
+	// not queued behind something else. That distinction is the whole test - the
+	// first version of this only ever had the stack in the queue, so it passed
+	// while the number key on the real desktop put the stack straight back up and
+	// left the promoted question behind it reading "1 waiting".
+	d.mu.Lock()
+	for d.current != nil && d.current.ID != stack.ID {
+		id := d.current.ID
+		d.mu.Unlock()
+		d.Dismiss(id)
+		d.mu.Lock()
+	}
+	onStack := d.current != nil && d.current.ID == stack.ID
+	d.mu.Unlock()
+	if !onStack {
+		t.Fatal("could not get the stack card on screen")
+	}
 
 	// The whole promise of collapsing rather than dropping: the parked caller is
 	// still reachable, through the row.
 	d.OpenStacked(stack.ID, askID)
 	d.mu.Lock()
 	onScreen := d.current
+	next := ""
+	if len(d.queue) > 0 {
+		next = d.queue[0].ID
+	}
 	d.mu.Unlock()
 	if onScreen == nil || onScreen.ID != askID {
 		t.Fatalf("on screen = %+v, want the promoted question %s", onScreen, askID)
+	}
+	if next != stack.ID {
+		t.Fatalf("next in the queue is %q, want the stack card back right behind the row that was opened", next)
 	}
 
 	d.Answer(askID, "Yes")
