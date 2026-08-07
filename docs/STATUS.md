@@ -1,138 +1,50 @@
 # STATUS
 
-Updated: 2026-08-06, fifty-second session (**FR95 is done: the column goes quiet
-with the sign, and nothing of AgentBox is in the frame**).
+Updated: 2026-08-07, fifty-third session (the wiki, and every doc claim checked
+against source).
 
-Session 52 built FR95's fourth answer and closed the request. While the sign is
-demoted, cards queue instead of appearing and drain the moment it goes loud, the
-earcon still plays so he knows one arrived, and nothing is lost - the inbox has
-them from the second they arrive. Urgent waits too and comes out FIRST when the
-recording ends, rather than behind whatever queued before it. The progress window
-goes with the cards: a bar is not a card, but it is AgentBox on screen. Watched on
-the deployed build: three cards held with no AgentBox window on screen at all,
-`control state` counting them, and the urgent one first out.
+**This file is the current state, and only that.** What each session shipped,
+broke, learned and verified is in [history.md](history.md), which is the log; the
+resume brief with live state and copy-pasteable commands is
+[../HANDOFF.md](../HANDOFF.md); and what a feature is FOR, in a stranger's terms,
+is the wiki in [wiki/](wiki/). A narrative of the last fourteen sessions used to
+sit here as well as in history.md, and it is gone rather than shortened.
 
-Session 51 measured FR95's one load-bearing mechanic before mocking it, mocked it,
-had Boris settle four questions at the mock (he took every recommendation), and
-built three of the four. Recording mode exists and is deployed: `Ctrl+Alt+Q` or
-`agentbox control quiet` demotes the hands-off strip to FR74's four pixels, the
-demoted marker gives up being top-most so a fullscreen window covers it (watched
-on screen), the marker turns green while he has the desktop paused, and the mode
-dies with the daemon and expires after 30 minutes so it cannot be left on.
-
-Session 50 mocked FR94, had Boris settle it at the mock, and built it: he can now
-take his keyboard and mouse back mid-run with `Ctrl+Alt+Escape` or the strip's own
-Pause button, and hand them on again, without the run ending. The strip inverts to
-green `PAUSED - YOURS` instead of vanishing, a running `drive_desktop` parks at the
-end of its step (between characters inside a `type`) rather than failing, the latch
-is desktop-wide so no second agent is handed the desktop while he is using it, and
-nothing an agent can call resumes it. It also found that **GNOME Shell swallows
-every `Super` combination before a core X11 grab can see it, silently** - the first
-default, `Super+Escape`, grabbed successfully and never fired once.
-
-Session 49 put the walkthrough standard on trial against a real change and it
-failed in five places, all fixed. Session 48 cleared a fix list and then took three
-new asks in the same sitting:
-
-- **FR65** put an arrow beside copy in every code block header, so a reader stops
-  leaving the board to paste a path and count lines. Building it found that an
-  editor launched by the daemon dies on the next deploy unless it is put in a
-  systemd scope of its own.
-- **FR91** gave every step a TL;DR - a shape, not a summary field - and the board
-  now OPENS in it, with `t` and a two-state header control switching to the full
-  text.
-- **FR92** groups steps into domains: the rail is an accordion showing one group
-  at a time, `[` and `]` move between them, and the drawer and the domain banner
-  animate (off under `theme.motion` reduced or none).
-- **FR93** made Esc dismiss a notification instead of deferring it, after two
-  urgent cards kept coming back however many times he pressed it.
-
-Also this session: migration 0012 gave items a `session_key`, a `speak` and a
-`diff`, closing the read-back gap FR73 had to leave open; the Agents board's
-three detail blocks are filled by real data for the first time; and Enter on any
-focused button on the board no longer runs the button and the board's own
-shortcut at once.
-Session 47 gave every inbox row a detail view that reads its item
-back whole - the last of Boris's own field requests still open at the time, and
-the one that mattered most, because a tool whose purpose is that a message is not
-lost was losing messages. Session 46 fixed the identity hue's two implementations, the
-project name, two board dead ends and a form's clipped options, and found a shell
-layout bug any surface could trigger.
-Session 45 installed the hooks in Boris's real `~/.claude/settings.json` and found
-the recipe could not work as written, so the session key is now derived from the
-agent process instead of minted - every session on this machine announces itself
-without being asked, and a new one is told who else is there. Session 44 shipped
-shared values; session 43 shipped signals and FR89; session 42 shipped locks and
-fixed the 30-minute fuse under every blocking card; session 41 finished slice 1;
-session 40 built it; session 39 designed FR83.
+Where it stands: milestones M0 through M13 are done, FR83 (multi-agent
+coordination) and FR95 (recording mode) are complete, and what remains is a
+verification and refinement queue. The showcase re-record was dropped for good on
+2026-08-06 (priority 2 below says what that means for `tools/showcase/`). Session
+53 audited every factual claim in these docs against the code and found nine
+config keys nothing reads, three wrong verb lists, two wrong defaults and a tool
+count that had been wrong in three places; [wiki/FACTS.md](wiki/FACTS.md) is the
+audited base, and it is what to quote from now on.
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config
 `~/.config/agentbox/`, state `~/.local/state/agentbox/`, unit `agentbox.service` (enabled,
 active, systemd owns the daemon), MCP server `agentbox` (user scope, tools
 `mcp__agentbox__*`), artifact API `window.agentbox.emit`, wire methods `agentbox.v1.*`.
-Milestones M0 through M13 are done, **M12 (assignments) including its last
-piece**: the custom HTML panel runs in the artifact sandbox with a two-way
-channel - values out through `emit("params", ...)` into `SetAssignmentParams`,
-values in through `window.agentbox.params` and the `agentbox:params` event, and
-the daemon pokes open surfaces (`agentbox:assignments`) on every mutation so an
-agent's edit lands in a panel somebody is looking at. See
-[08-assignments.md](08-assignments.md).
-FR81's visual pass over the remaining surfaces shipped in session 37, so the
-rail speaks one language end to end.
 
-**FR83 is complete: agents can see, find and wait for each other**
-([09-sync.md](09-sync.md)). What exists, deployed and verified live:
+M12 (assignments) is done including its last piece: the custom HTML panel runs in
+the artifact sandbox with a two-way channel - values out through
+`emit("params", ...)` into `SetAssignmentParams`, values in through
+`window.agentbox.params` and the `agentbox:params` event, and the daemon pokes open
+surfaces (`agentbox:assignments`) on every mutation so an agent's edit lands in a
+panel somebody is looking at. See [08-assignments.md](08-assignments.md).
 
-- **Presence and discovery** - every session says what it is for and what it is
-  doing, finds the peers sharing its repo, and appears on the **Agents** rail
-  surface with a state chip the daemon derives rather than the agent claims. When
-  an area gains or loses a peer, one line rides back on the next tool result an
-  agent gets, so an agent deep in a file finds out without asking.
-- **Locks** - named advisory leases keyed to the session key (`acquire_lock`,
-  `try_lock`, `release_lock`, plus `agentbox sync lock|unlock|locks|break`), a
-  dead holder's lease going orphaned with the pid it recorded, deadlock refused by
-  name at acquire time, and Break lock behind a two-step confirm. `make deploy` is
-  the one resource this cannot arbitrate - it stops the daemon the lock lives in -
-  so it takes an flock instead.
-- **Signals** - `post_signal` and `await_signal` over one global cursor, stored so
-  delivery never depends on somebody listening at the time, with per-topic
-  retention that reports a gap rather than serving a batch with a hole in it. The
-  daemon posts `agents:<area>`, `lock:<name>` and `to:<key>` itself, which is how
-  direct messages ride the same rails with no mailbox subsystem.
-- **Shared values** - the compare-and-swap blackboard (`shared`, plus `agentbox
-  sync get|set|del`), where `if_version: 0` claims a key only if nobody holds it
-  yet and an owner whose process died reads as abandoned instead of blocking the
-  table. Nothing here is ever trimmed, deliberately. On the board in a block of
-  its own, abandoned claims sorted to the top.
-- **The teaching**, which is what makes this Boris's mandate rather than an option
-  - hooks in `~/.claude/settings.json` put every session on the board and hand it
-  its peers, with no tokens and no instruction.
+**FR83 is complete: agents can see, find and wait for each other.** Presence and
+discovery, named leases, stored signals and a compare-and-swap blackboard, all
+deployed and verified live, with hooks that put every session on the board with no
+tokens and no instruction. [09-sync.md](09-sync.md) is the reference and is not
+summarised here, because each of the five slices found something the design had
+wrong and every one was found by running the thing rather than reading the diff.
 
-The composition is the point, and it works end to end: park on a signal, take a
-lock, claim a chunk, and watch the chain on the board while it happens.
-
-Two shipped bugs fell out of building it, both fixed: `Conn.Serve` never told a
-blocking handler its caller had hung up, so **FR45's caller-gone indicator had
-never fired in the field**, and every blocking card was on a 30-minute fuse
-(FR88), found while measuring the client's idle cap for the parked waits. The
-identity hue's two implementations agreed for the first time in session 46
-(FR85 with FR86, fixed and seen on screen).
-
-**Each slice is worth reading about rather than summarised here**, because all five
-found something the design had wrong and every one was found by running the thing
-rather than by reading the diff. Each slice's record in
-[09-sync.md](09-sync.md) says what building it changed - including the un-shareable
-minted session key that four sessions missed by reading the hook recipe instead of
-installing it. Sessions 40 to 45 in [history.md](history.md) say what each cost.
-
-What remains is the verification and refinement queue. The showcase re-record was
-dropped for good on 2026-08-06 (priority 2 below says what that means for
-`tools/showcase/` and its docs).
-
-This file is the current state. The session-by-session narrative - what each
-session shipped, broke, learned and verified - is in [history.md](history.md).
-The resume brief with live state and exact commands is [../HANDOFF.md](../HANDOFF.md).
+Two bugs that had been shipped for months fell out of building it, both fixed and
+both worth remembering here rather than in one slice's record: `Conn.Serve` never
+told a blocking handler that its caller had hung up, so **FR45's caller-gone
+indicator had never once fired in the field**, and every blocking card was on an
+undocumented 30-minute fuse (FR88), which meant the human's card stayed up and his
+answer arrived at a caller that was already gone.
 
 ## Deployed, and reachable from every Claude session
 
