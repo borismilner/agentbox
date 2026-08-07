@@ -388,6 +388,18 @@ def staged_artifact_source(text):
     return out
 
 
+def head_sha():
+    """The commit the S4 citations are true against.
+
+    The board pins a review to a SHA and refuses one without it (7-64 hex,
+    internal/walkthrough/spec.go:291). HEAD is the honest answer: the cited lines
+    are read out of the working tree at the moment the spec is written.
+    """
+    r = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"],
+                       capture_output=True, text=True)
+    return r.stdout.strip()
+
+
 def review_spec(path, first, last, note_from, note_to):
     """The walkthrough spec for S4, citing a real file in this repo.
 
@@ -398,7 +410,11 @@ def review_spec(path, first, last, note_from, note_to):
     return json.dumps({
         "version": 1,
         "title": "the exit-code contract",
-        "repo_root": ".",
+        # Absolute, because the daemon refuses anything else: `repo_root must be
+        # an absolute path, got "."`. A relative one looked reasonable and cost a
+        # 45-second wait for a board that was never going to open.
+        "repo_root": str(REPO),
+        "pinned": head_sha(),
         "steps": [
             {"id": "ground", "kind": "ground", "title": "What this change is",
              "prose": [{"t": "Five numbers a script branches on, and the reason they can never move."}]},
@@ -410,11 +426,24 @@ def review_spec(path, first, last, note_from, note_to):
                        "notes": [{"at": [note_from, note_to],
                                   "text": "0 through 4: answered, refused, misused, unanswered, broken."}]}],
              "binds": {"codes": {"lines": [note_from, note_to]}},
+             # Required on code and check steps (spec.go:606-631), and not
+             # boilerplate for this shot: the board OPENS in brief, so the tldr is
+             # what S4 actually photographs.
+             "tldr": {"bottom": "Five exit codes, fixed forever, because agents write scripts "
+                                "against them the day they learn them.",
+                      "points": ["0 answered, 1 refused, 2 misused, 3 unanswered, 4 broken.",
+                                 "3 and 1 are different on purpose: nobody answered, versus "
+                                 "somebody said no.",
+                                 "Renumbering any of them breaks a script written a year ago."]},
              "checks": [{"q": "A blocking ask times out. Which code?",
                          "a": "3 - unanswered. 1 is a person saying no; 4 is agentbox itself failing."}]},
             {"id": "gate", "kind": "check", "title": "The gate",
              "purpose": "Serves: finishing is an observation, not a feeling.",
              "prose": [{"t": "Mark a step unclear with no note and submit: the modal jumps back."}],
+             "tldr": {"bottom": "Unclear without a note does not ship: the gate sends you back to "
+                                "the step that is missing one.",
+                      "points": ["Understood needs no note; unclear does.",
+                                 "The refusal names the step and puts the keyboard in its note."]},
              "cmds": [{"cmd": "agentbox walkthrough list", "expect": "the library lists this review"}]},
         ],
     })
@@ -434,6 +463,7 @@ class Run:
         self.failures = []
         self.notes = []
         self.bg = []            # background children, newest last
+        self.progress_procs = []  # S10's feeders; the window lives as long as they do
         self.tmp = None
         self.env_iso = None     # set once the throwaway daemon is up
         self.env_real = dict(os.environ)
@@ -836,9 +866,38 @@ def stage_s10(c, shot):
         if p is not None:
             p.stdin.write(f"{pct} {label}\n")
             p.stdin.flush()
+            c.progress_procs.append(p)
         if not c.dry:
             time.sleep(0.6)
     return c.wait_window(shot["key"], shot["title"], c.env_iso)
+
+
+def end_progress(c):
+    """Close the progress window by ending the reports that hold it open.
+
+    A report lives as long as its writer, so the three feeders keep the window in
+    the bottom-right corner of every window shot taken after S10. The first real
+    sitting put it in the corner of the agents board, the inbox and the artifact.
+    Closing the window is not enough on its own: the daemon opens it again on the
+    next report, so the writers are what has to stop.
+    """
+    if not c.progress_procs:
+        return
+    for p in c.progress_procs:
+        try:
+            p.stdin.close()
+        except (OSError, ValueError):
+            pass
+        p.terminate()
+    for p in c.progress_procs:
+        try:
+            p.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            p.kill()
+        if p in c.bg:
+            c.bg.remove(p)
+    c.progress_procs = []
+    c.close_window("=agentbox · progress", c.env_iso)
 
 
 def stage_s1(c, shot):
@@ -976,10 +1035,29 @@ def stage_s4(c, shot):
     if not c.dry:
         spec.write_text(review_spec(path, 30, 45, 36, 40))
     c.close_window("=agentbox · app", c.env_iso)
-    c.abx("walkthrough", "create", "--spec", str(spec), env=c.env_iso)
+    # Checked, because an unchecked one is indistinguishable from a slow window:
+    # a failed create sent the first real sitting into a 45-second wait and then
+    # reported "no window matching agentbox · review board", which is true and
+    # says nothing about why.
+    r = c.abx("walkthrough", "create", "--spec", str(spec), env=c.env_iso)
+    if r.returncode != 0:
+        c.fail("S4", f"walkthrough create exited {r.returncode}: "
+                     f"{(r.stderr or r.stdout).strip()[:300]}")
+        return None
     g = c.wait_window(shot["key"], shot["title"], c.env_iso)
     if not c.dry:
         time.sleep(2.0)   # WebKit, and the board paints its rail after the shell
+    # The board opens on step 0, which is the ground step: no code, no highlighted
+    # range and no note, which is three of the four things DESIGN asks this shot
+    # for. One step right lands on the code step the citation and the note belong
+    # to. The first frame taken here was of the ground step and was nearly empty.
+    # Right lands on the code step; `t` leaves brief for the full text. DESIGN asks
+    # for the highlighted line range with its note attached, and brief mode has no
+    # code in it at all - the first frame taken here was a TL;DR box over an empty
+    # half-screen.
+    c.drive(f"window {shot['title']}\nkey Right\nkey t\n", c.env_iso)
+    if not c.dry:
+        time.sleep(1.5)
     c.note("S4: the anchored comment comes from the spec's note, not from a typed "
            "one. DESIGN asks for a comment with text typed into it; typing one means "
            "selecting code at a coordinate, which this script will not do. Check the "
@@ -1505,6 +1583,10 @@ def main():
                 continue
             geom = (100, 100, 800, 600)
         c.capture(shot, geom)
+        # The progress window outlives its shot unless its writers are stopped,
+        # and it is always-on-top in the corner every other window shot uses.
+        if shot["key"] == "S10":
+            end_progress(c)
 
     # Always end with the deployed daemon back, whether or not S12 was in the run.
     if c.phase != "real":

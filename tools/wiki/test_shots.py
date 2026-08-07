@@ -424,13 +424,42 @@ class TestReviewSpec(unittest.TestCase):
     def test_is_valid_json_with_the_shape_the_board_reads(self):
         spec = json.loads(shots.review_spec("cmd/agentbox/main.go", 100, 140, 108, 114))
         self.assertEqual(spec["version"], 1)
-        self.assertEqual(spec["repo_root"], ".")
+        # Absolute, and asserted as a requirement rather than as a value: this
+        # line used to read `assertEqual(spec["repo_root"], ".")`, which is what a
+        # test looks like when it copies the code instead of checking the contract
+        # the code has to meet. The daemon rejects a relative root outright.
+        self.assertTrue(os.path.isabs(spec["repo_root"]), spec["repo_root"])
+        self.assertTrue((Path(spec["repo_root"]) / "go.mod").is_file(),
+                        f'{spec["repo_root"]} is not the repository root')
         kinds = [s["kind"] for s in spec["steps"]]
         self.assertEqual(kinds, ["ground", "code", "check"])
         code = spec["steps"][1]["code"][0]
         self.assertEqual(code["path"], "cmd/agentbox/main.go")
         self.assertEqual(code["lines"], [100, 140])
         self.assertEqual(code["notes"][0]["at"], [108, 114])
+
+    def test_pinned_is_a_sha_the_board_will_accept(self):
+        # internal/walkthrough/spec.go:291 wants 7-64 hex and refuses the review
+        # outright without it. The spec had no pinned field at all, which cost two
+        # rounds of a daemon swap to discover because create's exit code was
+        # thrown away.
+        import re
+        spec = json.loads(shots.review_spec("cmd/agentbox/main.go", 30, 45, 36, 40))
+        self.assertRegex(spec["pinned"], r"^[0-9a-f]{7,64}$")
+
+    def test_code_and_check_steps_carry_a_tldr(self):
+        # Also spec.go: required on both kinds, and the board OPENS in brief, so
+        # for S4 the tldr is not metadata - it is the photograph.
+        spec = json.loads(shots.review_spec("cmd/agentbox/main.go", 30, 45, 36, 40))
+        for st in spec["steps"]:
+            if st["kind"] in ("code", "check"):
+                self.assertIn("tldr", st, f'step {st["id"]} has no tldr')
+                self.assertTrue(st["tldr"]["bottom"].strip())
+                self.assertTrue(st["tldr"]["points"])
+                self.assertLessEqual(len(st["tldr"]["bottom"]), 220)
+                self.assertLessEqual(len(st["tldr"]["points"]), 6)
+                for pt in st["tldr"]["points"]:
+                    self.assertLessEqual(len(pt), 280)
 
     def test_the_note_range_is_inside_the_shown_range(self):
         # A note anchored outside the lines on screen is a highlighted range
