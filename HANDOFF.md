@@ -2,8 +2,8 @@
 
 *Written by session 57, which cleared session 56's whole solo list: the owed deploy,
 the UX audit, the merged backlog, the install shot, and the first test in this
-project's history to mount a Svelte component. One deploy is owed again, on purpose,
-and it needs five minutes of Boris's desktop.*
+project's history to mount a Svelte component. Then it fixed one item off its own
+new backlog, drove it on the real desktop, and shipped it. Nothing is owed.*
 
 **Written:** 2026-08-07 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -11,31 +11,25 @@ and it needs five minutes of Boris's desktop.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean, 21 ahead of origin/main. origin is
+git status -sb              # expect clean, ~25 ahead of origin/main. origin is
                             # gitlab and is main's upstream; `github` is a mirror
-make deployed               # expect 74b350326153, which is NOT HEAD - deliberately
+make deployed               # expect 5485842cc01a. HEAD is a couple of commits past
+                            # it and every one of them is docs, so no deploy is owed
 make check                  # gofmt + vet + race + node + vitest, ~4 min
 agentbox pending            # expect nothing pending
 ```
 
-**The deploy is owed again, and this time it is blocked on a look rather than on
-capacity.** `9deff91` changes `Inbox.svelte` (U-03, below). The house rule is that a
-surface change is done after somebody exercises the real webui, not after reading
-the diff, and that needs the desktop. So:
+**No deploy is owed.** The deployed daemon is `5485842cc01a`, equal to HEAD, and
+U-03 was exercised on the real inbox before it shipped. So:
 
-1. **Exercise U-03, then deploy.** Open the inbox, select a pending row, press a key
-   that means nothing for its kind (`y` on a `text` item), and confirm the hint line
-   under the row reads `y does nothing to this one` in amber. Then press a key that
-   does work and confirm it goes back to the normal hint. Then `make deploy`.
-   Everything else in the five unpushed commits is docs and tests and is already
-   safe to ship with it.
-2. **Take the screenshots.** `tools/wiki/shots.py --yes`, runbook in
+1. **Take the screenshots.** `tools/wiki/shots.py --yes`, runbook in
    `tools/wiki/SHOTS.md`, about five minutes of desktop. Never run. Two shots the
    pages ask for are still missing and are listed at the top of SHOTS.md: the secret
    card mid-entry (`is-it-safe.md:18`) and Appearance with an unsaved change
    (`settings.md:51`). The third, `make doctor`, is done and published.
-3. **Then tier 1 of [docs/backlog/README.md](docs/backlog/README.md)**, which is the
-   new file that says what to build in what order across all three audits.
+2. **Then tier 1 of [docs/backlog/README.md](docs/backlog/README.md)**, which is the
+   new file that says what to build in what order across all three audits. U-02 is
+   the one to take first: it is a day, and it is what makes U-01 worth building.
 
 ## Where we are
 
@@ -52,10 +46,12 @@ document asserted and the code contradicted.** That is now four sessions running
 
 - **Background jobs:** none.
 - **PRs:** none, ever. Boris pushes `main` directly.
-- **Git:** `main` at `b690530`, clean, **21 commits ahead of `origin/main`**. Nothing
-  is pushed. Six commits are this session's.
-- **Deployed daemon:** `74b350326153`, five commits behind HEAD. It has both fixes
-  from `1d00fd2` (that was this session's first act). It does **not** have U-03.
+- **Git:** `main` at `03f66ad`, clean, **25 commits ahead of `origin/main`**. Nothing
+  is pushed. Ten commits are this session's.
+- **Deployed daemon:** `5485842cc01a`, running under `agentbox.service` on Boris's
+  own state, verified by asking the daemon. That is the last commit that changed
+  code; everything after it is documentation, so the daemon is current even though
+  it is not literally HEAD.
 - **The wiki is live and level** at https://gitlab.com/fu-bar/agentbox/-/wikis/home
   and https://github.com/borismilner/agentbox/wiki. This session published
   `install.md` plus `img/install-doctor.png` and verified both hosts serve the image
@@ -65,22 +61,19 @@ document asserted and the code contradicted.** That is now four sessions running
 
 ## Blocked on you (Boris)
 
-**Three things.**
+**One thing.** The other two were settled during the session: vitest is confirmed as
+the test runner ("vitest is fine, keep it"), and U-03 was exercised and deployed.
 
-1. **Five minutes of desktop**, which now buys two things at once: the U-03 check
-   above, and the screenshot sitting. The script takes your daemon down for the
-   duration, so it is not something to start while you are relying on AgentBox.
-2. **Whether `docs/backlog/features.md`'s one non-goal revision is on.** Carried
+1. **Whether `docs/backlog/features.md`'s one non-goal revision is on.** Carried
    unchanged from session 56: it argues for revisiting "no remote or mobile delivery
    in v1" as a relay running as a subprocess you chose rather than as a cloud
    service, and asks that the vision be amended visibly the way ADR-0009 amended
    principle 6. That is a principle change and therefore yours. It is ranked 6th in
    features.md and holds the highest absolute value in that file.
-3. **New: is vitest the toolchain decision you wanted?** STATUS had recorded "a
-   toolchain decision waiting to be made, not an oversight". `robustness.md` R-40
-   recommended vitest plus jsdom, session 56's handoff listed it as solo, and this
-   session built it on that basis. Two devDependencies, 61 packages. If you wanted a
-   different runner, now is the cheap moment to say so - there are two test files.
+
+Still wanted, but not blocking: **five minutes of desktop for the screenshots**. The
+script takes your daemon down for the duration, so it is not something to start while
+you are relying on AgentBox.
 
 ## I can do solo (no input needed)
 
@@ -90,7 +83,7 @@ document asserted and the code contradicted.** That is now four sessions running
 2. **U-02** (the Go answer path returns nothing, so a refusal cannot reach a
    surface). It is the precondition for U-01 and it is a day. Doing it makes U-01
    worth building, and U-01 is the single worst UX finding.
-3. **More surface tests.** The rig exists and sixteen of seventeen surfaces have
+3. **More surface tests.** The rig exists and fifteen of seventeen surfaces have
    none. R-40's fixes (2) and (3) are still open: a hostile payload against the card,
    and executing `buildDocument` to assert the CSP and sandbox attributes that today
    are only checked as string constants.
@@ -103,8 +96,10 @@ document asserted and the code contradicted.** That is now four sessions running
 
 ## Facts - verified vs assumed
 
-- [verified] **The deploy landed.** `make deployed` reports `74b350326153`, asked of
-  the running daemon rather than read off the file.
+- [verified] **The deploy landed, twice.** `make deployed` reports `5485842cc01a`,
+  asked of the running daemon rather than read off the file. The first deploy of the
+  session cleared session 56's debt (`74b350326153`); the second shipped U-03. It is
+  the newest commit that touched code.
 - [verified] **`make check` passes in full**, twice, including the new `test-svelte`
   stage. Not by reading the tail: `check` is a prerequisite of `deploy-locked`, and
   `make deploy` exited 0 through to the install. This closes session 56's `[assumed]`.
@@ -126,8 +121,15 @@ document asserted and the code contradicted.** That is now four sessions running
 - [verified] **R-01 and R-02 were already fixed** by `1d00fd2` and `robustness.md`
   still listed them as open. Both now carry a fixed marker. Without that the merged
   backlog would have opened by recommending two finished pieces of work.
-- [assumed] **That U-03 looks right on screen.** It has eight tests and has never
-  been seen. This is item 1 above and the reason the deploy is held.
+- [verified] **U-03 looks right on screen.** Driven over XTEST against a daemon on
+  throwaway state: `y` on a choice row gave the amber `y does nothing to this one`,
+  `j` retired it and showed the next row's own hint, `1` answered and returned
+  `staging` to the caller with nothing refused, `n` refused again afterwards. Boris's
+  own store was never touched - zero demo items in his history.
+- [verified] **The inbox's pixels lag its store.** A screenshot two seconds after the
+  answering keystroke still showed both rows waiting; the daemon coalesces queue
+  pushes. Nothing is wrong, but a shot of this surface is not a reading of it, which
+  matters for the screenshot sitting.
 - [assumed] **That the twelve staged screenshots come out.** `shots.py` has 82 tests
   and has never touched a desktop. Unchanged from session 56.
 - [assumed] **That the artifact-restart-while-streaming edge is still open.** Nobody
@@ -152,6 +154,7 @@ document asserted and the code contradicted.** That is now four sessions running
 | `c29df92` | session log, and the card-height claim corrected in STATUS |
 | `9deff91` | U-03 fixed: the inbox says so when a triage key does nothing (8 tests) |
 | `b690530` | session log for U-03 |
+| `f842bef` | U-03 exercised on the real inbox and deployed; vitest confirmed |
 
 ## Map
 
