@@ -46,10 +46,12 @@ claude mcp add --scope user agentbox agentbox mcp
 ```
 
 `make bootstrap` is the target that installs system packages, by way of `make deps`
-underneath it, and every privileged command goes through a `sudo` you can read in the
-recipe rather than being arranged quietly. It ends by running `make doctor` and printing what to do
-next. `make install` builds first, then writes three things: `~/.local/bin/agentbox`,
-a `.desktop` launcher with an icon, and the unit file at
+underneath it, and every privileged command goes through a `sudo` you can read in
+the recipe rather than being arranged quietly. It ends by running `make doctor` and
+printing what to do next.
+
+`make install` builds first, then writes three things: `~/.local/bin/agentbox`, a
+`.desktop` launcher with an icon, and the unit file at
 `~/.config/systemd/user/agentbox.service`.
 
 The last two lines are yours because both of them change something outside the
@@ -97,7 +99,6 @@ a build, the daemon answering, the unit enabled. One row must honestly read
 "missing (only needed for showcase screenshots)" so the frame is a real machine
 rather than a staged one. Terminal only, no desktop, and no private paths in the
 prompt. -->
-
 
 Those two are different questions, and the second one matters after an upgrade. A
 replaced binary is not a running binary: the daemon keeps serving the code it

@@ -6,7 +6,7 @@
 > believe it left the rest alone.
 >
 > **Read on if** you are about to change something. **Skip to**
-> [[what an agent can do|what-agents-can-do]], or [[the limits|limits]].
+> [[What an agent can do|what-agents-can-do]], or [[Limits and non-goals|limits]].
 
 The table below is not every key. It is the ones worth knowing about, each with the
 reason its default is what it is, because a default with a reason is one you can
@@ -18,7 +18,7 @@ argue with.
 |---|---|---|
 | `sound.volume` | `0.4` | escalation replays a chime, so the first one does not have to carry everything. Too loud fails worse than too quiet |
 | `ask.undo_grace_s` | `3` | long enough to catch a mis-click, short enough that the agent never notices. Clamped to 5 |
-| `escalation.interval_s` | `60`, five times | persistent for five minutes, then visible but silent. An ignored item should not become a metronome |
+| `escalation.interval_s` and `count` | `60` and `5` | persistent for five minutes, then visible but silent. An ignored item should not become a metronome |
 | `escalation.urgent_interval_s` | `20` | urgent replays three times as often as anything else, and that cadence is most of what makes it urgent |
 | `toast.duration_s` | `6` | how long info and success stay up. A warning or an error gets no timer at all |
 | `presence.idle_after_s` | `120` | a chime into an empty room spends the sound budget for nothing. One summary chime on your return carries the same information |
@@ -29,9 +29,9 @@ argue with.
 | `history.retention_days` | `30` | routine info traffic is noise after a month. Warnings, errors and anything you approved are the audit trail and stay |
 | `font.size_pt` | `12` | one knob scales the whole interface, because text size is ergonomics rather than decoration |
 
-<sub>The middle column is the shipped default, not a suggestion. Every one of these
-is live: change it and the open windows follow, with the five exceptions named at
-the bottom of this page.</sub>
+<sub>The middle column is the shipped default, not a suggestion. All of these take
+effect as you save them except `history.retention_days`, which is one of the five
+that wait for a restart, named at the bottom of this page.</sub>
 
 Flood control is the one whose number has a date on it. A burst of `3` inside `10`
 seconds collapses into a single stack card, and those two numbers were picked on
@@ -45,8 +45,8 @@ the first looping agent silence its innocent neighbours.
 
 The surface lives in the app window: Appearance, Windows and panel, Sessions,
 Sound, Interruptions, Presence and DND, and History and logs. Fifty-nine knobs, each
-one a control typed to what it is (a switch, a number, a choice, a colour, a
-command) rather than a text box you can put nonsense in.
+one a control typed to what it is: a switch, a number, a choice from a list, a
+colour, a command line.
 
 <!-- SHOT: the Appearance page with an unsaved change pending. Accent moved off the
 default to Teal, so the preview's card, toast and code block are all already teal
@@ -99,8 +99,10 @@ replaced atomically, so nothing reading it ever sees a torn version.
 
 There is one ground and one accent, and that is the whole palette you control.
 Ground is a choice of three hand-tuned dark and light pairs; accent is a hex colour
-with five presets and a picker. Everything else on screen is derived: the surfaces,
-the edges, the three levels of text, the code palette, the padding and the gaps.
+with five presets and a picker. Everything else on screen is derived from those two:
+the surfaces, the edges, the three levels of text, the padding and the gaps. Syntax
+highlighting is the only other colour decision, and it is a named theme you pick
+rather than a palette you assemble.
 
 Two knobs that cannot produce an unreadable theme beat twenty that can.
 
