@@ -33,6 +33,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC="$REPO/docs/wiki/pages"
+IMG="$REPO/docs/wiki/img"
 WORK="$REPO/.wiki-build"
 
 GITLAB_URL="git@gitlab.com:fu-bar/agentbox.wiki.git"
@@ -116,6 +117,17 @@ stage() {
 	# how GitLab's own .gitlab/redirects.yml survives a publish.
 	find "$dir" -maxdepth 1 -name '*.md' -delete
 	cp "$SRC"/*.md "$dir/"
+
+	# Images go into the wiki repo itself rather than being linked from the
+	# project repo. Each wiki then carries its own pictures, so neither depends on
+	# the other host staying public. Pages reference them as img/NAME.png: GitHub
+	# emits a relative path raw and the browser resolves it against the page URL,
+	# which for a root-level page is exactly this directory.
+	rm -rf "$dir/img"
+	if [ -d "$IMG" ] && [ -n "$(ls -A "$IMG" 2>/dev/null)" ]; then
+		mkdir -p "$dir/img"
+		cp "$IMG"/* "$dir/img/"
+	fi
 
 	case "$host" in
 	gitlab)

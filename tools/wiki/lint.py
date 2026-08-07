@@ -29,6 +29,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PAGES = REPO / "docs" / "wiki" / "pages"
+IMG_DIR = REPO / "docs" / "wiki" / "img"
 
 # Sidebar and landing page are renamed per host by publish.sh, so they are
 # allowed to break the flat-lowercase rule the rest of the pages live under.
@@ -142,10 +143,12 @@ def check_layout(path: Path, text: str, pages: set[str], f: Findings) -> None:
     if not lines:
         f.add(name, 0, "layout", "page is empty")
         return
-    if not lines[0].startswith("# "):
-        f.add(name, 1, "layout", "page must open with a single '# Title' heading")
+    # The sidebar is navigation, not a page: no H1 (it would render as giant type
+    # in a narrow column) and no hurry summary.
     if name in ("_sidebar.md", "_Sidebar.md"):
         return
+    if not lines[0].startswith("# "):
+        f.add(name, 1, "layout", "page must open with a single '# Title' heading")
     # The hurry summary: a blockquote inside the first six lines, before any
     # second-level heading. Every page owes the reader one.
     head = lines[:8]
@@ -178,8 +181,20 @@ def check_links(path: Path, text: str, pages: set[str], f: Findings) -> None:
                 f.add(path.name, n, "links", f"[[{m.group(1)}]] points at no page (looked for {slug}.md)")
         for m in IMAGE.finditer(line):
             url = m.group(1)
-            if not url.startswith(("http://", "https://")):
-                f.add(path.name, n, "links", f"image {url!r} is relative; GitHub does not rewrite image paths, use an absolute raw URL")
+            if url.startswith(("http://", "https://")):
+                continue
+            # GitHub does not rewrite image paths: it emits them raw and lets the
+            # browser resolve them against the page's own URL. From a root-level
+            # page that lands on the wiki repo's own img/ directory, which is
+            # where publish.sh puts them, so a bare img/x.png works on both
+            # hosts. From the sidebar, which renders at every URL depth, it
+            # cannot.
+            if path.name in ("_sidebar.md", "_Sidebar.md"):
+                f.add(path.name, n, "links", f"image {url!r} in the sidebar must be an absolute URL; the sidebar renders at every URL depth and GitHub resolves relative paths against the page")
+            elif not url.startswith("img/"):
+                f.add(path.name, n, "links", f"image {url!r} must live under img/ so it resolves on both hosts")
+            elif not (IMG_DIR / Path(url).name).is_file():
+                f.add(path.name, n, "links", f"image {url!r} is not in docs/wiki/img/")
         for m in MDLINK.finditer(line):
             url = m.group(1)
             if url.startswith(("http://", "https://", "#", "mailto:")):
