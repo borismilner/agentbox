@@ -40,6 +40,11 @@ band that decides whether the product is what it says it is.*
 
 ### R-01. A question that flood control collapsed cannot be answered once its summary is dismissed
 
+> **Fixed** in `1d00fd2` (2026-08-07), with the reproduction kept as a test.
+> `Promote` now falls back to the store, which is the fix this entry proposed.
+> Deployed 2026-08-07. Left here in full because the reasoning is what stops it
+> coming back.
+
 **How it fails.** Flood control is on by default: three items from one session
 inside ten seconds (`internal/config/config.go:269-270`). The fourth is
 collapsed, which means it is written to the store as pending and then
@@ -81,6 +86,10 @@ never tries the triage.
 **Confidence.** Reproduced with a probe test.
 
 ### R-02. A store write that fails takes the human's answer with it, and the card claims it was delivered
+
+> **Fixed** in `1d00fd2` (2026-08-07), with the reproduction kept as a test.
+> `resolve` no longer returns on a store error while telling the card it shipped.
+> Deployed 2026-08-07. Left here in full for the same reason as R-01.
 
 **How it fails.** Every answer goes through `resolve`, which treats the store
 transition as the arbiter. If `st.Resolve` returns anything other than
