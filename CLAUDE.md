@@ -76,6 +76,15 @@ touching anything.
   tracks FR numbers used in commits and handoffs.
 - `docs/agent-manual.md` - the MCP tool reference (`agentbox docs agent` prints it).
 - `docs/history.md` - per-session log; `docs/STATUS.md` - current state.
+- `docs/wiki/` - the public wiki, live at
+  https://gitlab.com/fu-bar/agentbox/-/wikis/home and mirrored to
+  https://github.com/borismilner/agentbox/wiki. Read it when you need what a
+  feature is FOR rather than how it works; `docs/wiki/FACTS.md` is the audited
+  fact base (tool counts, severity behaviour, security guarantees, and the list
+  of claims the older docs get wrong). Pages are written in `docs/wiki/pages/`
+  and published by `tools/wiki/publish.sh`, never edited in a browser. Nothing
+  mirrors wiki repos on its own, so a page changed here is not live until that
+  script runs.
 - `HANDOFF.md` (repo root) - assignment state, written by /handoff, read by
   /resume.
 - Daemon runs as `agentbox.service` (systemd --user); config at

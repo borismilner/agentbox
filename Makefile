@@ -349,5 +349,22 @@ deck: ## rebuild docs/agentbox-showcase.pptx from tools/showcase/deck.py
 	    $(DECKVENV)/bin/pip install -q python-pptx; }
 	@$(DECKVENV)/bin/python tools/showcase/deck.py
 
+# ------------------------------------------------------------------------- wiki
+#
+# The public wiki is written in docs/wiki/pages and pushed to two repos that
+# disagree about branch names, the landing page's filename and the sidebar's.
+# Nothing on either platform mirrors a wiki repo, so this target is the only way
+# a page reaches a reader. lint first: half the markdown GitLab renders is
+# invisible or broken on GitHub, and it looks fine on the side you wrote it on.
+
+wiki-check: ## lint the wiki source: portability, links, layout, prose tells
+	@python3 tools/wiki/lint.py
+
+wiki: ## publish docs/wiki/pages to the GitLab wiki and mirror it to GitHub
+	@tools/wiki/publish.sh
+
+wiki-dry: ## show what publishing would change, push nothing
+	@tools/wiki/publish.sh --dry-run
+
 clean: stop ## remove build output
 	rm -f $(BIN)

@@ -1,5 +1,23 @@
 # Docs index
 
+## Looking for what a feature is for, rather than how it is built?
+
+That is the wiki, not this folder. It explains each feature to somebody who has
+not bought in yet, and says why it is shaped the way it is:
+
+- https://gitlab.com/fu-bar/agentbox/-/wikis/home (the original)
+- https://github.com/borismilner/agentbox/wiki (the mirror, published by
+  `tools/wiki/publish.sh`)
+
+Its source is [wiki/pages/](wiki/pages/) in this repo, so it is edited here and
+reviewed in normal commits. Never edit a wiki page in a browser: the next publish
+overwrites it. [wiki/DESIGN.md](wiki/DESIGN.md) has the page inventory, the
+template and the voice, and [wiki/FACTS.md](wiki/FACTS.md) is the audited fact
+base every claim in the wiki is written against.
+
+The split, so nothing gets written twice: the wiki answers what a feature does
+and why. The docs below carry the working record, the requirements and the state.
+
 Reading order:
 
 | Doc | Contents |
@@ -22,6 +40,7 @@ Reading order:
 | [sample.md](sample.md) | The renderer's fixture: every block the viewer draws (`agentbox show docs/sample.md`) |
 | [showcase.md](showcase.md) | The self-performing demo: preflight, traps, slide notes. Live only - the video pipeline was deleted on 2026-08-06 |
 | [decisions/](decisions/) | ADRs, one decision per file |
+| [wiki/](wiki/) | The public wiki: its source, its design and the audited facts it is written from |
 
 The two ADRs a change to the UI most often needs:
 [ADR-0009](decisions/ADR-0009-ui-toolkit-wails-v3.md) (why a webview, and the
