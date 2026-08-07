@@ -104,6 +104,14 @@ KEY_TESTS = "wikishot-test-runner"
 KEY_DEPS = "wikishot-dependency-bot"
 KEY_ANON = "wikishot-anonymous"
 KEY_GONE = "wikishot-oncall-helper"
+# S1 needs two questions queued behind its card, from two different identities,
+# because the footer's dots are one per identity. Borrowing dependency-bot for the
+# second one cost S2 its `listening: tests:green` chip: an agent with a question
+# pending reads as "asking you", and DESIGN asks for all four chips in one frame.
+# A fifth caller keeps the four rows the board is about wearing the states the
+# board is about.
+CHANGELOG = "changelog-bot"
+KEY_CHANGELOG = "wikishot-changelog-bot"
 
 LOCK = f"deploy:{PROJECT}"
 
@@ -930,8 +938,8 @@ def stage_s1(c, shot):
     for agent, key, title, body in [
         (TESTS, KEY_TESTS, "The payment suite failed once and passed twice",
          "Rerun it, or take the failure as flaky?"),
-        (DEPS, KEY_DEPS, "Pin the yanked dependency or wait for upstream?",
-         "Two transitive dependencies moved to a yanked version."),
+        (CHANGELOG, KEY_CHANGELOG, "Does the yanked dependency go in the changelog?",
+         "It never shipped, but it was on main for two hours."),
     ]:
         c.abx_bg("ask", "--title", title, "--body", body,
                  "--option", "Yes", "--option", "No", "--timeout", "600",
@@ -953,8 +961,13 @@ def stage_s1(c, shot):
         elif "2026.7.30" not in (items[0].get("title") or ""):
             c.fail(shot["key"], "the release question is not the front item, so the card on "
                                 "screen is the wrong one. Check the queue order before retaking.")
-        # Take it at 1:57 remaining.
-        left = 3.0 - (time.time() - fired)
+        # Aim for 1:57 remaining, and check the frame rather than trusting this.
+        # `fired` is stamped before the CLI process is spawned while the countdown
+        # starts when the DAEMON creates the item, so the offset is a fraction of a
+        # second that moves: 3.0 landed on 1:58 and 4.0 on 1:56. Whatever it lands
+        # on, the alt text on home.md and the-card.md has to say the same thing -
+        # they assert a specific second, so an unread frame is a caption that lies.
+        left = 3.5 - (time.time() - fired)
         if left > 0:
             time.sleep(left)
     return c.where(shot["title"], c.env_iso) or g
@@ -969,19 +982,25 @@ def pending_items(c):
 
 
 def stage_s3(c, shot):
-    """The inbox. S1 left three pending and DESIGN wants two rows, so one of the
-    queued questions goes. The card on screen goes too: the inbox is the subject
-    here and a card over it is not in the spec."""
+    """The inbox. DESIGN wants two pending rows and no card over them.
+
+    The arithmetic has to count the card. Dismissing it RESOLVES it, so the run
+    needs THREE pending going in: cull to three, take the on-screen one off with
+    shift+Escape, and two are left. Culling to two first left one row in the
+    Pending section and two answered questions in Recent with no outcome.
+    """
     if not c.dry:
         items = pending_items(c)
         # A retake of S3 on its own has no S1 in front of it, so the two rows it
         # is a picture of have to be made here. Without this the shot is an inbox
         # with an empty Pending section, which is an argument against the product.
-        while len(items) < 2:
+        while len(items) < 3:
             n = len(items)
-            agent, key = (RELEASE, KEY_RELEASE) if n == 0 else (TESTS, KEY_TESTS)
-            title = ("Where should 2026.7.30 go first?" if n == 0
-                     else "The payment suite failed once and passed twice")
+            agent, key = [(RELEASE, KEY_RELEASE), (TESTS, KEY_TESTS),
+                          (CHANGELOG, KEY_CHANGELOG)][min(n, 2)]
+            title = ["Where should 2026.7.30 go first?",
+                     "The payment suite failed once and passed twice",
+                     "Does the yanked dependency go in the changelog?"][min(n, 2)]
             c.abx_bg("ask", "--title", title,
                      "--body", "Tests are green and the changelog is written.",
                      "--option", "eu-west::closest to the traffic peak",
@@ -995,7 +1014,7 @@ def stage_s3(c, shot):
             items = pending_items(c)
         # Drop the last queued one by id. Never by row position: the queue is
         # shared and a position read a moment ago is not a position now.
-        if len(items) > 2:
+        if len(items) > 3:
             victim = items[-1].get("id")
             if victim:
                 assert_isolated(c.env_iso)
@@ -1301,6 +1320,17 @@ def start_isolated(c):
             text = re.sub(r"^\s*fullscreen_auto_dnd.*$", "fullscreen_auto_dnd = false", text, flags=re.M)
         else:
             text += "\n[presence]\nfullscreen_auto_dnd = false\n"
+        # Flood control off for the sitting. It is on by default at three items
+        # from one session in ten seconds, and staging fires a roster, four history
+        # items, a toast and a card from the same staged sessions inside a few
+        # seconds - so the card S1 wants was being collapsed into a stack and no
+        # `agentbox` window ever appeared. S1 passed alone and failed in a full run
+        # for that reason, which reads as a flaky window and is not one. A zero
+        # disables it (config.go:59-62: "spelled as a zero rather than an enabled
+        # flag"). S1's own footer needs the queue behaving normally anyway, since
+        # `2 waiting` is a count of it.
+        text = re.sub(r"^\s*\[flood\][^\[]*", "", text, flags=re.M | re.S)
+        text += "\n[flood]\nburst = 0\n"
         (cfg / "config.toml").write_text(text)
 
     env = dict(os.environ)
@@ -1587,6 +1617,15 @@ def main():
         # and it is always-on-top in the corner every other window shot uses.
         if shot["key"] == "S10":
             end_progress(c)
+        # S1 leaves two questions queued on purpose - that is what its footer
+        # counts - and the daemon shows the next one the moment the front card
+        # goes. Every app-window shot after this had a card sitting over it.
+        # Do-not-disturb holds them WITHOUT answering them, which is the only
+        # option that keeps them pending: S3 needs two pending rows and S2 needs
+        # the `asking you` chip, and both come from the queue, not from a window.
+        # Cleanup restores whatever the machine had.
+        if shot["key"] == "S1":
+            c.abx("dnd", "on", env=c.env_iso)
 
     # Always end with the deployed daemon back, whether or not S12 was in the run.
     if c.phase != "real":
