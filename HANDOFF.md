@@ -1,8 +1,9 @@
-# Handoff - AgentBox: the wiki is live, and twenty-two doc claims were wrong
+# Handoff - AgentBox: the surfaces have an audit, an order, and their first test
 
-*Written by session 56, which built the public wiki and, because Boris said to read
-the code and not the documents, found that the documents disagreed with the code in
-twenty-two places. A deploy is owed and the UX backlog is half-built.*
+*Written by session 57, which cleared session 56's whole solo list: the owed deploy,
+the UX audit, the merged backlog, the install shot, and the first test in this
+project's history to mount a Svelte component. One deploy is owed again, on purpose,
+and it needs five minutes of Boris's desktop.*
 
 **Written:** 2026-08-07 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -10,178 +11,169 @@ twenty-two places. A deploy is owed and the UX backlog is half-built.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean, and AHEAD of origin/main with nothing
-                            # pushed. origin is gitlab and is main's upstream; the
-                            # `github` remote is a mirror and far behind
-make deployed               # expect 69230d4f7e32, which is NOT HEAD - see below
-make check                  # gofmt + vet + race + JS, ~4 min
+git status -sb              # expect clean, 21 ahead of origin/main. origin is
+                            # gitlab and is main's upstream; `github` is a mirror
+make deployed               # expect 74b350326153, which is NOT HEAD - deliberately
+make check                  # gofmt + vet + race + node + vitest, ~4 min
 agentbox pending            # expect nothing pending
 ```
 
-**A deploy IS owed, unlike last session.** `1d00fd2` fixes two daemon defects and
-the running daemon is still `69230d4f7e32` from 2026-08-06, so neither fix is live
-on Boris's own machine. Commit first is already done, so:
+**The deploy is owed again, and this time it is blocked on a look rather than on
+capacity.** `9deff91` changes `Inbox.svelte` (U-03, below). The house rule is that a
+surface change is done after somebody exercises the real webui, not after reading
+the diff, and that needs the desktop. So:
 
-```bash
-make deploy                 # takes the flock, ends by running `deployed` itself
-```
-
-Then, in priority order, the three things this session left:
-
-1. **Redo the UX audit.** It is the one deliverable Boris asked for that does not
-   exist. Its agent died on a session limit partway through, and its last words are
-   worth keeping: *"Card measures itself via ResizeObserver, so the height story is
-   more subtle than stated."* That contradicts the premise it was given (that a
-   card's height is estimated from raw text length), so check
-   `frontend/src/surfaces/Card.svelte` before repeating the claim. The brief that
-   produced the other two backlogs is the model: read `docs/wiki/FACTS.md` for
-   truth, `frontend/src/surfaces/*` and `frontend/src/lib/*` for the surfaces, and
-   write `docs/backlog/ux.md` in the same item shape as `docs/backlog/robustness.md`.
-2. **Write `docs/backlog/README.md`**, the single prioritized list across all three
-   backlogs. Nothing merges them today, so the three files are three opinions with
-   no order between them. `features.md` ends with its own ranking and
-   `robustness.md` with six consequence-ordered bands; the missing judgement is how
-   a band-A robustness item ranks against F-01.
-3. **Take the screenshots.** `tools/wiki/shots.py --yes`, runbook in
-   `tools/wiki/SHOTS.md`, about five minutes of Boris's desktop. It has never been
-   run. Read the runbook's "what usually goes wrong" first, and expect to retake
-   two or three. Three shots the finished pages ask for are NOT in the plan and need
-   adding: the secret card mid-entry (`is-it-safe.md:18`), the Appearance page with
-   an unsaved change (`settings.md:51`), and terminal output from `make doctor`
-   (`install.md:96`, which needs no daemon swap at all and can be done any time).
+1. **Exercise U-03, then deploy.** Open the inbox, select a pending row, press a key
+   that means nothing for its kind (`y` on a `text` item), and confirm the hint line
+   under the row reads `y does nothing to this one` in amber. Then press a key that
+   does work and confirm it goes back to the normal hint. Then `make deploy`.
+   Everything else in the five unpushed commits is docs and tests and is already
+   safe to ship with it.
+2. **Take the screenshots.** `tools/wiki/shots.py --yes`, runbook in
+   `tools/wiki/SHOTS.md`, about five minutes of desktop. Never run. Two shots the
+   pages ask for are still missing and are listed at the top of SHOTS.md: the secret
+   card mid-entry (`is-it-safe.md:18`) and Appearance with an unsaved change
+   (`settings.md:51`). The third, `make doctor`, is done and published.
+3. **Then tier 1 of [docs/backlog/README.md](docs/backlog/README.md)**, which is the
+   new file that says what to build in what order across all three audits.
 
 ## Where we are
 
-Boris asked for a product wiki: features and rationale, engaging rather than dull,
-nothing that only a maintainer cares about, every page opening with a summary for
-somebody in a hurry, and zero traces of machine authorship. Eighteen pages plus a
-sidebar are written, published to both hosts, and verified rendering in a real
-browser. On the way, reading the code instead of the docs turned up twenty-two
-false claims, all fixed, with `docs/wiki/FACTS.md` now the audited fact base. Two
-reproduced daemon defects were fixed with tests. Three backlogs were commissioned;
-two landed and the UX one died on a session limit.
+Session 56 built the wiki and three audits were commissioned; two landed and the UX
+one died on a session limit. This session wrote it, then wrote the thing that was
+missing above all three: one order across them. Then it built the test harness that
+the audit's own worst finding says the project cannot see without, and used it to
+fix one item.
+
+The through-line worth carrying: **three of this session's findings were things a
+document asserted and the code contradicted.** That is now four sessions running.
 
 ## Live state (volatile - verify on resume)
 
-- **Background jobs:** none. A headless Chrome on port 9222 was started for the
-  render check and stopped; confirm with `curl -sf http://127.0.0.1:9222/json/version`
-  expecting failure.
+- **Background jobs:** none.
 - **PRs:** none, ever. Boris pushes `main` directly.
-- **Git:** `main` at `b9dc272`, clean, **13 commits ahead of `origin/main`** (origin
-  is gitlab and is main's upstream; the `github` remote is a mirror and far behind).
-  Nothing is pushed. The wiki repos ARE pushed and are ahead of what origin knows.
-- **Deployed daemon:** `69230d4f7e32`, which is 13 commits behind HEAD and does not
-  have the two fixes in `1d00fd2`. **This is the one thing that matters most.**
+- **Git:** `main` at `b690530`, clean, **21 commits ahead of `origin/main`**. Nothing
+  is pushed. Six commits are this session's.
+- **Deployed daemon:** `74b350326153`, five commits behind HEAD. It has both fixes
+  from `1d00fd2` (that was this session's first act). It does **not** have U-03.
+- **The wiki is live and level** at https://gitlab.com/fu-bar/agentbox/-/wikis/home
+  and https://github.com/borismilner/agentbox/wiki. This session published
+  `install.md` plus `img/install-doctor.png` and verified both hosts serve the image
+  (HTTP 200, 18722 bytes, byte-identical to the local file). Never edit a page in
+  either browser: the next publish overwrites it.
 - **In-flight edits:** none.
-- **The wiki is live** at https://gitlab.com/fu-bar/agentbox/-/wikis/home and
-  https://github.com/borismilner/agentbox/wiki, both at the content of `dcc86fe`.
-  Anything committed to `docs/wiki/pages/` since then is NOT published until
-  `make wiki` runs again (`make wiki-dry` shows what it would change, `make
-  wiki-check` lints without publishing). As of this handoff they are level. Never
-  edit a page in either browser: the next publish overwrites it.
 
 ## Blocked on you (Boris)
 
-**Two things, neither urgent.**
+**Three things.**
 
-1. **Five minutes of desktop for the screenshots**, when convenient. The script
-   refuses to start while another session is live, and it takes your daemon down
-   for the duration, so it is not something to start while you are relying on
-   AgentBox to reach you.
-2. **Whether `docs/backlog/features.md`'s one non-goal revision is on.** It argues
-   for revisiting "no remote or mobile delivery in v1" as a relay that runs as a
-   subprocess you chose rather than as a cloud service, and asks that the vision be
-   amended visibly the way ADR-0009 amended principle 6, not quietly via a config
-   key. That is a principle change and therefore yours.
+1. **Five minutes of desktop**, which now buys two things at once: the U-03 check
+   above, and the screenshot sitting. The script takes your daemon down for the
+   duration, so it is not something to start while you are relying on AgentBox.
+2. **Whether `docs/backlog/features.md`'s one non-goal revision is on.** Carried
+   unchanged from session 56: it argues for revisiting "no remote or mobile delivery
+   in v1" as a relay running as a subprocess you chose rather than as a cloud
+   service, and asks that the vision be amended visibly the way ADR-0009 amended
+   principle 6. That is a principle change and therefore yours. It is ranked 6th in
+   features.md and holds the highest absolute value in that file.
+3. **New: is vitest the toolchain decision you wanted?** STATUS had recorded "a
+   toolchain decision waiting to be made, not an oversight". `robustness.md` R-40
+   recommended vitest plus jsdom, session 56's handoff listed it as solo, and this
+   session built it on that basis. Two devDependencies, 61 packages. If you wanted a
+   different runner, now is the cheap moment to say so - there are two test files.
 
 ## I can do solo (no input needed)
 
-1. The UX audit (item 1 above). Nothing about it needs Boris.
-2. `docs/backlog/README.md`, the merged priority order (item 2).
-3. `install.md`'s missing shot, which is terminal output and needs no daemon swap.
-4. The band-A robustness items after the two already fixed. `robustness.md` lists
-   thirteen more in the same band, each with the test that would catch it.
-5. The first Svelte rendering test. Nothing in the repo renders any of 32 Svelte
-   files, and `robustness.md` names mounting `Card.svelte` under vitest and jsdom
-   as the single highest-value missing test: it turns three findings from invisible
-   into red.
+1. **Tier 1 of the merged backlog**: robustness band A, thirteen items left of
+   fifteen, plus U-01 and U-02. About three weeks of work, so a session takes a
+   slice. R-15, R-03 and R-14 are the hours-sized ones to start with.
+2. **U-02** (the Go answer path returns nothing, so a refusal cannot reach a
+   surface). It is the precondition for U-01 and it is a day. Doing it makes U-01
+   worth building, and U-01 is the single worst UX finding.
+3. **More surface tests.** The rig exists and sixteen of seventeen surfaces have
+   none. R-40's fixes (2) and (3) are still open: a hostile payload against the card,
+   and executing `buildDocument` to assert the CSP and sandbox attributes that today
+   are only checked as string constants.
+4. **U-05**, hours: `theme.motion = "reduced"` is honoured by four components out of
+   the thirteen that animate, because the global rule in `app.css` is scoped to
+   `"none"`. Fixable in one CSS rule.
+5. **R-30**, which band C holds but which is the only security-shaped item in the
+   three documents: the review board's file jail is lexical, so a symlink reads any
+   file into a review.
 
 ## Facts - verified vs assumed
 
-- [verified] **The wiki renders on both hosts.** Driven in a headless Chrome:
-  the mermaid sequence diagram renders on GitLab and on GitHub, `img/card.png`
-  loads at 470px on both, `<kbd>`, tables and alerts render, and no wiki link is
-  broken on either. Screenshots were taken and looked at.
-- [verified] **Relative image paths work on both hosts.** GitHub rewrites them per
-  page depth, emitting `wiki/img/card.png` from the front page and `img/card.png`
-  from a subpage, both resolving to the same file. This contradicts what the
-  mechanics research concluded, so do not re-derive it from that research.
-- [verified] **Both daemon fixes fail without the fix.** Checked by stashing
-  `daemon.go` and re-running each test, which is the only check that proves a test
-  is doing anything.
-- [verified] **The wiki lint passes** on all nineteen files, and the prose scanner
-  passes every page except for middle dots inside code spans that quote what the
-  interface prints. Those are quotations and are left alone deliberately.
-- [verified] **The earcon durations**, measured from the embedded WAVs: pop 90 ms,
-  tick 160, thud 220, twotone 260, chime 340, insist 430.
-- [verified] **`Daemon.Promote` used to no-op** for an item not in memory. Read at
-  the line, independently of the audit that reported it.
-- [assumed] **That `make check` passed in full.** It was run and its tail showed
-  the webui package and all 13 JS tests green with no failure line, but the run was
-  not read end to end and the daemon package's own `ok` line was not seen. Both new
-  tests pass individually. Re-run it; it is four minutes.
-- [assumed] **That the artifact-restart-while-streaming edge is still open.** It may
-  have been closed by the stable fence id (`internal/webui/artifact.go:240`) and the
-  `data-live` hydration guard (`frontend/src/lib/artifact.svelte.js:383`), and may
-  not, because neither helps if a re-render replaces the node rather than patching
-  it. Nobody has watched it. Both docs now say exactly that rather than declaring it
-  fixed. **Watching it is cheap and would close a carried item.**
+- [verified] **The deploy landed.** `make deployed` reports `74b350326153`, asked of
+  the running daemon rather than read off the file.
+- [verified] **`make check` passes in full**, twice, including the new `test-svelte`
+  stage. Not by reading the tail: `check` is a prerequisite of `deploy-locked`, and
+  `make deploy` exited 0 through to the install. This closes session 56's `[assumed]`.
+- [verified] **The card's height is measured, not estimated.** `Card.svelte:143-177`,
+  a ResizeObserver against real layout. Session 56's handoff said the opposite and
+  STATUS carried the same claim under "known gaps"; both are corrected. The dead
+  agent's last words were right.
+- [verified] **U-06 is real, and was checked rather than argued.** A probe showed the
+  re-measure count unchanged across the shrink. The first version of that test said
+  the opposite, because it counted the card's mount-time measurement as a response to
+  the change under test. `settle()` in `frontend/test/card.test.js` is the fix, and
+  the episode is the best argument in the repo for tier 3.
+- [verified] **`daemonUp` is never assigned.** Grep over the whole tree finds the
+  declaration and one reader. The status strip's "daemon up" has no condition at all.
+  Note the honest limit, which U-04 states: the window dies with the daemon, so this
+  is a health indicator that cannot indicate rather than a lie you can catch on
+  screen.
+- [verified] **The wiki image serves on both hosts**, 200 and 18722 bytes each.
+- [verified] **R-01 and R-02 were already fixed** by `1d00fd2` and `robustness.md`
+  still listed them as open. Both now carry a fixed marker. Without that the merged
+  backlog would have opened by recommending two finished pieces of work.
+- [assumed] **That U-03 looks right on screen.** It has eight tests and has never
+  been seen. This is item 1 above and the reason the deploy is held.
 - [assumed] **That the twelve staged screenshots come out.** `shots.py` has 82 tests
-  and has never touched a desktop. Every `agentbox` call in it that stages or raises
-  a surface is unexercised.
-- [assumed] The carried set from session 55, none of which this session looked at,
-  and all of which are therefore still exactly as unverified as they were: that the
-  30-minute fuse fires in a live daemon; that the demoted marker behaves on a second
-  monitor; that `[flood]`'s defaults are right for ordinary work (**this one is now
-  more interesting, because flood control is what produced the unanswerable
-  question**); that `perform.py`'s fullscreen check holds on two monitors; and the
-  session-50/51 set (the domain drawer animation, the demo fallback painting, a
-  detail holding a mermaid diagram, `provisionalFor` retiring a hook-only row, the
-  200-key prefix cap, `@me` in a shared key, a real client's `await_signal` parked
-  past 20s, the two lock warnings, and the identity cross-check's no-node skip).
+  and has never touched a desktop. Unchanged from session 56.
+- [assumed] **That the artifact-restart-while-streaming edge is still open.** Nobody
+  has watched it. Unchanged from session 56, and still cheap to close.
+- [assumed] The carried set from sessions 50, 51 and 55, none of which this session
+  looked at and all of which are therefore exactly as unverified as they were: the
+  30-minute fuse in a live daemon; the demoted marker on a second monitor;
+  `[flood]`'s defaults for ordinary work; `perform.py`'s fullscreen check on two
+  monitors; the domain drawer animation; the demo fallback painting; a detail holding
+  a mermaid diagram; `provisionalFor` retiring a hook-only row; the 200-key prefix
+  cap; `@me` in a shared key; a real client's `await_signal` parked past 20s; the two
+  lock warnings; and the identity cross-check's no-node skip.
 
-## Declutter ledger
+## What this session changed
 
-| Removed / condensed | Where its knowledge now lives |
+| Commit | What |
 |---|---|
-| Session 55's whole handoff (this file's previous contents) | Session 55 survives in [docs/history.md](docs/history.md) under "Fifty-fifth session". Its carried `[assumed]` set is reproduced above rather than dropped, because a carried note that nobody re-states is a note nobody looks at |
-| 88 lines of session narrative at the top of STATUS.md | [docs/history.md](docs/history.md), which is the log and already held all of it. STATUS said so itself in a paragraph below the narrative it was duplicating |
-| The FR83 block in STATUS.md, forty lines summarising five slices | [docs/09-sync.md](docs/09-sync.md), which the block itself said was worth reading rather than summarising. The two shipped bugs it named are kept in STATUS, because they belong to no single slice |
-| Nine config keys documented in 06-configuration.md that no code reads | Deleted as knobs, kept as behaviour: the new "Behaviour that is fixed, and has no knob" table in [docs/06-configuration.md](docs/06-configuration.md) says what each one described and why there is no key for it |
-| The single 1161-line `ai-text-tells.md` under `~/me/study` | Both forms now live at `~/me/study/guides/writing/ai-tells/`: the whole file as the source, and seven per-layer files generated from it by `split.py`. Coverage was verified line by line |
+| `1734fe3` | `docs/backlog/ux.md` - fifteen items in six bands, the audit session 56 owed |
+| `37d10bf` | `docs/backlog/README.md` - one order across all 76 items; R-01/R-02 marked fixed |
+| `d9a3575` | `install.md`'s shot, from real `doctor` output, published to both hosts |
+| `1650275` | vitest + jsdom, and `Card.svelte` mounted for the first time (10 tests) |
+| `c29df92` | session log, and the card-height claim corrected in STATUS |
+| `9deff91` | U-03 fixed: the inbox says so when a triage key does nothing (8 tests) |
+| `b690530` | session log for U-03 |
 
 ## Map
 
 1. [HANDOFF.md](HANDOFF.md) - this file.
-2. [docs/STATUS.md](docs/STATUS.md) - current state, and "Do this next".
-3. [docs/wiki/FACTS.md](docs/wiki/FACTS.md) - **read this before quoting any number
-   about the product.** Audited from source, with the line behind each claim and a
-   table of what the older docs get wrong.
-4. [docs/backlog/robustness.md](docs/backlog/robustness.md) - 45 items in six
-   consequence-ordered bands, and nineteen things verified correct so nobody
-   refiles them.
+2. **[docs/backlog/README.md](docs/backlog/README.md) - read this first.** One order
+   across all three audits, and the rule that produced it. New this session.
+3. [docs/backlog/ux.md](docs/backlog/ux.md) - the surfaces, 15 items. New this session.
+4. [docs/backlog/robustness.md](docs/backlog/robustness.md) - 45 items in six bands.
+   R-01, R-02 fixed; R-40 started.
 5. [docs/backlog/features.md](docs/backlog/features.md) - eleven extensions, five
    bets, ranked.
-6. [docs/wiki/DESIGN.md](docs/wiki/DESIGN.md) - the wiki's page inventory, template,
-   voice guide and the twelve shot specs.
-7. [tools/wiki/SHOTS.md](tools/wiki/SHOTS.md) - the screenshot runbook, including
-   which pages ask for which shot.
-8. [docs/history.md](docs/history.md) - the session log; session 56 is at the top.
-9. `~/me/study/guides/writing/ai-tells/` - outside this repo: why the wiki's prose
-   rules are what they are, measured against four corpora rather than asserted.
-   Three pieces of standard advice in it are backwards, so read its README before
-   editing anyone's prose. The scanner is `scan-tells.py` in that directory.
-10. `~/.claude/skills/scrub-ai-tells/SKILL.md` and `~/.claude/commands/scrub-ai.md`
-    - the skill and the `/scrub-ai` command built from that research. `~/.claude` is
-    NOT a git repo, so the copy of record is `skill.md` in the directory above; if
-    the two differ, trust the one in the study repo.
+6. [docs/wiki/FACTS.md](docs/wiki/FACTS.md) - **read before quoting any number about
+   the product.** Audited from source, with the line behind each claim.
+7. [docs/STATUS.md](docs/STATUS.md) - current state. Two entries corrected this
+   session; treat the rest with the suspicion four sessions of drift have earned.
+8. `frontend/test/` - the surface tests, and `frontend/vitest.config.js`, which
+   explains the two boundaries (why they live outside `src`, and why
+   `@wailsio/runtime` is aliased rather than `bridge.js` mocked).
+9. [tools/wiki/SHOTS.md](tools/wiki/SHOTS.md) - the screenshot runbook. Its top
+   section now lists two outstanding shots rather than three, and records exactly how
+   the third was made.
+10. [docs/history.md](docs/history.md) - the session log; session 57 is at the top.
+11. `~/me/study/guides/writing/ai-tells/` - outside this repo: the prose rules and
+    `scan-tells.py`. Both new backlog files were scanned; the only remaining hits in
+    `ux.md` are four literal quotations of glyphs the interface itself prints.
