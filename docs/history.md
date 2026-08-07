@@ -9,6 +9,78 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fifty-seventh session (2026-08-07): the deploy that was owed, and the first surface a test has ever mounted
+
+Session 56 left a deploy owed and three things unbuilt. All four are done, and one
+of them turned out to be wrong in the handoff that described it.
+
+**The deploy.** The running daemon was `69230d4f7e32`, thirteen commits behind, so
+neither fix in `1d00fd2` was live on the machine Boris is actually reached through.
+`make deploy` put `74b350326153` on it, confirmed by asking the daemon rather than
+by looking at the file. `check` is a prerequisite of `deploy-locked`, so the deploy
+exiting 0 is also the end-to-end pass that session 56 could only mark `[assumed]`.
+
+**The UX audit** was the deliverable session 56 owed and its agent died before
+writing. `docs/backlog/ux.md`: fifteen items in six bands, same shape as
+`robustness.md`. Band A is the finding. The three surfaces where a human actually
+answers an agent - the card, the toast and the inline ask panel - hold 38 bridge
+calls between them and no error handling of any kind: no catch, no try, no await.
+The board handles it and installs an unhandledrejection listener, which is what
+makes the other three an omission rather than a house style. Under that, the
+answer-path methods in Go return no value at all, so the daemon cannot report a
+refusal even when it refuses. That is R-01's other half and the reason it stayed
+invisible; `Triage` is the one method that can say no, and the inbox discards its
+answer.
+
+Two smaller ones worth naming. `daemonUp` in `App.svelte` is declared, never
+assigned, and read by the one dot that would tell you the hub had died; the status
+strip's "daemon up" has no condition at all. And `theme.motion = "reduced"` is
+honoured by four components out of the thirteen that animate, because the global
+kill-switch in `app.css` is scoped to `"none"` - so the obvious middle choice in a
+three-item control does almost nothing.
+
+**The carried note that was wrong.** Session 56's handoff, STATUS and the dead
+agent's last words disagreed about the card's height. The handoff said it was
+estimated from raw text length. It is not: `Card.svelte:143-177` measures the
+laid-out card with a ResizeObserver. The dead agent was right to flag it. The real
+defect is narrower - the observer can only see the card grow, because min-height
+pins it from below, so shrinking runs off a hand-written list of triggers that
+omits two controls that shrink it. Filed as U-06, and the claim is corrected in
+STATUS where it had been sitting.
+
+**The merged backlog.** `docs/backlog/README.md` puts all seventy-six items in one
+order and states the rule. The question the three files could not answer separately
+was how a band-A robustness item ranks against F-01: F-01 makes an agent cleverer
+about whether to interrupt, band A is about interruptions that cannot be answered
+once made, and a better decision to ask is worth nothing when the asking is what
+breaks. Writing it caught R-01 and R-02 still listed as open a day after they were
+fixed and deployed, which would have made the merged list open by recommending two
+finished pieces of work. Both now carry a fixed marker.
+
+**The install shot.** `install.md` has asked for terminal output since it was
+written. It is taken, published, and verified serving on both hosts. It is not a
+photograph of a terminal and `SHOTS.md` says so at length: no Xvfb and no terminal
+emulator on this machine, so both commands were run for real and their verbatim
+output typeset. The spec asked for one row honestly reading "missing (only needed
+for showcase screenshots)" so the frame would read as a real machine. That row is
+ImageMagick's `import`, which is present here, so the requirement was dropped rather
+than faked.
+
+**The first test to mount a surface.** Thirty-two Svelte files, thirteen thousand
+lines, and nothing had ever executed one - which is why every item in the UX audit
+was found by reading. vitest and jsdom are in, and `Card.svelte` has ten tests that
+drive it from the keyboard. What they ask is not "is it in the right place", which
+jsdom cannot answer, but "does pressing 1 answer the question", which it can and
+which nothing was asking. Escape gets four of them, because "no matter how many
+times I press Esc, it pops back up" was a real complaint with a real fix and no test.
+
+It earned itself on day one. U-06 is pinned with `test.fails`, and the first version
+of that test was wrong in a way worth keeping: it counted the card's mount-time
+measurement as a response to the change under test, and so reported the defect as
+already fixed. Draining the microtask queue is what separates the two. The finding
+held, but only because the number was checked rather than trusted - which is the
+argument for the whole tier.
+
 ## Fifty-sixth session (2026-08-07): a public wiki, and twenty claims the code contradicted
 
 Boris asked for a wiki: features and rationale, engaging rather than dull, nothing

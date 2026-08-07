@@ -701,11 +701,13 @@ which still renders with its own count.
   cutover, and WebKitGTK has no equivalent here. How a surface *looks* is
   checked by driving a real window: start the daemon on a desktop session
   and screenshot with `python3 tools/uidrive/uidrive.py shot /tmp/x.png`.
-  What remains untested is behaviour: no Svelte component is rendered by
-  any test, and `buildDocument` (the sandbox document assembler) is not
-  executed by one, because that needs a JS test runner and a DOM. A
-  toolchain decision waiting to be made, not an oversight - vitest plus
-  jsdom would be the cheapest version ("Do this next").
+  What remained untested was behaviour. **Part of that closed on
+  2026-08-07**: vitest and jsdom are in, `frontend/vitest.config.js`
+  configures them, and `frontend/test/card.test.js` mounts `Card.svelte` and
+  drives it from the keyboard (ten tests, `make check` runs them as
+  `test-svelte`, skipped when `node_modules` is absent). `buildDocument` is
+  still not executed by any test, and sixteen of the seventeen surfaces still
+  have none. See R-40 in [backlog/robustness.md](backlog/robustness.md).
 - Artifacts: while an agent is still streaming the turn an artifact sits
   in, the conversation re-renders its HTML each frame and the artifact was
   seen restarting with it. **Unverified since the stable fence id and the
@@ -727,10 +729,15 @@ which still renders with its own count.
   cwd (no dir picker). Markdown re-parse during live streaming briefly
   holds the conversation lock (parse is sub-ms; revisit only if a frame
   stalls).
-- Card bodies render markdown (M6) but the fixed card height is still
-  estimated from raw text length, so a body with a code block/table/chart
-  can overflow a card - long content belongs in `agentbox show`. No live
-  countdown ring on card timeouts (static footer text).
+- Card bodies render markdown (M6). The height is **not** estimated from
+  text length, which this entry claimed until 2026-08-07: `Card.svelte`
+  measures the laid-out card with a ResizeObserver and Go resizes around it
+  (`Card.svelte:143-177`). The real limit is narrower and is filed as U-06 in
+  [backlog/ux.md](backlog/ux.md) - the observer can only see the card grow,
+  because min-height pins it from below, so shrinking depends on a
+  hand-written list of triggers that omits two controls that shrink it. Long
+  content still belongs in `agentbox show`. No live countdown ring on card
+  timeouts (static footer text).
 - FR33 refinement: diff lines are coloured by add/remove/hunk, without
   per-token language highlighting inside the line (chroma-in-diff is a
   later refinement).
@@ -1114,11 +1121,11 @@ behind it, kept for the items nothing else records.
    He has to hear each attempt, so do it with him in the room.
 5. **Two cosmetic defects at slide 17**: the OnlyOffice presenter strip
    flashes, and the app window is caught mid-transition as a grey rectangle.
-6. **A JS test runner** (vitest + jsdom, two devDependencies and an
-   `npm test` the Makefile can call). First candidates: `buildDocument`
-   producing a document whose CSP and injected runtimes are what the source
-   says, `compile` handling JSX and a TypeScript annotation, and
-   `markdown.svelte.js` leaving a block Go produced alone.
+6. ~~**A JS test runner**~~ **Done on 2026-08-07** for the runner itself
+   (`make test-svelte`). The candidates it listed are still open and are the
+   next three: `buildDocument` producing a document whose CSP and injected
+   runtimes are what the source says, `compile` handling JSX and a TypeScript
+   annotation, and `markdown.svelte.js` leaving a block Go produced alone.
 7. **Live-verify the rest of M4 on a desktop session**: ask a question
    through MCP from a project session and confirm the click result
    returns; confirm a Stop hook chimes (recipes.md). Smoke-tested so far:
