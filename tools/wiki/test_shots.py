@@ -544,5 +544,58 @@ class TestSafetyGuard(unittest.TestCase):
         self.assertNotIn("dismiss", src.split('"""')[2] if src.count('"""') > 1 else src)
 
 
+class TestLongLivedSyncVerbs(unittest.TestCase):
+    """The bug that cost the first real sitting.
+
+    `agentbox sync attach` holds presence open for as long as its process runs and
+    never returns on its own - cmd/agentbox/sync.go says "No timeout: the whole
+    point is to stay". Staging it with the foreground helper hung the run at the
+    fourth line of phase 1, with the machine's daemon already down and no output
+    for five minutes. Anything that does not return has to go through bg_start.
+    """
+
+    LONG_LIVED = {"attach"}
+
+    def _sync_calls(self):
+        """Every c.abx*/self.abx* call in the script, as (helper, string args)."""
+        import ast
+        tree = ast.parse(Path(shots.__file__).read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr not in ("abx", "abx_bg"):
+                continue
+            args = [a.value for a in node.args
+                    if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+            yield node.func.attr, args, node.lineno
+
+    def test_attach_is_never_run_in_the_foreground(self):
+        for helper, args, line in self._sync_calls():
+            if "sync" in args and self.LONG_LIVED.intersection(args):
+                verb = self.LONG_LIVED.intersection(args).pop()
+                self.assertEqual(
+                    "abx_bg", helper,
+                    f"line {line}: `sync {verb}` never returns, so it must be "
+                    f"backgrounded with abx_bg, not run through {helper}")
+
+    def test_attach_is_actually_staged_somewhere(self):
+        # Guards the test above from passing because the call was deleted.
+        self.assertTrue(
+            any("sync" in args and "attach" in args for _, args, _ in self._sync_calls()),
+            "no `sync attach` call left: the roster's fourth row is what it stages")
+
+    def test_the_backgrounded_row_is_confirmed_rather_than_assumed(self):
+        # Backgrounding costs the return code, so a failed attach would otherwise
+        # be a silent three-row board.
+        import inspect
+        self.assertIn("wait_for_row", inspect.getsource(shots.stage_roster))
+
+    def test_wait_for_row_gives_up_rather_than_hanging(self):
+        import inspect
+        sig = inspect.signature(shots.wait_for_row)
+        self.assertIn("timeout", sig.parameters)
+        self.assertIsNotNone(sig.parameters["timeout"].default)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

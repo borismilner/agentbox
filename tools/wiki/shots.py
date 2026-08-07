@@ -662,6 +662,25 @@ def sync_env(c, key, agent):
     return dict(c.env_iso, AGENTBOX_SESSION_KEY=key, AGENTBOX_AGENT=agent)
 
 
+def wait_for_row(c, key, cwd, timeout=10.0):
+    """True once `key` is on the throwaway roster.
+
+    Only needed for the rows staged by a backgrounded command: `announce` returns
+    once the row is written and can be trusted, `attach` never returns at all.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        r = c.abx("sync", "agents", "--json", env=c.env_iso, cwd=cwd, quiet=True)
+        if r.returncode == 0:
+            try:
+                if any(a.get("key") == key for a in json.loads(r.stdout).get("agents", [])):
+                    return True
+            except (ValueError, AttributeError):
+                pass
+        time.sleep(0.3)
+    return False
+
+
 def stage_roster(c):
     """The four rows S2 needs, staged before S1 so the release question's key
     already has a row to light up.
@@ -685,10 +704,21 @@ def stage_roster(c):
 
     # The dim row. A board that only shows well-behaved agents is not believable,
     # and `attach` is how a session gets onto the roster without a purpose.
-    r = c.abx("sync", "attach", "--area", AREA,
-              env=sync_env(c, KEY_ANON, ONCALL), cwd=cwd)
-    if r.returncode != 0:
-        c.fail("S2", f"sync attach exited {r.returncode}: {r.stderr.strip()[:200]}")
+    #
+    # It MUST be backgrounded. `sync attach` holds presence open for as long as its
+    # process runs and never returns on its own (cmd/agentbox/sync.go:299-301 says
+    # so: "No timeout: the whole point is to stay"). Running it in the foreground
+    # hung the first real sitting here forever, at the fourth line of the first
+    # phase, with the machine's daemon already down. bg_start tracks it and kills it
+    # at exit, which is also what ends the row.
+    c.abx_bg("sync", "attach", "--area", AREA,
+             env=sync_env(c, KEY_ANON, ONCALL), cwd=cwd,
+             label="a session that attached and never announced")
+    # Backgrounding costs the return code, so the row is confirmed instead. Without
+    # this a failed attach is a three-row board and S2 is quietly wrong.
+    if not c.dry and not wait_for_row(c, KEY_ANON, cwd):
+        c.fail("S2", "sync attach never put its row on the roster, so the board would "
+                     "show three rows where DESIGN wants four")
 
     # release-bot holds the deploy lock detached; test-runner waits on it, which
     # is what puts the holder's name on row 2's wait line.
