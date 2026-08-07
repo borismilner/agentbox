@@ -42,6 +42,8 @@ toast_max_height = 330
 toast_top_inset = 48         # how far below the top edge a toast sits
 app_width = 1180
 app_height = 860
+board_width = 1360           # the review board is its own window and wants more
+board_height = 900           # room than the app: code and a worklist side by side
 viewer_width = 900
 viewer_height = 780
 progress_width = 400
@@ -53,7 +55,8 @@ measure_px = 700             # the reading column: prose caps here, however wide
 hotkey = "Ctrl+Alt+grave"    # grabbed by the daemon on X11, so no desktop setup
                              # is needed; "" = no grab, use `agentbox panel`
 width_frac = 0.74            # of the monitor it rolls down on, not of the X root
-height_frac = 0.62
+height_frac = 0.5            # clamped to 0.2-0.5: past half the screen it stops
+                             # being a panel over your work and becomes a window
 slide_ms = 0                 # 0 (the default) = the panel simply appears. Set a
                              # duration (150-300) to animate the roll: it runs on
                              # the clock, so a slow frame is dropped rather than
@@ -96,10 +99,13 @@ quiet_hotkey = "Ctrl+Alt+Q"  # recording mode (FR95): demotes the strip to the
                              # the picture is quiet, not the notification
 
 [session]                    # the Claude child a session spawns (FR49)
-default_mode = "plan"        # plan (read-only) | full; the prompting modes are
+default_mode = "full"        # plan (read-only) | full; the prompting modes are
                              # not offered until AgentBox handles their protocol
 binary = ""                  # empty = `claude` on the daemon's PATH
 dir = ""                     # empty = the daemon's own working directory
+show_cost = false            # print what a turn cost under it; off because most
+                             # rooms do not want to see it, and a demo can
+                             # switch it on
 ```
 
 
@@ -112,38 +118,15 @@ enabled = true
 volume = 0.4               # quiet: a chime should register, never startle
 quiet_hours = ""           # e.g. "22:30-08:00"; empty = off
 
-[sound.earcons]            # per-class override: file path or "none"
-info = "builtin:pop"
-success = "builtin:tick"
-warning = "builtin:two-tone"
-question = "builtin:chime"
-error = "builtin:thud"
-urgent = "builtin:insist"
-
 [escalation]
 interval_s = 60            # replay cadence for unanswered items
 count = 5                  # then go silent, stay visible
 urgent_interval_s = 20     # urgent insists harder
 
-[card]
-position = "center"        # center | top-left | top-right | bottom-left | bottom-right
-monitor = "pointer"        # pointer | primary; pointer = where you look
-                           # (width lives in [window] card_width, which is wired)
-defer_minutes = 5          # Esc requeues for this long
-focus = "never"            # never | grab; never = NFR5, a stolen keystroke
-                           # answering a question is the worst failure
-max_body_lines = 12        # longer bodies scroll inside the card
-
 [toast]
-position = "top-center"    # severity icon + tint; title never clipped
 duration_s = 6             # info/success auto-dismiss; warning/error stick
-max_stack = 3              # more collapse into a "+N more" collector
 
 [ask]
-default_timeout_s = 0      # 0 = wait forever unless the caller sets one
-answer_on_summon = true    # summon focuses the card ready to answer
-allow_reply = true         # "/" free-text escape on choice/confirm (FR27);
-                           # callers can still force --strict per item
 undo_grace_s = 3           # answered-strip window before delivery; 0 = off,
                            # clamped to 5 max (a long window holds answers
                            # hostage); the strip shows "sending in Ns"
@@ -247,12 +230,6 @@ shared_max_bytes = 16384   # the cap on ONE shared value - a claim, a counter, a
 
 [markdown]
 code_theme = "auto"        # auto | nord | gruvbox | github | onedark | dracula; auto follows the ground
-chart_palette = "theme"    # chart colors come from the active theme
-
-[viewer]
-                           # the reading measure and the window size are wired, in
-                           # [window] measure_px / viewer_width / viewer_height
-watch_default = false      # `agentbox show --watch` opts in per call
 
 [editor]                   # the open button on a cited code block (FR65)
 command = []               # an argv TEMPLATE, not a command line, so a path with
@@ -312,12 +289,30 @@ retention_mb = 50          # size-rotated JSONL
 # mute = false             # true = straight to inbox, no card, no sound
 ```
 
-Note: the runtime mute (FR47, `agentbox mute <agent>`) is implemented; the
-config `mute` above (FR17, file-persistent) and the per-agent `earcon`
-override (FR46) are not. FR46 was dropped as redundant - agents are told
-apart by the identity pill's hue and the waiting dots, and `agentbox mute` gives
-a direct lever to silence one. The `[sound.earcons]` per-class block is also
-unimplemented; the built-in earcons are used. All of `[presence]` is now wired
+## Behaviour that is fixed, and has no knob
+
+Everything above is read by the code. What follows is real behaviour with no key
+to change it, listed here because earlier versions of this file invented keys for
+it and a key nothing reads fails in silence: an unknown key is a warning at
+startup and then nothing at all. Audited against source 2026-08-07; if you add
+one of these as a knob, move its line up into the file above.
+
+| Behaviour | What it does |
+| --- | --- |
+| Card placement | Dead centre of the monitor the pointer is on, at the moment the window opens. Every window follows the pointer's monitor, which is why a demo parks the pointer before it starts. |
+| Card focus | Never taken. Vision principle 3: a stolen keystroke that answers a question by accident is the worst failure there is, so there is no grab option to switch on. `agentbox summon` is the one way to hand a card the keyboard, and the drop-down panel is the one window that takes it. |
+| Card body length | The body scrolls inside the card past `window.card_max_height`. A long body also folds behind a `?` rather than growing the card. |
+| Deferring | `Esc` on a question requeues it for five minutes. On a notification the same key dismisses, because "not now, ask me again" is the right answer to a question and a trap on a notice. |
+| Toast placement | Top centre, `window.toast_top_inset` below the edge. |
+| Toasts at once | One. They queue, which is what makes five levels audible as five sounds rather than one blur. A burst from a single session collapses into one stack card instead, governed by `[flood]`. |
+| Blocking timeout | A caller that names no timeout waits forever. The card outliving the caller is the failure this avoids, and the keep-alive ticker is what makes it safe. |
+| Free-text reply | On by default per item, and a caller turns it off for its own item with `--strict`. There is no global switch: the config key that looks like one is parsed and read by nothing. |
+| Earcons | Six compiled-in sounds, embedded in the binary. There is no per-class or per-agent override: agents are told apart by the identity pill's hue and the waiting dots, and `agentbox mute` is the direct lever when one will not stop. |
+| Watching a document | Per call, with `agentbox show --watch`. |
+| Chart colours | From the active theme. |
+
+The runtime mute (FR47, `agentbox mute <agent>`) is implemented; the config
+`mute` above (FR17, file-persistent) is not. All of `[presence]` is now wired
 (FR29): `idle_after_s` drives both the missed-while-away marker (FR44) and the
 idle chime hold; `hold_when_idle` holds chimes and pauses escalation while the
 desktop is idle, then plays one summary chime on return; `fullscreen_auto_dnd`
@@ -334,8 +329,10 @@ not visible to AgentBox until M7.
 - volume 0.4 / quiet hours off: the failure mode of "too loud" is worse than
   "too quiet" because escalation replays; the first chime does not have to
   carry everything.
-- focus "never": see vision principle 3. The grab option exists because some
-  confirms are genuinely modal, but it is opt-in per caller, never ambient.
+- A card never takes the keyboard: see vision principle 3. There is no option to
+  make one modal, because the caller who wants that is trading away the one
+  guarantee that lets a card appear while you are mid-sentence somewhere else.
+  `agentbox summon` gives a card the keyboard when the human asks for it.
 - card centered, toasts top-center, monitor pointer: a decision card sits
   where the eyes rest; a glanceable toast hangs at the top edge out of the
   work area; both on the monitor you are actually using.

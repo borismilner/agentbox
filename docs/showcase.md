@@ -58,8 +58,8 @@ needs a person it has somewhere to put the question. You answer the few things t
 need judgement instead of approving every command. And nothing that arrives while
 you are away is lost.
 
-**What it is.** One Go binary and a resident daemon. Fourteen tools over MCP, the
-same fourteen over a CLI for shell scripts, hooks and cron. No cloud, no account, no
+**What it is.** One Go binary and a resident daemon. Thirty-nine tools over MCP, and
+the same reach from a CLI for shell scripts, hooks and cron. No cloud, no account, no
 telemetry, nothing leaving the machine. Register it once and every agent in every
 project can reach you.
 

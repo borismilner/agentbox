@@ -493,9 +493,13 @@ keep the tool list they were born with - the FR64-adjacent mechanic already
 in "Mechanics discovered".)
 
 CLI (`agentbox sync ...`): `attach`, `announce`, `activity`, `lock NAME
-[--timeout N] [--ttl N] [-- CMD]`, `unlock NAME`, `post TOPIC [DATA]`,
-`await TOPIC... [--after SEQ] [--timeout N]`, `get KEY`, `set KEY VALUE
-[--if-version N]`, `peers [--area A]`, `agents`, `status`. Exit codes follow
+[--timeout N] [--ttl N] [-- CMD]`, `unlock NAME`, `locks`, `break NAME`,
+`post TOPIC [DATA]`, `await TOPIC... [--after SEQ] [--timeout N]`, `get KEY`,
+`set KEY VALUE [--if-version N]`, `del KEY`, `peers [--area A]`, `agents`.
+There is no `sync status`: `agents` and `locks` answer between them, and a third
+verb overlapping both was never built. `break` is deliberately the human's verb
+and is left out of the CLI's own usage text, because reassigning somebody else's
+lock is not a thing an agent should reach for. Exit codes follow
 the house grammar: 0 granted/delivered, 1 refused/timeout, 3 unanswered,
 `--json` everywhere. The CLI is how hooks, Makefiles and non-Claude agents
 join the same fabric - and the first consumer is this repo's own

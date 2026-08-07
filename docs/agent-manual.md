@@ -990,16 +990,18 @@ instead of the bare answer).
 | `agentbox review` | diff approval | `--title` (req), `--diff-file PATH` (or stdin), `--body`, `--timeout` |
 | `agentbox say` | read a line out loud | `TEXT...`, or piped on stdin; `--wait`, `--timeout SEC` |
 | `agentbox drive` | synthetic pointer/keys | script on stdin or flags; `--window TITLE`, `--speed N`, `--wpm N` |
-| `agentbox control` | ask for the desktop, hands-off strip | `request REASON [--window SEC]`, `activity LINE`, `release`, `state` |
-| `agentbox sync` | who else is here, and what you are for | `announce PURPOSE [--area A] [--activity LINE]`, `activity LINE`, `agents [--area A] [--project P]`, `attach`, `--key`, `--json` |
-| `agentbox show` | markdown viewer | `FILE` or `-`, `--watch`, `--title` |
-| `agentbox walkthrough` | durable board reviews | `create --spec FILE`, `open ID`, `list [--find Q] [--state S]`, `read ID [--ack]`, `await [ID] [--timeout SEC]`, `delete ID` |
+| `agentbox control` | ask for the desktop, hands-off strip | `request REASON [--window SEC]`, `activity LINE`, `release`, `state`; `pause`, `resume`, `quiet`, `loud` are the human's verbs |
+| `agentbox sync` | who else is here, and what you are for | presence: `announce PURPOSE [--area A] [--activity LINE]`, `activity LINE`, `agents [--area A] [--project P]`, `peers`, `attach`. leases: `lock NAME [--ttl N] [-- CMD]`, `unlock NAME`, `locks`. signals: `post TOPIC [DATA]`, `await TOPIC... [--after SEQ]`. shared: `get`, `set`, `del`. Plus `--key`, `--json` |
+| `agentbox show` | markdown viewer | `FILE` or `-`, `--watch`, `--title`; `--artifact FILE` runs interactive HTML instead |
+| `agentbox artifact` | hear what the human did in an artifact | `wait --id ID [--name N] [--timeout SEC]`, `read --id ID [--name N]`, `--json` |
+| `agentbox panel` | roll the session panel down or up | `show`\|`hide`\|`toggle`\|`state`, `--json` |
+| `agentbox walkthrough` | durable board reviews | `create --spec FILE`, `open ID`, `list [--find Q] [--state S]`, `read ID [--ack]`, `await [ID] [--timeout SEC]`, `repair [ID]`, `delete ID` |
 | `agentbox progress` | progress bar from stdin | `--title` (req), `--indeterminate` |
 | `agentbox stats` | interruption insights | `--since 24h\|7d\|30d\|0`, `--json` |
 | `agentbox dnd` | do-not-disturb | `on`\|`off`\|`status` |
 | `agentbox mute` / `unmute` | silence an agent | `AGENT` or `--list` |
 | `agentbox summon` | raise/focus current card | |
-| `agentbox inbox` / `app` | open the UI | `app --tab inbox\|stats\|progress\|session\|settings` |
+| `agentbox inbox` / `app` | open the UI | `app --tab home\|session\|agents\|assignments\|inbox\|history\|viewer\|library\|settings` |
 | `agentbox status` / `version` / `logs` | daemon health, build, event log | `logs --follow` |
 | `agentbox quit` | stop the daemon gracefully | |
 

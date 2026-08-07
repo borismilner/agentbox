@@ -170,7 +170,7 @@ still on disk as a fallback; delete them once a few quiet days pass.
   fills `[veto] default_window_s` (15) when the caller omits `--in`.
 - Agent integration (M4): `agentbox mcp` is an MCP stdio server (official
   modelcontextprotocol/go-sdk v1.6.1) exposing 39 tools (the seven
-  assignment tools since M12, the six sync tools since FR83); each proxies to
+  assignment tools since M12, the eight sync tools since FR83); each proxies to
   the daemon over the socket (auto-spawn). `agentbox docs` / `docs agent` /
   `docs setup` serve the embedded manual; `agentbox schema` prints the wire JSON
   Schema. Recipes in docs/recipes.md.
@@ -488,9 +488,9 @@ still on disk as a fallback; delete them once a few quiet days pass.
   Boris's rule, 2026-07-26) while staying focus-free and in the taskbar. A
   CLI report is `hold`-tied to its connection and reaped with an
   "interrupted" toast if the pipe dies; an orphaned report is reaped by the
-  poll tick after 15 min. Reports fold into the app's Progress tab when
-  `agentbox app` is open and fall back to a standalone window when it is closed;
-  the set re-homes both ways.
+  poll tick after 15 min. There is no Progress tab: a report is always its own
+  corner window, deliberately, because a bar that lives inside the app window is
+  invisible whenever the app window is not the thing you are looking at.
 - Focus policy (vision principle 3 / NFR5): cards map with
   `_NET_WM_USER_TIME=0` + `_NET_WM_STATE_ABOVE`, so on Mutter they pop
   above without taking the keyboard. `agentbox summon` (FR15) re-focuses the
@@ -819,14 +819,16 @@ which still renders with its own count.
 - FR33 refinement: diff lines are coloured by add/remove/hunk, without
   per-token language highlighting inside the line (chroma-in-diff is a
   later refinement).
-- M6 refinements not done: per-token highlighting inside diffs (above), and
-  the non-default `[markdown]`/`[viewer]` config knobs are not wired (their
-  documented defaults already match the implementation).
-- Config knobs documented but not wired: card/toast position (fixed at the
-  chosen defaults), defer_minutes (Esc requeues untimed), ask.allow_reply
-  global (per-item --strict works), `[agents."name"].earcon` and the
-  `[sound.earcons]` per-class block (FR46 dropped as redundant; the M5
-  roadmap note has the rationale).
+- M6 refinements not done: per-token highlighting inside diffs (above).
+- The knobs that were documented and read by nothing are gone from
+  06-configuration.md as of 2026-08-07, and what they described is now in that
+  file's "Behaviour that is fixed, and has no knob" table instead: card and toast
+  placement, the five-minute defer, the never-take-focus rule, the global
+  `ask.allow_reply` (per-item `--strict` is the real lever), the per-agent and
+  per-class earcon overrides (FR46, dropped as redundant), `[viewer]
+  watch_default` and `[markdown] chart_palette`. An unknown key is a startup
+  warning and then nothing, so a documented key nothing reads is worse than no
+  documentation at all.
 - Inbox triage mode (FR34) is built; the keyboard focus handoff between the
   triage cursor and the search box is unverified on a live desktop.
 - A second answer during an undo grace is dropped by design.
