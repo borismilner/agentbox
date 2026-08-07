@@ -173,13 +173,26 @@ test-js: ## frontend module tests (skipped when node is absent)
 		echo "node not found: skipping the frontend module tests"; \
 	fi
 
+# The component tests (R-40): the surfaces actually mounted and driven, which
+# nothing did until 2026-08-07. These need node_modules, unlike test-js above, so
+# they skip on a machine that has never run npm install rather than failing it -
+# same rule as the build, for the same reason. The globs are disjoint on purpose:
+# test-js runs node's own runner over frontend/src, this runs vitest over
+# frontend/test, and node cannot import a .svelte file.
+test-svelte: ## surface tests under vitest + jsdom (skipped without node_modules)
+	@if [ -d frontend/node_modules/vitest ]; then \
+		cd frontend && npx vitest run; \
+	else \
+		echo "frontend/node_modules absent: skipping the surface tests (npm install in frontend/)"; \
+	fi
+
 fmt: ## fail when any file is not gofmt-clean
 	@out=$$(gofmt -l cmd internal tools); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 vet: fmt ## gofmt check + go vet
 	go vet ./...
 
-check: vet test test-js ## everything CI would run
+check: vet test test-js test-svelte ## everything CI would run
 
 generate: ## regenerate earcon WAVs
 	go run ./tools/genearcons internal/sound/assets

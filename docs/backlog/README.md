@@ -6,8 +6,8 @@ seventy-six items, and the rule that produced it.
 
 > **In a hurry.** Finish robustness band A (thirteen items left, about three weeks),
 > taking U-01, U-02 and U-03 with it because they are the same failures seen from
-> the surface. Then build the test harness, R-40. Then F-01. Everything else waits,
-> and B-1 waits on Boris rather than on capacity.
+> the surface. Then finish R-40, which is started but not done. Then F-01.
+> Everything else waits, and B-1 waits on Boris rather than on capacity.
 
 ## The three files
 
@@ -86,8 +86,21 @@ accident on an ordinary day.
 
 **Tier 3 - the ability to find out.** R-40, plus the three additions ux.md's U-15
 names: an a11y checker, a contrast check over the token sets, and a keymap
-inventory checked against the hints each surface renders. A week for the rig and
-its first three tests, a day each for the additions.
+inventory checked against the hints each surface renders.
+
+**Started on 2026-08-07.** vitest and jsdom are in, `frontend/vitest.config.js`
+configures them, and `frontend/test/card.test.js` mounts `Card.svelte` and drives it
+from the keyboard: ten tests, wired into `make check` as `test-svelte`, skipping
+rather than failing on a machine with no `node_modules`. What remains is R-40's
+fixes (2) and (3) - the hostile payload and executing `buildDocument` - the three
+additions above, and the sixteen surfaces nothing yet imports. Call it a week left
+of the original week, and a day each for the additions.
+
+It has already earned its place twice. U-06 is now pinned by a test that fails on
+purpose, and writing that test caught an error in the test rather than the code: the
+first version counted the card's mount-time measurement as a response to the change
+under test and reported the defect as fixed. That is the class of mistake this whole
+tier exists to stop, and it happened on day one.
 
 Ranked here and not lower because everything after this point is new surface, and
 new surface built without it inherits the same blind spot. Ranked here and not
@@ -128,7 +141,7 @@ argues the case at its "non-goal I would revisit". That is a decision, not a tas
 |---|---|---|
 | 1 | 13 robustness + 3 ux | three weeks |
 | 2 | 11 robustness (+ R-30 pulled up) | two weeks |
-| 3 | R-40 and the three checks U-15 adds | two weeks |
+| 3 | R-40 and the three checks U-15 adds | two weeks, one spent |
 | 4 | F-01, F-09, F-02, F-11, F-05 | four weeks |
 | 5 | everything else | months, and re-rank before starting |
 

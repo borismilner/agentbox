@@ -1105,6 +1105,14 @@ guessing on a machine nobody can reach.*
 
 ### R-40. No test renders any surface, so every display defect in this document was found by reading
 
+> **Started** on 2026-08-07, not finished. The harness this entry asks for exists:
+> vitest and jsdom, `frontend/vitest.config.js`, and `frontend/test/card.test.js`
+> mounting `Card.svelte` and driving it from the keyboard. That is fix (1) of the
+> three below. Fixes (2), the hostile payload, and (3), executing `buildDocument`,
+> are still open, and sixteen of the thirty-two Svelte files still have no test that
+> so much as imports them. The count in the paragraph below is therefore no longer
+> literally true and the rest of the reasoning is.
+
 **How it fails.** 32 Svelte files and 13,158 lines are never executed by anything:
 no vite, no jsdom, no svelte compilation in any test. `frontend/package.json` has
 no test script; the one JS test is `frontend/src/lib/diff.test.js` over the pure

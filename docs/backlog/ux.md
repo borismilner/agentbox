@@ -20,10 +20,19 @@ Numbering is `U-nn`, sequential across bands, and does not collide with `R-nn` i
 UI-side face of a defect `robustness.md` already owns, it says so and does not
 restate it.
 
-Nothing here was found by looking at a running window. `robustness.md`'s R-40 is
-the reason: no test renders any Svelte file, and this audit could not either
-without taking Boris's daemon down. Every item is therefore marked with what
-would settle it on screen.
+Nothing here was found by looking at a running window. `robustness.md`'s R-40 was
+the reason: no test rendered any Svelte file, and this audit could not either
+without taking Boris's daemon down. Every item is therefore marked with what would
+settle it on screen.
+
+**Since writing, part of that changed.** A vitest and jsdom harness now exists
+(`frontend/vitest.config.js`, `frontend/test/card.test.js`), and U-06 below is
+pinned by a test that fails on purpose until it is fixed. U-06 is therefore the one
+item here checked by something other than reading, and the check was worth it twice
+over: the finding held, and the first version of the test was wrong in a way worth
+recording. It counted the card's mount-time measurement as a response to the change
+under test, and so reported the defect as already fixed. Draining the microtask
+queue is what separates the two, and `settle()` in that file exists for it.
 
 **The bands**
 
@@ -277,9 +286,11 @@ invitation to add the sixth control and forget the seventh.
 content rather than the pinned shell, which is observable in both directions, or
 observe a child that is not `min-height`-pinned. Either removes the class of bug
 instead of its two current members.
-**Test that would have caught it.** Mount the card with a form whose choice field
-has one long and one short option, select each, and assert the reported fit height
-goes down as well as up. Nothing can run this today.
+**Test that would have caught it.** Written, and failing on purpose:
+`frontend/test/card.test.js`, "a form card that gets shorter". It mounts the card
+with a choice field holding one long and one short option, picks the short one, and
+asserts a re-measure is asked for. Marked `test.fails`, so fixing U-06 turns it red
+and prompts whoever fixes it to drop the marker.
 **On screen.** `ask_user_form` with a choice field holding one 40-character option
 and one short one. Pick the long, then the short.
 **Size.** hours.
@@ -541,6 +552,10 @@ mount a component at all.
 *We would not find out.*
 
 ### U-15. Every item above was found by reading, and nothing in the tree could have found any of them
+
+> **Partly addressed** on 2026-08-07. The harness exists and `Card.svelte` has ten
+> tests. The three additions this entry asks for do not, and neither do tests for
+> the other sixteen surfaces, so the item stays open with its scope reduced to those.
 
 **How it fails.** `robustness.md`'s R-40 owns this and should be read there rather
 than restated: no vite, no jsdom, no Svelte compilation in any test, 32 files and
