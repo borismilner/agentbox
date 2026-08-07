@@ -16,7 +16,7 @@ The inbox is an ordinary window with two sections. **Pending** first, then
 decided before the list reaches the screen, so a question can never sink below
 the answered noise.
 
-<!-- SHOT: the inbox after an hour away. Two pending rows on top, the selected one showing its key hints, then recent history with an outcome column carrying eu-west, approved, proceeded and one missed while away. Footer reading N interruptions today -->
+![The inbox: two pending questions at the top, the selected one showing its key hints (1 yes, 2 no, d dismiss, c copy), and below them recent history whose outcome column reads eu-west, approved, proceeded and expired](img/inbox.png)
 
 One search box covers title, agent, project, kind and outcome. There is no level
 filter and no per-agent dropdown, which is a smaller surface than it sounds: typing

@@ -17,7 +17,7 @@ It gets a strip at the top centre, wearing its level: a coloured bar, a tint, an
 per level (a circled i, a check, a warning triangle, a crossed circle, a bell).
 You know what kind of thing this is before you have read the title.
 
-<!-- SHOT: a warning-level strip from dependency-bot on checkout-api, top centre of the screen, title reading that two transitive dependencies moved to a yanked version, no countdown in it -->
+![A warning-level toast at the top of the screen from dependency-bot on checkout-api: two transitive dependencies moved to a yanked version, both in the release candidate. It carries a dismiss cross and no countdown, because a warning waits to be read](img/toast.png)
 
 The title always shows whole; the body wraps to three lines and then offers to
 expand in place. One arrives at a time, and a second waits its turn instead of

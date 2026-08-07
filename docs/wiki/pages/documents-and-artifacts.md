@@ -89,7 +89,7 @@ Some answers are not a number in a text field. They are a shape, a threshold, a
 share of traffic. Nine numbered options cannot carry that, so an agent writes a
 small page and blocks until you have used it.
 
-<!-- SHOT: an artifact running in its own window. A canary console with a slider at 50% of live traffic, a bar under it saying what that share is in requests a minute, two buttons reading Start the rollout and Hold it. The bar above showing the interactive badge, the runtime it asked for, and the preview/code toggle -->
+![An artifact running in its own window: a canary console titled How much traffic should the new build take, a slider at 50% of live traffic with 2,100 req/min on the new build under it, and two buttons reading Start the rollout and Hold it. The bar above carries an interactive badge and the runtime it asked for, react + tailwind](img/artifact.png)
 
 Above every artifact is a bar: an `interactive` badge, which runtime it asked for,
 a **preview and code toggle**, and a reload button. The code tab is the source

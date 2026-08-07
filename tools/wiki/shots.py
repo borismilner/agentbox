@@ -891,17 +891,24 @@ def end_progress(c):
     """
     if not c.progress_procs:
         return
+    # EOF and not SIGTERM. `agentbox progress` reads percent lines from stdin and
+    # finishes the task when the pipe closes; killing it instead reports the task
+    # as interrupted, and the daemon turns that into an error notification that
+    # then sat over the artifact and the hands-off strip in the next two shots.
     for p in c.progress_procs:
         try:
             p.stdin.close()
         except (OSError, ValueError):
             pass
-        p.terminate()
     for p in c.progress_procs:
         try:
-            p.wait(timeout=3)
+            p.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            p.kill()
+            p.terminate()
+            try:
+                p.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                p.kill()
         if p in c.bg:
             c.bg.remove(p)
     c.progress_procs = []
@@ -1617,6 +1624,16 @@ def main():
         # and it is always-on-top in the corner every other window shot uses.
         if shot["key"] == "S10":
             end_progress(c)
+        # S9 is a WARNING notify, and a warning waits to be read: no dismiss timer
+        # is ever armed for it (FACTS.md, daemon.go:1501-1511). So it stays the
+        # current item and the card S1 fires queues behind it, and S1 reported "no
+        # window matching =agentbox" in every full run while passing on its own.
+        # Nothing else is pending at this point - the history items are resolved
+        # and S1 has not fired - so clearing the queue clears exactly the toast.
+        if shot["key"] == "S9":
+            assert_isolated(c.env_iso)
+            c.abx("dismiss", "--all", env=c.env_iso)
+            c.wait_gone("=agentbox · toast", c.env_iso, seconds=4.0)
         # S1 leaves two questions queued on purpose - that is what its footer
         # counts - and the daemon shows the next one the moment the front card
         # goes. Every app-window shot after this had a card sitting over it.

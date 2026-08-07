@@ -9,7 +9,9 @@
 > comfortable with. **Skip to** [[Taking turns|taking-turns]] for the resources
 > that are not your desktop.
 
-<!-- SHOT: the amber strip over a real desktop with an unrelated window under it, beside the same strip green and reading PAUSED - YOURS, the frozen activity line still legible -->
+![The amber HANDS OFF strip pinned to the top of the screen, reading renaming the staging secret in the console, with a Pause button, over the window the reader was using](img/hands-off.png)
+
+![The same strip in green, reading PAUSED - YOURS with the activity line frozen and still legible, and a Resume button in place of Pause](img/hands-off-paused.png)
 
 ## A sign that is on screen for exactly as long as it is true
 

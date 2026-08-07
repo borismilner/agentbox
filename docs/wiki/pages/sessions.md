@@ -8,7 +8,7 @@
 > **Read on if** you want the agent and the answer in the same window. **Skip to**
 > [[Work it does on its own|assignments]] for the runs nobody starts.
 
-<!-- SHOT: the console rolled down over an editor, one session chip selected, a turn mid-stream, and the inline question sitting above the composer -->
+![The console rolled down over the editor: session chips along the top, a turn mid-stream showing code, and an inline question above the composer asking whether to persist per-segment offsets, with three numbered answers and its key hints](img/panel.png)
 
 ## A turn you can read, with the machinery folded away
 

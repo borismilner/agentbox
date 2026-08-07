@@ -29,7 +29,7 @@ The rail down the side shows every station at once, the current one marked, with
 running count of how many you have judged. That count is the promise the surface
 rests on: this is finite, and nothing may grow it mid-walk.
 
-<!-- SHOT: the review board. The rail of grouped steps on the left with one domain open, a step open at its TL;DR, a code block with line numbers and a highlighted range, and one comment anchored to a selection with a note typed into it -->
+![The review board: the rail of steps on the left, one step open at its TL;DR, and under it the real code at cmd/agentbox/main.go lines 30 to 45 with a note anchored to the exit-code constants reading 0 through 4: answered, refused, misused, unanswered, broken](img/review-board.png)
 
 Only one of the four step kinds is code. A ground step carries the vocabulary and
 does not count toward the total, and a check step is a command with an expected

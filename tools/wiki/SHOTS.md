@@ -8,10 +8,33 @@ different questions and change at different speeds. DESIGN.md says what must be
 on screen and why, and it is the thing a page author reads. This is an operations
 runbook for one script, and it changes whenever the script does.
 
-**As of this writing the script has never been run.** It was written and tested
-against fabricated input only. The first person to run it should expect to retake
-two or three shots and should read the "what usually goes wrong" section before
-starting, not after.
+**First run: 2026-08-07.** It had never been run before that, having been written
+and tested against fabricated input only, and it did not survive contact with a
+desktop. Eight defects, all in the script or its staging rather than in the
+product, all fixed and all now covered by tests:
+
+1. `sync attach` ran in the foreground. It never returns by design, so the sitting
+   hung at the fourth line of phase 1 with the daemon already down.
+2. `walkthrough create`'s exit code was thrown away, turning a schema refusal into
+   a 45-second wait for a window.
+3. The spec's `repo_root` was relative; the daemon requires absolute.
+4. The spec had no `pinned` SHA, which the daemon also requires.
+5. Code and check steps need a `tldr`, and the board opens in brief, so for S4 it
+   is the photograph rather than metadata.
+6. The board opens on the ground step, which has no code and no note, so S4 has to
+   step right and leave brief for the full text.
+7. The three progress feeders hold their pipes open, so that window sat in the
+   corner of every later frame. They are closed on EOF now - terminating them made
+   the daemon report an interrupted task, and that error notification then sat over
+   the artifact and the hands-off strip.
+8. Staging fired enough items to trip flood control, which collapsed S1's card into
+   a stack so no card window ever appeared; and S9 is a warning notify, which waits
+   to be read and therefore held the queue behind it. S1 failed in every full run
+   while passing on its own, which reads as a flaky window and is not one.
+
+Expect to read every frame afterwards regardless. The script's own check can only
+tell a rendered surface from wallpaper; it cannot see a card sitting over the shot,
+and three of the first run's frames had one.
 
 ## What it costs you
 

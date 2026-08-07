@@ -9,7 +9,7 @@
 > is waiting on you. **Skip to** [[Taking turns|taking-turns]] for the primitives
 > this board is watching.
 
-<!-- SHOT: one area with four rows - asking you, blocked behind a named lock, listening, and a dim row with no purpose - and the shared-values block under them -->
+![The Agents board: a shared-values block over rows grouped by area. One agent is chipped asking you, one blocked while it waits on the lock deploy:checkout-api held by release-bot, one listening on tests:green, and a dim row reading no purpose given](img/agents-board.png)
 
 ## Three questions, always in the same place
 
