@@ -856,15 +856,26 @@ depends on.
 The handoff for the current session is [../HANDOFF.md](../HANDOFF.md) - read
 that first; it carries the exact commands and the live state.
 
-**As of session 55 (2026-08-06) session 54's queue is empty and nothing is
-blocked on Boris.** Session 55 cleared it: `config.SplitArgv` got the fifth fuzz
-target (two escaping defects, both fixed); the inline ask panel was looked at on
-a real long body (it does not need FR84's fold, but it was pushing the composer
-off the window and now does not); the drop-down panel became an ask host, which
-is what that look turned up; and the showcase question was answered - the video
-pipeline is deleted and the live half kept (priority 2 below). What remains is
-living with `[flood]`'s defaults, which is a matter of using AgentBox rather than
-a task anybody can sit down and do.
+**As of session 56 (2026-08-07) a deploy is owed and three things are open.**
+
+**Deploy first.** `1d00fd2` fixes two daemon defects and the running daemon is
+still `69230d4f7e32`, so neither fix is live on Boris's machine. `make deploy`.
+
+Then, in order:
+
+1. **The UX backlog does not exist.** Boris asked for three and got two; the UX
+   agent died on a session limit. `docs/backlog/ux.md` is the gap, written in the
+   item shape `docs/backlog/robustness.md` uses. Its last words before dying are
+   worth acting on: the card measures itself with a ResizeObserver, so the
+   estimated-height story it had been given may be wrong. Check `Card.svelte`.
+2. **`docs/backlog/README.md`**, one prioritized order across all three backlogs.
+   Today they are three opinions with no ranking between them.
+3. **The screenshots.** `tools/wiki/shots.py --yes`, five minutes of desktop,
+   never run. Three shots the pages ask for are missing from the plan and
+   `tools/wiki/SHOTS.md` names them.
+
+Living with `[flood]`'s defaults is still open and is now more interesting than it
+was: flood control is what produced the unanswerable question fixed in `1d00fd2`.
 
 **As of session 54 (2026-08-06) FR30 is built.**
 He cleared the whole queue in two exchanges at the start of that session: flood
