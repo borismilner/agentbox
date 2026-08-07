@@ -2221,3 +2221,66 @@ func TestDriveShapeRecordsTheStepsAndNotWhatWasTyped(t *testing.T) {
 		t.Errorf("a hundred steps were not truncated: %q", got[max(0, len(got)-30):])
 	}
 }
+
+// A store that cannot write must not turn into a lost answer. resolve used to
+// return the moment st.Resolve errored, which abandoned everything after it: the
+// caller stayed parked on a question the human had answered, the timer was never
+// stopped, and because finalizeGrace clears the grace record before calling in, the
+// last painted view stayed the answered strip with undo already dead. The screen
+// said the answer had shipped and it never had. Reproduced 2026-08-07.
+//
+// The store is closed for real rather than faked, because Daemon holds a concrete
+// *store.Store and a closed database is the honest version of a full disk.
+func TestAFailedStoreWriteStillReleasesTheCaller(t *testing.T) {
+	d, _, _, st := newTestDaemon(t, Config{})
+
+	answered := make(chan proto.Result, 1)
+	go func() {
+		res, rpcErr := d.Handle(context.Background(), proto.MethodAsk, mustJSON(t, askItem()))
+		if rpcErr != nil {
+			answered <- proto.Result{}
+			return
+		}
+		answered <- res.(proto.Result)
+	}()
+
+	var id string
+	deadline := time.Now().Add(2 * time.Second)
+	for id == "" {
+		d.mu.Lock()
+		if d.current != nil {
+			id = d.current.ID
+		}
+		d.mu.Unlock()
+		if id != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the question never reached the screen")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// From here every write fails.
+	if err := st.Close(); err != nil {
+		t.Fatalf("closing the store: %v", err)
+	}
+
+	d.Answer(id, "Yes")
+
+	select {
+	case res := <-answered:
+		if !res.Answered || res.Answer != "Yes" {
+			t.Fatalf("caller got %+v, want the human's answer through even though the row could not be written", res)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the caller was left parked on a question that had been answered")
+	}
+
+	d.mu.Lock()
+	stillUp := d.current != nil && d.current.ID == id
+	d.mu.Unlock()
+	if stillUp {
+		t.Fatal("the answered card is still on screen, so it is still claiming to be sending")
+	}
+}

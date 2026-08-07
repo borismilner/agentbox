@@ -685,3 +685,101 @@ func TestAnUrgentItemStillBreaksThroughAStack(t *testing.T) {
 		t.Fatalf("stack level = %q, want urgent", d.current.Level)
 	}
 }
+
+// A question that outlives the stack card carrying it must still be answerable.
+// Dismissing a stack sweeps its notifications and deliberately keeps every
+// blocking row pending (sweepStack), which leaves an item that is pending in the
+// store and held nowhere in memory. OpenStacked cannot reach it, because there is
+// no live stack card any more, and the inbox row routes text, secret, form and
+// diff kinds through Promote. Promote used to return silently for anything not in
+// the queue, so the question could not be answered from anywhere at all while its
+// caller stayed parked on it. Reproduced 2026-08-07 before this test existed.
+func TestAQuestionOutlivingItsStackCardIsStillAnswerable(t *testing.T) {
+	d, _, _, st := newTestDaemon(t, floodCfg())
+	callNotify(t, d, floodNotify("one"))
+	callNotify(t, d, floodNotify("two"))
+
+	// A typed question, because those are the kinds the inbox promotes rather than
+	// answering in place.
+	ask := proto.Item{
+		Kind: proto.KindText, Title: "What should I tag it?",
+		Identity: floodNotify("").Identity,
+	}
+	answered := make(chan proto.Result, 1)
+	go func() {
+		res, rpcErr := d.Handle(context.Background(), proto.MethodAsk, mustJSON(t, ask))
+		if rpcErr != nil {
+			answered <- proto.Result{}
+			return
+		}
+		answered <- res.(proto.Result)
+	}()
+
+	var stackID, askID string
+	deadline := time.Now().Add(2 * time.Second)
+	for askID == "" {
+		d.mu.Lock()
+		all := d.queue
+		if d.current != nil {
+			all = append([]*proto.Item{d.current}, d.queue...)
+		}
+		for _, q := range all {
+			if q.Kind == proto.KindStack {
+				for _, e := range q.Stack {
+					if e.Blocking {
+						stackID, askID = q.ID, e.ID
+					}
+				}
+			}
+		}
+		d.mu.Unlock()
+		if askID != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the question was never collapsed into a stack card")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// The human reads the count and closes the summary. This is the step that
+	// created the trap: the notifications go, the question stays pending, and the
+	// only card that pointed at it is gone.
+	d.Dismiss(stackID)
+
+	d.mu.Lock()
+	held := d.current != nil && d.current.ID == askID
+	for _, q := range d.queue {
+		if q.ID == askID {
+			held = true
+		}
+	}
+	d.mu.Unlock()
+	if held {
+		t.Fatal("the question is in memory, so this test is no longer exercising the gap it was written for")
+	}
+	stored, err := st.Item(askID)
+	if err != nil || stored == nil || stored.State != store.StatePending {
+		t.Fatalf("the question should be pending in the store: %+v (err %v)", stored, err)
+	}
+
+	// The inbox row, which is the last door left.
+	d.Promote(askID)
+
+	d.mu.Lock()
+	onScreen := d.current != nil && d.current.ID == askID
+	d.mu.Unlock()
+	if !onScreen {
+		t.Fatal("promoting the surviving question did nothing; it cannot be answered from anywhere")
+	}
+
+	d.Reply(askID, "2026.7.30")
+	select {
+	case res := <-answered:
+		if res.Reply != "2026.7.30" {
+			t.Fatalf("caller got reply %q, want the typed answer", res.Reply)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the caller was never released")
+	}
+}

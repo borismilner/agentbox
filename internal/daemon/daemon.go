@@ -1767,11 +1767,32 @@ func (d *Daemon) resolve(id, toState string, out store.Outcome) bool {
 	}
 	d.mu.Unlock()
 
+	// A store failure must not become a lost answer. Two different failures hide
+	// behind one error here and they need opposite handling:
+	//
+	// ErrNotFound is the idempotency guard. There is no pending row, so this item
+	// has already ended, and carrying on would deliver a second result to a caller
+	// that has one. Stop.
+	//
+	// Anything else (a full disk, a locked or corrupt database) means the row could
+	// not be written, and returning here used to abandon everything after it: the
+	// caller stayed parked on a question the human had answered, the timer was never
+	// stopped, and because finalizeGrace clears the grace record before calling in,
+	// the last painted view stayed the answered strip with undo already dead. The
+	// screen said the answer had shipped and it never had. Reproduced 2026-08-07.
+	//
+	// So the in-memory half runs anyway. The audit row is lost and said so loudly in
+	// the log; the answer still reaches the code that is blocked on it, which is the
+	// one thing this product promises.
+	recorded := true
 	if err := d.st.Resolve(id, toState, out); err != nil {
-		if !errors.Is(err, store.ErrNotFound) {
-			d.log.Error("store.resolve_failed", "component", "daemon", "item_id", id, "err", err.Error())
+		if errors.Is(err, store.ErrNotFound) {
+			return false
 		}
-		return false
+		recorded = false
+		d.log.Error("store.resolve_failed", "component", "daemon", "item_id", id,
+			"state", toState, "err", err.Error(),
+			"consequence", "the transition is not on record; the caller is being released anyway")
 	}
 	event := map[string]string{
 		store.StateAnswered:  logging.EvItemAnswered,
@@ -1780,7 +1801,8 @@ func (d *Daemon) resolve(id, toState string, out store.Outcome) bool {
 		store.StateDismissed: logging.EvItemDismissed,
 	}[toState]
 	d.log.Info(event, "component", "daemon", "item_id", id,
-		"answer", out.Answer, "reply", out.Reply, "form", len(out.Values) > 0)
+		"answer", out.Answer, "reply", out.Reply, "form", len(out.Values) > 0,
+		"recorded", recorded)
 
 	d.mu.Lock()
 	d.stopTimerLocked(id)
@@ -2076,15 +2098,34 @@ func (d *Daemon) Stats(since time.Time) (proto.Stats, error) {
 	return d.st.Stats(since)
 }
 
-// Promote pulls a queued item to the front of the display (inbox click).
-// Promoting the current item just re-presents it.
+// Promote pulls an item to the front of the display (inbox click). Promoting the
+// current item just re-presents it.
+//
+// It looks in memory first and falls back to the store, because "pending" and
+// "held in memory" are not the same set. Flood control is how they come apart: a
+// collapsed item is stored and deliberately not queued, and dismissing the stack
+// card that carried it keeps every blocking row pending (sweepStack) while taking
+// the one route to it off the screen. The inbox row was then the last door left and
+// it led to a queue the item had never been in, so a question with an agent still
+// parked on it could not be answered from anywhere at all. Reproduced 2026-08-07.
 func (d *Daemon) Promote(id string) {
 	d.mu.Lock()
-	if d.current != nil && d.current.ID == id {
+	if d.promoteHeldLocked(id) {
 		view := d.viewLocked()
 		d.mu.Unlock()
 		d.ui.Present(view)
 		return
+	}
+	d.mu.Unlock()
+	d.promoteStored(id)
+}
+
+// promoteHeldLocked puts an item agentbox is already holding on screen and reports
+// whether it found one. The current item counts as found: re-presenting it is the
+// whole job.
+func (d *Daemon) promoteHeldLocked(id string) bool {
+	if d.current != nil && d.current.ID == id {
+		return true
 	}
 	idx := -1
 	for i, q := range d.queue {
@@ -2094,18 +2135,54 @@ func (d *Daemon) Promote(id string) {
 		}
 	}
 	if idx < 0 {
-		d.mu.Unlock()
-		return
+		return false
 	}
 	it := d.queue[idx]
 	d.queue = append(d.queue[:idx], d.queue[idx+1:]...)
+	d.displaceLocked(it)
+	return true
+}
+
+// displaceLocked puts it on screen, sending whatever was there to the front of the
+// queue rather than behind it: the human asked for this item, and the one they
+// interrupted is the one they are most likely to want back next.
+func (d *Daemon) displaceLocked(it *proto.Item) {
 	if d.current != nil {
 		d.stopTimerLocked(d.current.ID)
 		d.queue = append([]*proto.Item{d.current}, d.queue...)
 	}
 	d.setCurrentLocked(it)
+}
+
+// promoteStored is Promote's fallback for an item that is pending in the store and
+// held nowhere in memory. The store read happens with the lock down, so the item
+// can arrive in memory underneath it; that is why it looks again afterwards rather
+// than assuming.
+func (d *Daemon) promoteStored(id string) {
+	stored, err := d.st.Item(id)
+	if err != nil || stored == nil {
+		d.log.Warn("item.promote_rejected", "component", "daemon", "item_id", id, "reason", "not in the store")
+		return
+	}
+	if stored.State != store.StatePending {
+		// Answered from somewhere else, expired, or dismissed while the row sat on
+		// screen. Re-presenting it would ask a question that already has an answer.
+		d.log.Info("item.promote_skipped", "component", "daemon", "item_id", id, "state", stored.State)
+		return
+	}
+	it := stored.Item
+
+	d.mu.Lock()
+	if d.promoteHeldLocked(id) {
+		view := d.viewLocked()
+		d.mu.Unlock()
+		d.ui.Present(view)
+		return
+	}
+	d.displaceLocked(&it)
 	view := d.viewLocked()
 	d.mu.Unlock()
+	d.log.Info("item.promoted_from_store", "component", "daemon", "item_id", id, "kind", it.Kind)
 	d.ui.Present(view)
 }
 
