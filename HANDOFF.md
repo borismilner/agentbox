@@ -19,14 +19,13 @@ make check                  # gofmt + vet + race + node + vitest, ~4 min
 agentbox pending            # expect nothing pending
 ```
 
-**No deploy is owed.** The deployed daemon is `5485842cc01a`, equal to HEAD, and
-U-03 was exercised on the real inbox before it shipped. So:
+**No deploy is owed.** The deployed daemon is `5485842cc01a`. Every commit after
+it is docs, wiki images or the screenshot harness - nothing that changes what the
+daemon runs. Verify with `make deployed` rather than by comparing to HEAD. So:
 
-1. **Take the screenshots.** `tools/wiki/shots.py --yes`, runbook in
-   `tools/wiki/SHOTS.md`, about five minutes of desktop. Never run. Two shots the
-   pages ask for are still missing and are listed at the top of SHOTS.md: the secret
-   card mid-entry (`is-it-safe.md:18`) and Appearance with an unsaved change
-   (`settings.md:51`). The third, `make doctor`, is done and published.
+1. **The screenshots are done.** Ten are live on both wikis and seven pages that
+   carried a `SHOT:` placeholder now carry an image. What is left is smaller and is
+   listed under "the shots still outstanding" below.
 2. **Then tier 1 of [docs/backlog/README.md](docs/backlog/README.md)**, which is the
    new file that says what to build in what order across all three audits. U-02 is
    the one to take first: it is a day, and it is what makes U-01 worth building.
@@ -54,9 +53,9 @@ document asserted and the code contradicted.** That is now four sessions running
   it is not literally HEAD.
 - **The wiki is live and level** at https://gitlab.com/fu-bar/agentbox/-/wikis/home
   and https://github.com/borismilner/agentbox/wiki. This session published
-  `install.md` plus `img/install-doctor.png` and verified both hosts serve the image
-  (HTTP 200, 18722 bytes, byte-identical to the local file). Never edit a page in
-  either browser: the next publish overwrites it.
+  `install.md` plus ten screenshots, and verified every image serves on both hosts
+  at matching byte counts. Never edit a page in either browser: the next publish
+  overwrites it.
 - **In-flight edits:** none.
 
 ## Blocked on you (Boris)
@@ -71,9 +70,25 @@ the test runner ("vitest is fine, keep it"), and U-03 was exercised and deployed
    principle 6. That is a principle change and therefore yours. It is ranked 6th in
    features.md and holds the highest absolute value in that file.
 
-Still wanted, but not blocking: **five minutes of desktop for the screenshots**. The
-script takes your daemon down for the duration, so it is not something to start while
-you are relying on AgentBox.
+### The shots still outstanding
+
+None of these blocks anything, and all of them need the desktop again.
+
+- **`viewer.png`** was captured but is scrolled to the alert callouts instead of the
+  table, mermaid diagram and code block its spec asks for. Retake with
+  `--only S8 --viewer-scroll N`, tuning N. No page references it yet.
+- **`progress.png`** and **`history-stats.png`** are good and no page asks for them.
+  Someone has to decide where they go: DESIGN gives `notifications.md` both the toast
+  and the progress window while the rhythm rule allows one image per page.
+- **`is-it-safe.md:18`** and **`settings.md:51`** still hold placeholders. Their
+  shots - the secret card mid-entry, and Appearance with an unsaved change - are not
+  in the plan at all and would need adding to `shots.py`.
+- **Known gaps in what did ship**, for whoever retakes: the agents board shows seven
+  roster rows where DESIGN wants four, which cannot be fixed from the staging side
+  because `sync lock` mints its own session key on purpose, so every lock is a row.
+  All four chips are in frame, which is the other half of what DESIGN asks. The
+  hands-off pair sits over the review board rather than an editor. The artifact's bar
+  has the interactive badge and the runtime but no preview/code toggle.
 
 ## I can do solo (no input needed)
 
@@ -155,6 +170,8 @@ you are relying on AgentBox.
 | `9deff91` | U-03 fixed: the inbox says so when a triage key does nothing (8 tests) |
 | `b690530` | session log for U-03 |
 | `f842bef` | U-03 exercised on the real inbox and deployed; vitest confirmed |
+| `1468cb9`, `98ee3e7`, `0566035` | eight defects in `shots.py`, found by running it |
+| `1b07237` | the twelve screenshots, and seven pages that were asking for one |
 
 ## Map
 
