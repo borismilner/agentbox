@@ -49,11 +49,12 @@ function view(item = {}, extra = {}) {
 // The card queues its re-measure with queueMicrotask, so a flushSync alone leaves
 // the mount-time measurement still in flight. Draining matters: without this the
 // U-06 test below counted that late arrival as a response to the select change and
-// reported the defect as fixed.
+// reported the defect as fixed. A macrotask is the drain to use - counting how many
+// ticks a queueMicrotask and an await add up to is a guess that goes stale.
 async function settle() {
   flushSync();
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((r) => setTimeout(r, 0));
+  flushSync();
 }
 
 function key(k, opts = {}) {

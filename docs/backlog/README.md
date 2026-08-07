@@ -76,8 +76,10 @@ folded in:
   precondition for U-01 being worth building: a card that can display a failure
   still needs to be told about one. It is also the reason R-01 was invisible for as
   long as it was.
-- **U-03** (the inbox discards the one answer the daemon gives it) immediately
-  after U-02, since it is hours once the return values exist.
+- ~~**U-03**~~ **done in the tree on 2026-08-07**, ahead of U-02 rather than after
+  it, because `Triage` already returned the value the other methods do not. Awaiting
+  it cost an afternoon and eight tests. Not deployed: it is a surface change and
+  those are exercised before they ship.
 
 **Tier 2 - the hub stops serving.** Robustness band B, eleven items, R-16 to R-26.
 Loud failures, mostly hours each. R-26 (no bound on anything an agent puts in a

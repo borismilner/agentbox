@@ -132,6 +132,13 @@ dismiss the stack, press enter on the inbox row.
 
 ### U-03. The inbox throws away the one answer the daemon does give it
 
+> **Fixed in the tree on 2026-08-07, and not yet seen on a screen.** `triage` is
+> awaited, a declined keystroke says so where the row already states its keys, and a
+> call that never reached the daemon reads the same way (`Inbox.svelte:120-141`).
+> Eight tests in `frontend/test/inbox.test.js`. It is **not deployed**: this is a
+> surface change and the house rule is that those are done only after exercising the
+> real webui, which needs Boris's desktop. Exercise it, then deploy.
+
 **How it fails.** `Triage` is the single exception to U-02: it returns `bool`, and
 `inbox.act` returns `false` in three real cases - the item is not found, the item is
 no longer pending, or the key maps to no intent for that kind

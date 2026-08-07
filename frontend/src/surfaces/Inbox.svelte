@@ -117,6 +117,29 @@
   // knows when to swallow the keystroke; the meaning stays on the Go side.
   const TRIAGE_KEYS = new Set(["1", "2", "3", "4", "5", "6", "7", "8", "9", "y", "n", "s", "d", "Enter", "Backspace"]);
 
+  // What Go said about the last triage keystroke. `Triage` is the one method on
+  // the whole answer path that returns anything (`internal/webui/inbox.go:588`),
+  // and this surface used to throw it away: pressing a key that means nothing for
+  // an item's kind, or pressing one on a row another window answered a moment ago,
+  // looked exactly like pressing a key that worked. In a burst - where rows resolve
+  // under the reader by design - that is not an edge case, it is Tuesday.
+  let refused = $state(null); // {id, key}
+
+  const KEY_NAMES = { Enter: "enter", Backspace: "backspace", " ": "space" };
+  const keyName = (k) => KEY_NAMES[k] ?? k;
+
+  async function triage(id, k) {
+    // Clear first: a second press of a key that does nothing should re-state the
+    // refusal rather than leave the first one sitting there looking stale.
+    refused = null;
+    // A call that never reached the daemon did nothing, which is the same thing
+    // the reader needs to be told - and catching it is not optional now that this
+    // is awaited: an unhandled rejection here would be U-01 all over again, in the
+    // fix for U-03.
+    const ok = await bridge.triage(id, k).catch(() => false);
+    if (!ok) refused = { id, key: k };
+  }
+
   function onKey(e) {
     const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
 
@@ -148,11 +171,13 @@
     }
     if (e.key === "j" || e.key === "ArrowDown") {
       e.preventDefault();
+      refused = null;
       sel = Math.min(sel + 1, Math.max(0, pending.length - 1));
       return;
     }
     if (e.key === "k" || e.key === "ArrowUp") {
       e.preventDefault();
+      refused = null;
       sel = Math.max(sel - 1, 0);
       return;
     }
@@ -164,7 +189,7 @@
     }
     if (TRIAGE_KEYS.has(e.key)) {
       e.preventDefault();
-      bridge.triage(chosen.id, e.key);
+      triage(chosen.id, e.key);
     }
   }
 
@@ -249,7 +274,13 @@
 
           <!-- The hint is only honest while the keys are live: with the search
                box focused, "s stop" would type an s. -->
-          {#if !typing && chosen?.id === it.id && it.hint}
+          {#if !typing && chosen?.id === it.id && refused?.id === it.id}
+            <!-- Go declined the keystroke. It does not say which of the three
+                 reasons it was, so neither does this: what the reader needs is
+                 that nothing happened, which is the one thing the surface used
+                 to leave them to guess. -->
+            <span class="hint refused">{keyName(refused.key)} does nothing to this one</span>
+          {:else if !typing && chosen?.id === it.id && it.hint}
             <span class="hint">{it.hint}</span>
           {/if}
 
@@ -615,6 +646,9 @@
     color: var(--k-error);
   }
 
+  .hint.refused {
+    color: var(--k-warning, #d8a657);
+  }
   .hint {
     padding: 0 12px 8px 27px;
     font-family: var(--k-font-mono);
