@@ -9,6 +9,108 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fifty-sixth session (2026-08-07): a public wiki, and twenty claims the code contradicted
+
+Boris asked for a wiki: features and rationale, engaging rather than dull, nothing
+that only interests a maintainer, and every page opening with a summary for
+somebody in a hurry. Mid-session he added the instruction that made the rest of it
+work, which was to read the code and not only the documents, because the documents
+might be stale.
+
+They were, in twenty places. The count is the story of this session.
+
+**What went live.** Eighteen pages plus a sidebar at
+https://gitlab.com/fu-bar/agentbox/-/wikis/home, mirrored to
+https://github.com/borismilner/agentbox/wiki. Source in `docs/wiki/pages/`,
+published by `tools/wiki/publish.sh`, because nothing syncs two wiki repos on its
+own: GitLab's repository mirroring has never covered wikis (gitlab#37049) and
+GitHub has no mirroring at all. Three things differ between the hosts and each one
+publishes nothing visible if you get it wrong, so the script renames on the way
+out: branch `main` against `master`, page `home` against `Home`, sidebar
+`_sidebar.md` against `_Sidebar.md`. The GitHub wiki repo does not exist until a
+human saves one page in the browser, and there is no API for it; Boris did that.
+
+**`tools/wiki/lint.py` is the gate.** Half of GitLab's markdown is invisible or
+broken on GitHub and it looks correct on the side you wrote it on: `[[_TOC_]]`
+becomes a red broken link, footnotes vanish, front matter renders as content. It
+also checks that every wiki link resolves, that every page carries its hurry
+block, and that no page carries the character-level fingerprints of
+machine-written prose.
+
+**Verified by looking, not by pushing.** A headless Chrome against both hosts:
+the mermaid sequence diagram renders on each, the screenshot loads at 470px on
+each, `<kbd>`, tables and alerts render, no wiki link is broken. The first pass
+reported mermaid missing on GitLab and that was a wrong selector, which is the
+reason the rule is pixels over diffs.
+
+One belief corrected for whoever reads the research: **GitHub does rewrite
+relative image paths per page depth**, emitting `wiki/img/card.png` from the front
+page and `img/card.png` from a subpage, both landing on the same file. So images
+work relatively on both hosts and neither wiki depends on the other host.
+
+**The twenty stale claims.** `docs/wiki/FACTS.md` is now the audited fact base with
+a line of source behind every number, and it is what to quote from. What was wrong:
+nine config keys documented as working that no code reads, including three whole
+sections; `panel.height_frac = 0.62` documented as the default and outside its own
+clamp, so copying the documented file gets you a warning and a reset;
+`session.default_mode` documented as plan and shipped as full; `--tab stats` and
+`--tab progress` promised in the manual, in `agentbox help`, in the flag help and
+in the daemon's own error message, four places and three different lists, all
+wrong; the whole `control` family, `webui-demo`, twelve of fourteen `sync` verbs
+and `walkthrough repair` missing from help; six sync tools where there are eight,
+which broke the same sentence's total of 39; a Progress tab that does not exist,
+claimed two lines from the sentence saying it does not; `sync status`, never
+implemented; fourteen tools in the showcase where there are thirty-nine; `Ctrl+L`
+and `Ctrl+I` in the card keymap and bound nowhere; three inbox filter controls
+where there is one search box; earcons documented as all under 400 ms, measured at
+90, 160, 220, 260, 340 and 430, the urgent one being the exception and the right
+one; a toast stacking collector and a while-you-were-away surface, both specified
+and never built; and on the safety side, "an answer is a state transition, not
+content" (the log holds the chosen option and the typed reply), the socket
+documented as mode 0700 when the directory is and the socket takes your umask, and
+"the agent never gets the value", which is true over MCP and not from a shell,
+where `--stdout` exists and the card says so in the warning colour.
+
+**One claim deliberately left standing as unverified.** The
+artifact-restart-while-streaming rough edge may have been closed by the stable
+fence id (`internal/webui/artifact.go:240`) and the `data-live` hydration guard
+(`frontend/src/lib/artifact.svelte.js:383`), and may not, because neither helps if
+a re-render replaces the node rather than patching it. Nobody has watched it since.
+Both docs now say that with the line references. A doc quietly declaring something
+fixed on an inference is how this list got to twenty in the first place.
+
+**STATUS lost 88 lines.** It carried fourteen sessions of narrative and then a
+paragraph explaining that the session narrative lives in this file. Both were true.
+The narrative is gone rather than shortened.
+
+**The backlogs.** `docs/backlog/features.md` (eleven extensions, five bets) and
+`docs/backlog/robustness.md` (45 items in six consequence-ordered bands, plus
+nineteen things verified correct so nobody refiles them). Three findings were
+reproduced rather than reasoned about, and two of them are the failure this product
+exists to prevent:
+
+- **A flood-collapsed question that no keystroke can answer.** Flood control is on
+  by default at three items in ten seconds. The fourth is stored pending and not
+  queued. `Daemon.Promote` returns silently when an item is neither current nor in
+  the in-memory queue (`internal/daemon/daemon.go:2096`), and Promote is the
+  inbox's only route for text, secret, form and diff. So a question with a caller
+  parked on it survives the summary card being dismissed and cannot be answered
+  from anywhere. Verified independently at the no-op.
+- **A failed store write eats the answer while the card says it shipped.** `resolve`
+  returns false and nothing else runs, and because `finalizeGrace` clears the grace
+  record first, the last painted view stays the answered strip with undo dead.
+
+The test that would turn a third of the display findings from invisible into red is
+the one that does not exist: nothing in the repo renders any of 32 Svelte files.
+
+**Also this session**, outside the repo: the research behind the wiki's prose rules
+lives at `~/me/study/guides/writing/ai-tells/`, measured against four corpora
+rather than asserted, and it inverts three pieces of standard advice. Vocabulary
+separates human from machine prose by seven to seventy-five times while
+sentence-length variance separates by 1.2, models use fewer passives than people,
+and the list-versus-prose ratio does not discriminate at all. A `scrub-ai-tells`
+skill and a `/scrub-ai` command were built from it.
+
 ## Fifty-fifth session (2026-08-06): a fuzz target and a look, both of which found something else
 
 Session 54 handed over an empty "Blocked on you" and a five-item queue to pick

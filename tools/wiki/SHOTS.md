@@ -199,28 +199,38 @@ script died between turning it off and putting it back.
 
 ## Which pages actually want these
 
-The filenames are the ones the pages will reference, checked against the `<!--
-SHOT: ... -->` comments in `docs/wiki/pages/*.md` and against what `home.md` and
-`the-card.md` already reference. As of now four of the eighteen planned pages
-exist, so most of the demand signal has not been written yet.
+Re-reconciled 2026-08-07, after all eighteen pages were written and published. The
+paragraph below this table was written when four pages existed; the table is the
+current answer.
 
-**Asked for by a page that exists**
+**Matched: a page asks for it and the plan captures it**
 
-| Shot | File | Where the demand comes from |
+| Shot | File | The page that wants it |
 |---|---|---|
-| S1 | `card.png` (via `card-restaged.png`) | `home.md:25` and `the-card.md:12` both reference `img/card.png` today |
-| S9 | `toast.png` | the one `<!-- SHOT: -->` comment in the tree, `notifications.md:19` |
+| S1 | `card.png` (via `card-restaged.png`) | `home.md`, `the-card.md`, both already referencing `img/card.png` |
+| S2 | `agents-board.png` | `agents-board.md:12` |
+| S3 | `inbox.png` | `nothing-gets-lost.md:19` |
+| S4 | `review-board.png` | `review-board.md:32` |
+| S5 and S6 | `hands-off.png`, `hands-off-paused.png` | `hands-off.md:12` asks for both in one frame pair, which is the page allowed two |
+| S7 | `artifact.png` | `documents-and-artifacts.md:92` |
+| S9 | `toast.png` | `notifications.md:20` |
+| S11 | `panel.png` | `sessions.md:11` |
 
-**In the design, wanted by a page nobody has written yet.** S2, S3, S4, S5, S6,
-S7, S8, S10, S11 and S12. Their pages (`agents-board.md`, `taking-turns.md`,
-`nothing-gets-lost.md`, `review-board.md`, `hands-off.md`,
-`documents-and-artifacts.md`, `sessions.md`, `settings.md`) are in the inventory in
-DESIGN.md section 1 and are not in `docs/wiki/pages/` yet. Taking these now is
-correct: the sitting is the expensive part, and a page written against an image
-that exists is easier to write than one written against a promise.
+**Three pages ask for a shot the plan does not have.** Add these before or after
+the first sitting, not instead of it:
 
-**Page comments with no shot behind them:** none. The single SHOT comment in the
-tree maps to S9.
+| Wanted by | What it must show |
+|---|---|
+| `is-it-safe.md:18` | the secret card mid-entry: the field masked with a few dots in it, and the line naming where the value is going |
+| `settings.md:51` | the Appearance page with an unsaved change pending, so the live preview and the accent are both visible |
+| `install.md:96` | terminal output, not a surface: `make doctor` on a finished install, then `agentbox status`. This one needs no daemon swap and can be taken any time |
+
+**Three planned shots no page asks for yet.** S8 (`viewer.png`), S10
+(`progress.png`) and S12 (`history-stats.png`). They are still worth taking in the
+sitting, because the sitting is the expensive part, but nothing is currently broken
+without them. S8 and S10 are the two overlaps the note below predicted:
+`documents-and-artifacts.md` chose the artifact over the reader, and
+`notifications.md` chose the toast over the progress window.
 
 **One tension worth resolving before the pages are written.** DESIGN assigns
 **both S9 and S10 to `notifications.md`**, and the rhythm rules in section 5 allow
