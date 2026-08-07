@@ -103,6 +103,48 @@ seconds after the answering keystroke still showed both rows waiting. Nothing wa
 wrong - the daemon coalesces queue pushes - but it is a reminder that on this surface
 the pixels lag the store, and a shot is not a reading.
 
+**And then the screenshot sitting, which Boris handed over the desktop for.** The
+script had never been run. It did not survive contact with one: eight defects, every
+one in the harness rather than the product, and every one invisible to a test that
+did not involve a screen.
+
+The first is the one worth remembering. `agentbox sync attach` holds presence open
+for as long as its process lives and never returns - its own source says "the whole
+point is to stay" - and `stage_roster` ran it in the foreground and waited for an
+exit code. The sitting hung on line four of phase one with the machine's daemon
+already down, and produced no output for five minutes. Boris noticed before any
+timeout did.
+
+Then, in order: `walkthrough create`'s exit code was discarded, so a schema refusal
+presented as a 45-second window timeout and said nothing about why; behind that,
+`repo_root` was relative where the daemon demands absolute, and there was no
+`pinned` SHA at all. Code steps need a `tldr`, which is not paperwork here because
+the board opens in brief - for S4 the tldr IS the photograph. The board also opens
+on the ground step, which has no code, no highlighted range and no note, so the
+first review-board frame was a summary box over an empty half-screen.
+
+The last three were interference between shots, which is the class no unit test was
+ever going to find. The three progress feeders hold their pipes open, so that window
+sat always-on-top in the corner of the agents board, the inbox and the artifact -
+and closing them with a signal made the daemon report an interrupted task, whose
+error toast then sat over the next two shots instead. Flood control collapsed S1's
+card into a stack, because staging fires a roster, four history items, a toast and a
+card from the same sessions inside a few seconds. And S9 is a warning notify, which
+by design waits to be read, so it held the queue and the card behind it never became
+current. S1 passed alone and failed in every full run, which looks exactly like a
+flaky window and was nothing of the kind.
+
+Two things came out of it beyond the fixes. A test that asserted `repo_root == "."`
+had enshrined the bug rather than checking the contract, which is what a test looks
+like when it copies the code instead of the requirement. And the script's own
+verification can only tell a rendered surface from wallpaper - it cannot see a card
+sitting over the subject, and three frames it passed had one. Every frame was read
+by eye before anything was published.
+
+Ten of the twelve are live on both wikis and verified serving. Held back and said so
+rather than shipped quietly: the reader is scrolled to the wrong section, and the
+progress and history frames are good but no page asks for them yet.
+
 ## Fifty-sixth session (2026-08-07): a public wiki, and twenty claims the code contradicted
 
 Boris asked for a wiki: features and rationale, engaging rather than dull, nothing
