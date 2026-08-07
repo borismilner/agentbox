@@ -57,21 +57,31 @@ Commands:
   form      several fields, one card    agentbox form --title "Release" --field choice:env:staging,prod --field text:tag
   quit      stop the daemon gracefully
   status    daemon liveness and pending count
-  app       open the tabbed app window  agentbox app [--tab home|inbox|history|library|viewer|session|settings]
+  app       open the tabbed app window
+            agentbox app [--tab home|session|agents|assignments|inbox|history|viewer|library|settings]
   inbox     open the inbox window (pending + recent history)
   show      render a markdown file in the viewer  agentbox show --watch README.md
             or run interactive HTML in a sandbox  agentbox show --artifact app.html
   artifact  hear what the human did in an artifact  agentbox artifact wait --id a1b2
   walkthrough  durable step-by-step reviews on the board (FR58)
-            agentbox walkthrough create --spec review.json | open [ID] | list | read ID [--ack] | await [ID] | delete ID
-  panel     roll the session panel down/up  agentbox panel [show|hide|state]
+            agentbox walkthrough create --spec review.json | open [ID] | list | read ID [--ack]
+                                | await [ID] | repair [ID] | delete ID
+  panel     roll the session panel down/up  agentbox panel [show|hide|toggle|state]
   say       read a line out loud       agentbox say "the build is green"   (or pipe it)
             --wait returns when it has been heard, for a narrated sequence
   drive     move the pointer, click and type as a person would
                                        agentbox drive --window agentbox click 25% -46
+  control   take the desktop before driving it, and give it back
+            agentbox control request "reason" | activity "line" | release | state
+            pause | resume are the human's, and nothing an agent calls resumes a pause
+            quiet | loud demote the hands-off strip to 4 pixels while recording
   sync      say what this session is for, and see who else is here
                                        agentbox sync announce "porting the settings surface"
                                        agentbox sync agents
+            announce | activity | agents | peers | attach   presence
+            lock | unlock | locks | break                   named leases
+            post | await                                    signals
+            get | set | del                                 shared values
   summon    raise + focus the current card (bind to a desktop shortcut)
   stats     interruption insights       agentbox stats [--since 7d]
   pending   what is still waiting for you, with ids
@@ -85,6 +95,8 @@ Commands:
   schema    JSON Schema for the wire protocol and item kinds
   mcp       MCP stdio server for agents (register in .mcp.json)
   version   build provenance (git commit, build time)
+  webui-demo  open any surface on canned data, with no daemon and nothing stored
+            agentbox webui-demo [cards|notify|viewer|progress|ask|app|artifact|panel|board|agents]
 
 Blocking commands print the answer on stdout.
 Exit codes: 0 answered/yes/proceeded, 1 no/vetoed, 2 usage error, 3 unanswered/timeout, 4 error.
@@ -1834,7 +1846,7 @@ func runInbox(args []string) int {
 // runApp opens the tabbed app window (M8). --tab selects the initial tab.
 func runApp(args []string) int {
 	fs := flag.NewFlagSet("app", flag.ExitOnError)
-	tab := fs.String("tab", "", "initial tab: inbox, history, library, viewer, session, or settings")
+	tab := fs.String("tab", "", "initial surface: home, session, agents, assignments, inbox, history, viewer, library, or settings")
 	fs.Parse(args)
 
 	dialCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

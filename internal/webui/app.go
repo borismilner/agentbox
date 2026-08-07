@@ -8,13 +8,15 @@ import (
 )
 
 // The app window: agentbox as a desktop application rather than a series of
-// transient cards. One window, five surfaces (session, inbox, history,
-// viewer, settings), switched in the frontend - the Go side only opens it,
-// raises it, and tells it which surface to land on.
+// transient cards. One window, nine surfaces, switched in the frontend - the Go
+// side only opens it, raises it, and tells it which surface to land on. The rail
+// in frontend/src/lib/Rail.svelte is the list's source of truth; nothing here
+// validates the name, so a surface that has not been ported renders a stub
+// rather than an error.
 
-// ShowApp opens or raises the main window on the given surface
-// ("" = home, then "home", "session", "inbox", "history", "viewer", "library",
-// "settings").
+// ShowApp opens or raises the main window on the given surface: "" or "home",
+// "session", "agents", "assignments", "inbox", "history", "viewer", "library",
+// "settings".
 func (u *UI) ShowApp(tab string) {
 	if tab == "" {
 		// Home, not Session (FR81). Session is empty until you start one, so

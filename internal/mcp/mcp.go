@@ -47,10 +47,12 @@ func Serve(ctx context.Context, runtimeDir, version string, id proto.Identity) e
 	// The standards an agent can ask for mid-task (standards.go): resources and
 	// a prompt, so a review kit does not have to be written from memory.
 	addStandards(srv)
-	// The roster family (FR83, sync.go). Registered unconditionally in slice 1:
-	// the design's [sync] enabled flag exists to keep eight always-refusing
-	// schemas out of a session's context, and with two harmless read-and-declare
-	// tools there is nothing yet to gate.
+	// The roster family (FR83, sync.go). Registered unconditionally, and there is
+	// deliberately no config flag to turn it off: a kill switch here would leave
+	// eight always-refusing schemas in every session's context, which kills the
+	// feature and keeps the cost. What conditionality exists lives in the daemon
+	// instead, where a write refuses without a store or without an announce
+	// first, and a read never refuses at all.
 	addSyncTools(srv, s)
 
 	sdk.AddTool(srv, &sdk.Tool{

@@ -790,7 +790,7 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 		}
 		if len(params) > 0 {
 			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: `app wants {"tab": "inbox|stats|progress"} or {}`}
+				return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: `app wants {"tab": "home|session|agents|assignments|inbox|history|viewer|library|settings"} or {}`}
 			}
 		}
 		d.ui.ShowApp(p.Tab)
