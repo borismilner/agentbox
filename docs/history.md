@@ -89,10 +89,19 @@ uncaught promise there would have reproduced U-01 inside the fix for U-03, so a
 rejected call is treated as a refusal, which is also the honest reading: whatever
 went wrong, the keystroke did not answer anything.
 
-It is committed and **not deployed**. A surface change is done after somebody has
-exercised the real webui, and that needs the desktop. So the deployed daemon is
-behind HEAD again, deliberately this time and for a reason written down, which is a
-different thing from the gap this session opened by finding.
+It was committed and held back, because a surface change is done after somebody has
+exercised the real webui. Boris then said "actually I lied - lets see it", so it was
+exercised: the deployed daemon stopped, the working-copy build put up on throwaway
+state (`XDG_STATE_HOME` in /tmp, his config copied for the theme so his own queue was
+never the thing being experimented on), two questions raised, and the inbox driven
+over XTEST with `tools/uidrive/uidrive.py`. `y` on a choice row gave the amber
+refusal, `j` retired it, `1` answered and handed `staging` back to the caller, `n`
+refused again. Then `make deploy`, and the daemon is `5485842cc01a`, equal to HEAD.
+
+One thing that pass taught, which no unit test would have: the screenshot taken two
+seconds after the answering keystroke still showed both rows waiting. Nothing was
+wrong - the daemon coalesces queue pushes - but it is a reminder that on this surface
+the pixels lag the store, and a shot is not a reading.
 
 ## Fifty-sixth session (2026-08-07): a public wiki, and twenty claims the code contradicted
 

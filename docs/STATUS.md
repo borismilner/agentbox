@@ -702,11 +702,12 @@ which still renders with its own count.
   checked by driving a real window: start the daemon on a desktop session
   and screenshot with `python3 tools/uidrive/uidrive.py shot /tmp/x.png`.
   What remained untested was behaviour. **Part of that closed on
-  2026-08-07**: vitest and jsdom are in, `frontend/vitest.config.js`
-  configures them, and `frontend/test/card.test.js` mounts `Card.svelte` and
-  drives it from the keyboard (ten tests, `make check` runs them as
-  `test-svelte`, skipped when `node_modules` is absent). `buildDocument` is
-  still not executed by any test, and sixteen of the seventeen surfaces still
+  2026-08-07**: vitest and jsdom are in - **the runner is Boris's decision,
+  taken that day: "vitest is fine, keep it"** - `frontend/vitest.config.js`
+  configures them, and `frontend/test/{card,inbox}.test.js` mount their
+  surfaces and drive them from the keyboard (19 tests, `make check` runs them
+  as `test-svelte`, skipped when `node_modules` is absent). `buildDocument` is
+  still not executed by any test, and fifteen of the seventeen surfaces still
   have none. See R-40 in [backlog/robustness.md](backlog/robustness.md).
 - Artifacts: while an agent is still streaming the turn an artifact sits
   in, the conversation re-renders its HTML each frame and the artifact was
