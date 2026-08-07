@@ -1,9 +1,11 @@
-# Handoff - AgentBox: the surfaces have an audit, an order, and their first test
+# Handoff - AgentBox: an audit, an order, a first test, and the wiki's screenshots
 
 *Written by session 57, which cleared session 56's whole solo list: the owed deploy,
 the UX audit, the merged backlog, the install shot, and the first test in this
-project's history to mount a Svelte component. Then it fixed one item off its own
-new backlog, drove it on the real desktop, and shipped it. Nothing is owed.*
+project's history to mount a Svelte component. Then it fixed one item off its own new
+backlog and drove it on the real desktop, and then Boris handed over the desktop and
+it ran the screenshot sitting for the first time - which cost eight defects in the
+script before ten frames were fit to publish. Nothing is owed.*
 
 **Written:** 2026-08-07 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
@@ -11,8 +13,10 @@ new backlog, drove it on the real desktop, and shipped it. Nothing is owed.*
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean, ~25 ahead of origin/main. origin is
-                            # gitlab and is main's upstream; `github` is a mirror
+git status -sb              # expect clean, ~31 ahead of origin/main and nothing
+                            # pushed. origin is gitlab and is main's upstream;
+                            # `github` is a mirror. The exact count drifts by a
+                            # commit or two - what matters is that it is clean
 make deployed               # expect 5485842cc01a. HEAD is a couple of commits past
                             # it and every one of them is docs, so no deploy is owed
 make check                  # gofmt + vet + race + node + vitest, ~4 min
@@ -34,9 +38,10 @@ daemon runs. Verify with `make deployed` rather than by comparing to HEAD. So:
 
 Session 56 built the wiki and three audits were commissioned; two landed and the UX
 one died on a session limit. This session wrote it, then wrote the thing that was
-missing above all three: one order across them. Then it built the test harness that
-the audit's own worst finding says the project cannot see without, and used it to
-fix one item.
+missing above all three: one order across them. Then it built the rig the audit's own
+worst finding says the project is blind without, used it to fix one
+item, and finally ran the screenshot sitting that had been waiting on a desktop since
+the wiki was written.
 
 The through-line worth carrying: **three of this session's findings were things a
 document asserted and the code contradicted.** That is now four sessions running.
@@ -45,8 +50,10 @@ document asserted and the code contradicted.** That is now four sessions running
 
 - **Background jobs:** none.
 - **PRs:** none, ever. Boris pushes `main` directly.
-- **Git:** `main` at `03f66ad`, clean, **25 commits ahead of `origin/main`**. Nothing
-  is pushed. Ten commits are this session's.
+- **Git:** `main` clean, **~31 commits ahead of `origin/main`**, nothing pushed. The
+  handoff is therefore **local to this machine only** - boris-vm mirrors through git,
+  so a resume there would read stale docs until Boris pushes. Seventeen commits are
+  this session's; `git log --oneline 74b3503..HEAD` is the exact list.
 - **Deployed daemon:** `5485842cc01a`, running under `agentbox.service` on Boris's
   own state, verified by asking the daemon. That is the last commit that changed
   code; everything after it is documentation, so the daemon is current even though
@@ -132,7 +139,9 @@ None of these blocks anything, and all of them need the desktop again.
   Note the honest limit, which U-04 states: the window dies with the daemon, so this
   is a health indicator that cannot indicate rather than a lie you can catch on
   screen.
-- [verified] **The wiki image serves on both hosts**, 200 and 18722 bytes each.
+- [verified] **Every published wiki image serves on both hosts.** All ten were
+  fetched from GitLab and GitHub after publishing: HTTP 200, matching byte counts,
+  `image/png`. A page was also fetched and its `<img src="img/...">` confirmed.
 - [verified] **R-01 and R-02 were already fixed** by `1d00fd2` and `robustness.md`
   still listed them as open. Both now carry a fixed marker. Without that the merged
   backlog would have opened by recommending two finished pieces of work.
@@ -145,14 +154,23 @@ None of these blocks anything, and all of them need the desktop again.
   answering keystroke still showed both rows waiting; the daemon coalesces queue
   pushes. Nothing is wrong, but a shot of this surface is not a reading of it, which
   matters for the screenshot sitting.
-- [assumed] **That the twelve staged screenshots come out.** `shots.py` has 82 tests
-  and has never touched a desktop. Unchanged from session 56.
+- [verified] **The screenshot sitting runs, and every frame was read by eye.** It had
+  never been run; running it found eight defects, all in the script itself and all now
+  covered (88 tests). Ten frames are published. The two judgements that matter for
+  anyone retaking: the script's own check distinguishes a rendered surface from
+  wallpaper and nothing more - three frames it passed had a card sitting over the
+  subject - and the four shots held back are held back on purpose, listed above.
+- [verified] **`[flood]`'s defaults bite ordinary staging.** Three items from one
+  session in ten seconds is enough that a normal-looking sequence (a roster, four
+  history items, a toast, a card) collapsed the card into a stack. Carried as an
+  open question since session 55; it is answered, and the answer is that the default
+  is easy to trip without meaning to.
 - [assumed] **That the artifact-restart-while-streaming edge is still open.** Nobody
   has watched it. Unchanged from session 56, and still cheap to close.
 - [assumed] The carried set from sessions 50, 51 and 55, none of which this session
   looked at and all of which are therefore exactly as unverified as they were: the
   30-minute fuse in a live daemon; the demoted marker on a second monitor;
-  `[flood]`'s defaults for ordinary work; `perform.py`'s fullscreen check on two
+  `perform.py`'s fullscreen check on two
   monitors; the domain drawer animation; the demo fallback painting; a detail holding
   a mermaid diagram; `provisionalFor` retiring a hook-only row; the 200-key prefix
   cap; `@me` in a shared key; a real client's `await_signal` parked past 20s; the two
@@ -172,6 +190,20 @@ None of these blocks anything, and all of them need the desktop again.
 | `f842bef` | U-03 exercised on the real inbox and deployed; vitest confirmed |
 | `1468cb9`, `98ee3e7`, `0566035` | eight defects in `shots.py`, found by running it |
 | `1b07237` | the twelve screenshots, and seven pages that were asking for one |
+| `b56cc7d`, `41aa946` | the sitting logged, and this handoff |
+
+## Declutter ledger
+
+Nothing was deleted whose knowledge is not now somewhere durable.
+
+| Removed / condensed | Where its knowledge now lives |
+|---|---|
+| The `<!-- SHOT: ... -->` placeholder in seven wiki pages | Each is replaced by the image it asked for, with the placeholder's description rewritten as the image's alt text. The specification a retake needs is in [tools/wiki/SHOTS.md](tools/wiki/SHOTS.md)'s "what to check in each image" table, which is the copy of record |
+| SHOTS.md's "the script has never been run" warning | Replaced by what the first run actually cost: the eight defects, named, in the same section |
+| STATUS.md's claim that a card's height is estimated from raw text length | It was false. The mechanism is in [docs/backlog/ux.md](docs/backlog/ux.md) U-06 and at `Card.svelte:143-177`; STATUS now points at both |
+| STATUS.md's "a toolchain decision waiting to be made" for a JS test runner | The decision was taken by Boris this session and STATUS records it as his, with the quote |
+| `docs/wiki/img/card.png`, the pre-restage frame | Superseded, not lost in any meaningful sense: the old frame lacked the `2 waiting` footer that both its captions already claimed, which is the entire reason S1 exists. The new one has it |
+| R-01 and R-02's status in robustness.md | Nothing removed. Both entries keep their full reasoning and gained a "Fixed" marker, deliberately: the reasoning is what stops them coming back |
 
 ## Map
 
@@ -190,9 +222,9 @@ None of these blocks anything, and all of them need the desktop again.
 8. `frontend/test/` - the surface tests, and `frontend/vitest.config.js`, which
    explains the two boundaries (why they live outside `src`, and why
    `@wailsio/runtime` is aliased rather than `bridge.js` mocked).
-9. [tools/wiki/SHOTS.md](tools/wiki/SHOTS.md) - the screenshot runbook. Its top
-   section now lists two outstanding shots rather than three, and records exactly how
-   the third was made.
+9. [tools/wiki/SHOTS.md](tools/wiki/SHOTS.md) - the screenshot runbook. **Read its
+   opening before running the sitting again**: it now records what the first real run
+   cost, all eight defects, instead of warning that it had never happened.
 10. [docs/history.md](docs/history.md) - the session log; session 57 is at the top.
 11. `~/me/study/guides/writing/ai-tells/` - outside this repo: the prose rules and
     `scan-tells.py`. Both new backlog files were scanned; the only remaining hits in
