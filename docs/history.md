@@ -81,6 +81,19 @@ already fixed. Draining the microtask queue is what separates the two. The findi
 held, but only because the number was checked rather than trusted - which is the
 argument for the whole tier.
 
+**And then one tier-1 item, because the rig made it cheap.** U-03: the inbox awaits
+`Triage` now and says so when Go declines the key, in the place the row already
+states what its keys do. Eight more tests, and the inbox is the second surface
+anything has mounted. Writing it produced the session's neatest lesson - awaiting an
+uncaught promise there would have reproduced U-01 inside the fix for U-03, so a
+rejected call is treated as a refusal, which is also the honest reading: whatever
+went wrong, the keystroke did not answer anything.
+
+It is committed and **not deployed**. A surface change is done after somebody has
+exercised the real webui, and that needs the desktop. So the deployed daemon is
+behind HEAD again, deliberately this time and for a reason written down, which is a
+different thing from the gap this session opened by finding.
+
 ## Fifty-sixth session (2026-08-07): a public wiki, and twenty claims the code contradicted
 
 Boris asked for a wiki: features and rationale, engaging rather than dull, nothing
