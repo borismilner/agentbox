@@ -38,7 +38,7 @@ SPECIAL = {"_sidebar.md", "Home.md", "home.md"}
 PORTABILITY = [
     (re.compile(r"\[\[_TOC_\]\]|^\[TOC\]$", re.M), "renders as a broken link on GitHub; write an anchor list"),
     (re.compile(r"^\[\^[^\]]+\]:", re.M), "footnotes are unsupported in GitHub wikis"),
-    (re.compile(r"(?<!\S)\[\^[^\]]+\](?!:)"), "footnote reference; unsupported in GitHub wikis"),
+    (re.compile(r"\[\^[^\]]+\](?!:)"), "footnote reference; unsupported in GitHub wikis"),
     (re.compile(r"^```(plantuml|kroki)\b", re.M), "renders as a plain code block on GitHub; use mermaid"),
     (re.compile(r"\{[+-][^}]*[+-]\}|\[[+-][^\]]*[+-]\]"), "GitLab inline diff marker; shows literal braces on GitHub"),
     (re.compile(r"^- \[~\]", re.M), "GitLab inapplicable task box; shows literal [~] on GitHub"),
@@ -172,6 +172,8 @@ def check_links(path: Path, text: str, pages: set[str], f: Findings) -> None:
     for n, line in strip_code(text):
         for m in WIKILINK.finditer(line):
             slug = slugify(m.group(1))
+            if slug.startswith("_"):
+                continue  # [[_TOC_]] and friends: the portability check owns those
             if slug and f"{slug}.md" not in pages and slug not in ("home",):
                 f.add(path.name, n, "links", f"[[{m.group(1)}]] points at no page (looked for {slug}.md)")
         for m in IMAGE.finditer(line):
