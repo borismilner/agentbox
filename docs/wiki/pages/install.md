@@ -93,12 +93,7 @@ make doctor       # every dependency, present or MISSING, and nothing installed
 agentbox status   # what the running daemon is, not what the file on disk is
 ```
 
-<!-- SHOT: the terminal output of make doctor on a finished install, then agentbox
-status under it. Every row present, the X display named, the installed binary showing
-a build, the daemon answering, the unit enabled. One row must honestly read
-"missing (only needed for showcase screenshots)" so the frame is a real machine
-rather than a staged one. Terminal only, no desktop, and no private paths in the
-prompt. -->
+![make doctor on a finished install: thirteen rows naming go 1.26.1, npm, gtk4 plus webkitgtk present, the X display as :0, the speech engine and voice by path, the installed binary with its build hash and time, the daemon answering "daemon running, 0 pending", and the systemd unit enabled. Under it, agentbox status repeating the daemon's build](img/install-doctor.png)
 
 Those two are different questions, and the second one matters after an upgrade. A
 replaced binary is not a running binary: the daemon keeps serving the code it

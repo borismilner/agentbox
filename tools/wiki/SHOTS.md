@@ -216,14 +216,33 @@ current answer.
 | S9 | `toast.png` | `notifications.md:20` |
 | S11 | `panel.png` | `sessions.md:11` |
 
-**Three pages ask for a shot the plan does not have.** Add these before or after
+**Two pages ask for a shot the plan does not have.** Add these before or after
 the first sitting, not instead of it:
 
 | Wanted by | What it must show |
 |---|---|
 | `is-it-safe.md:18` | the secret card mid-entry: the field masked with a few dots in it, and the line naming where the value is going |
 | `settings.md:51` | the Appearance page with an unsaved change pending, so the live preview and the accent are both visible |
-| `install.md:96` | terminal output, not a surface: `make doctor` on a finished install, then `agentbox status`. This one needs no daemon swap and can be taken any time |
+
+**The third is taken.** `install.md` now carries `img/install-doctor.png`, made on
+2026-08-07. Two things about it are worth knowing before anyone retakes it.
+
+It is not a photograph of a terminal. This machine has no `Xvfb` and no terminal
+emulator installed, so an off-screen capture was impossible and the only alternative
+was capturing a window on Boris's live display, which the shot spec ruled out
+("terminal only, no desktop"). The image is therefore `make doctor` and `agentbox
+status` run for real, their output captured verbatim, and that text typeset by
+ImageMagick. No colour was invented: `doctor` emits no ANSI, so the only distinction
+drawn is the `%-22s` label column its own `printf` creates. Retaking it means
+re-running both commands and re-rendering, not restaging anything.
+
+The spec asked for one row honestly reading `missing (only needed for showcase
+screenshots)`, so the frame would read as a real machine rather than a staged one.
+That row is ImageMagick's `import`, and `import` is present here, so the row reads
+`present` and the requirement could not be met without lying. It was dropped rather
+than faked. What carries the same weight instead is that every path, build hash and
+timestamp in the frame is this machine's own, and the build shown is the one
+deployed the same afternoon.
 
 **Three planned shots no page asks for yet.** S8 (`viewer.png`), S10
 (`progress.png`) and S12 (`history-stats.png`). They are still worth taking in the
