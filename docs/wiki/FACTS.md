@@ -166,6 +166,11 @@ jezek/xgb, fyne.io/systray, golang.org/x/sys.
 | A `[sync] enabled` flag | Does not exist. `internal/mcp/mcp.go:51` refers to it anyway |
 | Amendment of a walkthrough | Registered and always refuses |
 | Wayland | X11 only. Placement, fullscreen detection, the target lock, hotkeys, driving and `summon` all need X11 |
+| `Ctrl+L` on a card jumps to the next waiting item, `Ctrl+I` opens the inbox | Neither is bound. `docs/03-ui-ux.md:122` listed both in what reads as the built keymap |
+| The inbox has a level filter and a per-agent filter | One search box, matching title, body, agent, project, kind and state at once |
+| Toasts stack three high and collapse into a "+N more" collector | One item at a time. The collector was specified and never built, which 03-ui-ux.md does say a few lines later |
+| Earcons are all under 400 ms | Five are. `insist` is 430, measured from the embedded WAVs |
+| There is a surface for reviewing what arrived while you were away | There is a chip on the inbox row and nothing more |
 
 ## Wrong inside the code, not only the docs
 

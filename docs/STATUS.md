@@ -707,9 +707,12 @@ which still renders with its own count.
   toolchain decision waiting to be made, not an oversight - vitest plus
   jsdom would be the cheapest version ("Do this next").
 - Artifacts: while an agent is still streaming the turn an artifact sits
-  in, the conversation re-renders its HTML each frame and the artifact
-  restarts with it (a finished turn is stable, and an artifact in its own
-  window never has this). Only react and react-dom are bundled, so an
+  in, the conversation re-renders its HTML each frame and the artifact was
+  seen restarting with it. **Unverified since the stable fence id and the
+  `data-live` hydration guard landed** - both could have closed it and
+  neither closes it if the re-render replaces the node rather than patching
+  it. 03-ui-ux.md has the two line references; watch it on screen before
+  claiming either way. An artifact in its own window never had this. Only react and react-dom are bundled, so an
   artifact importing recharts or lucide is told so in its own bar rather
   than served. An `html` fence is classified by content, which is a
   heuristic: markup with a `<script>` runs, a table does not. The

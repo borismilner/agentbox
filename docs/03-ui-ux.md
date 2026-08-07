@@ -119,8 +119,12 @@ the summon key is cheaper than one wrong "yes".
 | u | undo, while the answered strip shows (FR28) |
 | Esc | defer: requeue for 5 min, card hides |
 | c | copy the whole item to the clipboard, agent-pasteable (FR43) |
-| Ctrl+L | jump to next waiting item |
-| Ctrl+I | open inbox |
+| ? | unfold a body that was folded away |
+
+Designed and never built: `Ctrl+L` to jump to the next waiting item and `Ctrl+I`
+to open the inbox. Neither is bound in `Card.svelte`, and moving between waiting
+items is the inbox's job (`j`/`k` there), which is why neither has been missed.
+Checked against source 2026-08-07.
 
 Global (via desktop shortcut, suggested Ctrl+Alt+K): `agentbox summon`.
 
@@ -166,9 +170,14 @@ Global (via desktop shortcut, suggested Ctrl+Alt+K): `agentbox summon`.
 ## Inbox
 
 A plain list window: pending items on top (answer inline), then history with
-outcome, identity, and timestamps. Filter box, level filter, per-agent
-filter. DND toggle in the header. This window is allowed to behave like a
+outcome, identity, and timestamps. This window is allowed to behave like a
 normal app window.
+
+As built there is **one** search box, not three controls: it matches title, body,
+agent, project, kind and state at once, so typing `warning` or an agent's name
+does what the separate level and per-agent filters were specified to do. The
+separate filters were never built and are not missed. Checked against source
+2026-08-07.
 
 Triage mode (FR34): when several items are pending, j/k moves through them,
 each rendered as a compact answerable row (same shortcuts as cards); answer
@@ -289,10 +298,17 @@ As built:
   the only way out: `await_artifact_event` blocks on it, `read_artifact_events`
   drains it coalesced. A dragged slider is one value, not forty.
 
-Known rough edge: while an agent is still streaming the turn an artifact is in, the
-conversation re-renders its HTML each frame and the artifact restarts with it. Once
-the turn is finished the block is stable. An artifact in its own window never has
-this.
+Known rough edge, and **unverified since the stable-id work**: while an agent is
+still streaming the turn an artifact is in, the conversation re-renders its HTML
+each frame, and the artifact was observed restarting with it. Two things have
+landed since that observation which may or may not have closed it. A fence's id is
+now an FNV hash of its own source rather than a counter, so events survive a
+re-render (`internal/webui/artifact.go:240`, asserted by
+`TestArtifactFenceIDIsStableForTheSameSource`), and `hydrateArtifacts` skips a
+block already carrying `data-live` (`frontend/src/lib/artifact.svelte.js:383`).
+Neither of those helps if the re-render replaces the DOM node instead of patching
+it, because a fresh node has no `data-live`. Nobody has watched it on screen since.
+Do that before claiming it either way. An artifact in its own window never had this.
 
 ## Motion and visual language
 
@@ -309,7 +325,10 @@ this.
 
 ## Sound design
 
-Earcons bundled in the binary, all under 400 ms, quiet by default:
+Earcons bundled in the binary, quiet by default. Measured from the embedded WAVs
+on 2026-08-07: pop 90 ms, tick 160 ms, thud 220 ms, twotone 260 ms, chime 340 ms,
+insist 430 ms. The spec said all under 400 and the urgent one is the exception,
+which is the right exception: it is the only sound allowed to insist.
 
 | Class | Character |
 |-------|-----------|
@@ -374,8 +393,9 @@ triaged later.
   case where collapsing could cost more than it saves. Esc dismisses (it is a
   summary, not a question) and the footer says what that costs before it is
   pressed: the notifications go, the questions stay for inbox triage.
-- Multiple agents: queue is shared; identity chip disambiguates. No tabs in
-  v1; Ctrl+L cycles.
+- Multiple agents: queue is shared; identity chip disambiguates. No tabs, and no
+  cycle key on the card: the waiting count and its dots say how many are behind
+  this one, and the inbox is where you move between them.
 - DND: tray icon dims; urgent still pops.
 - Daemon restart: pending items re-presented from the store (NFR7).
 
