@@ -2929,6 +2929,38 @@ repo. Setup for both CLIs is documented in
 
 ---
 
+## FR97 [field] Spoken length is a policy, not a hard ceiling
+
+**Session.** 2026-08-08, the d2d session that read a long coaching reply aloud
+at Boris's request. Boris: *"Add into the backlog of agentbox the need to not
+have a hard ceiling on the length of the spoken content."*
+
+**What AgentBox cannot do.** Speak a line longer than 2000 characters. Two
+layers enforce it: `speech.max_chars` truncates every speak line (default 240,
+cut at a word boundary, `internal/speech/speech.go:888`), and the config
+validator clamps the knob itself to 20-2000 (`internal/config/config.go:447`).
+The session first sent a four-part reply as four speak calls - the model-time
+gaps between calls read as broken audio - then as single long lines, which the
+240 default silently cut mid-thought, twice dropping the closing question.
+Silent truncation of something a human asked to hear is the exact failure the
+read-aloud path already refuses: `Utterance` runs `Clean` with no ceiling, for
+a stated reason.
+
+**What he does instead.** `max_chars = 2000` in config.toml, applied live by
+the watcher; delivery was proven by ear with a marker word at the end of a
+630-character line. Anything longer than 2000 still cuts, so spoken replies
+get composed down to fit the cap.
+
+**The shape.** Keep the default small - the ceiling is a notification policy
+and a good one for asides - but let the config opt out entirely: accept 0 as
+unlimited (`Clean` already treats `maxChars <= 0` that way; only the
+validator's floor of 20 forbids expressing it), or lift the validator's hi
+bound. An owner who turns speech into a session's primary channel is the
+read-aloud case, not the notification case, and FR72's rule already settled
+that trade: nothing may harm or drop what a human chose to hear.
+
+---
+
 ## Mechanics discovered
 
 Verified facts from field sessions, kept so a later session does not re-derive
