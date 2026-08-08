@@ -2898,6 +2898,37 @@ is `openMark` there.
 
 ---
 
+## FR96 [field] Codex and Kilo sessions on the board, like Claude's
+
+**Session.** 2026-08-08, the session that set up Codex CLI (gpt-5.6-terra,
+ChatGPT free plan) and Kilo CLI (free gateway models) as secondary agents on
+the laptop. Boris: *"integrate with both codex and kilo the same way I
+integrate with Claude. The exact details are to be defined later."*
+
+**What AgentBox cannot do.** The whole supervision story - a row on the Agents
+board, announce and activity, blocking questions, locks and signals - is wired
+up only for Claude Code, via the user-scope MCP registration and the
+SessionStart hook. A Codex or Kilo session has none of it: it cannot reach the
+human, cannot take the repo lock, and does not exist on the board. It is
+exactly the invisible peer the board was built to prevent, and now there are
+two more of them on the machine.
+
+**What he does instead.** Watches their terminals by eye, which is the founding
+problem all over again, or keeps them away from shared trees entirely, which
+wastes them.
+
+**The shape.** Deliberately not defined yet, per Boris. What this session can
+already vouch for: both speak MCP (Codex takes MCP servers in
+`~/.codex/config.toml` and has a `hooks.json`; Kilo has `kilo mcp` and, being
+an opencode fork, a plugin system that could carry the announce-on-start
+habit). Parity, when specced, means the same three layers Claude got: the
+tools reachable from inside the session, a row that exists before the first
+tool call, and the sync primitives so all three agents can take turns on one
+repo. Setup for both CLIs is documented in
+`~/me/laptop-setup/playbooks/08-ai-stack.md`.
+
+---
+
 ## Mechanics discovered
 
 Verified facts from field sessions, kept so a later session does not re-derive
