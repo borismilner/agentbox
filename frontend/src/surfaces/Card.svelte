@@ -127,7 +127,18 @@
     return { update: fit, destroy: () => node.removeEventListener("input", fit) };
   }
 
-  on("agentbox:view", (v) => {
+  // R-05. The push is the fast path and the pull is the guarantee.
+  //
+  // agentbox:view is a fire-and-forget Wails event with nothing to buffer it, and
+  // Go gives up waiting for this surface after two seconds and emits regardless -
+  // two seconds being a guess about WebKit startup on a loaded machine that is
+  // measured nowhere. A bundle that mounted after that guess got no view at all
+  // and nothing re-sent one until the next queue change, so the human heard the
+  // earcon and looked at an empty window over a live question.
+  //
+  // `applyView` is shared so a pulled view goes through exactly the same reset a
+  // pushed one does; the two must not drift.
+  function applyView(v) {
     const fresh = v?.item?.id !== item?.id;
     view = v;
     if (fresh) {
@@ -147,9 +158,21 @@
       stackOpen = false;
     }
     queueMicrotask(() => field?.focus?.());
-  });
+  }
+
+  on("agentbox:view", applyView);
 
   bridge.ready("card");
+
+  // The pull, after ready() so the fast path is already in flight. A push that
+  // beat us wins: `view` is already set and re-applying the same item would
+  // reset a form the human has begun filling in.
+  bridge
+    .view()
+    .then((v) => {
+      if (!view && v?.item) applyView(v);
+    })
+    .catch(() => {});
 
   // A frameless window has to be exactly as tall as its content. Measure
   // after every layout-affecting change and let Go resize; ResizeObserver

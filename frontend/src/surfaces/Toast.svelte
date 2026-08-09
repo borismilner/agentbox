@@ -39,16 +39,28 @@
   window.addEventListener("error", (e) => note("toast error: " + e.message));
   window.addEventListener("unhandledrejection", (e) => note("toast error: " + e.reason));
 
-  on("agentbox:view", (v) => {
+  // R-05, the same pull the card has: the pushed view can arrive before this
+  // bundle mounts, and nothing buffers it or re-sends it. See Card.svelte for
+  // the whole reasoning; a toast that misses its push is a strip with no text.
+  function applyView(v) {
     const fresh = v?.item?.id !== item?.id;
     view = v;
     if (fresh) {
       expanded = false;
       forget();
     }
-  });
+  }
+
+  on("agentbox:view", applyView);
 
   bridge.ready("toast");
+
+  bridge
+    .view()
+    .then((v) => {
+      if (!view && v?.item) applyView(v);
+    })
+    .catch(() => {});
 
   // A strip has to be exactly as tall as what is in it, and it changes height
   // twice: once when the body lands, once if it is expanded. Measure and let Go

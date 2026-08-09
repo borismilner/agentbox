@@ -189,6 +189,11 @@ export const bridge = {
   saveSettings: (values) => Call.ByName(svc("SaveSettings"), values),
 
   // surfaces
+  // The prompt surfaces' pull (R-05). The first view is pushed, but the push is
+  // an unbuffered event that a bundle mounting late never sees, and Go stops
+  // waiting for the surface after two seconds. Every other surface has always
+  // pulled on mount; the card and toast now do too.
+  view: () => Call.ByName(svc("View")),
   theme: () => Call.ByName(svc("Theme")),
   ready: (surface) => Call.ByName(svc("Ready"), surface),
   fit: (height) => Call.ByName(svc("Fit"), height),

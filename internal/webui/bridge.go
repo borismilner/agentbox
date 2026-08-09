@@ -28,16 +28,37 @@ func (b *Bridge) Theme() Theme {
 	return b.ui.theme
 }
 
-// Ready says a surface has mounted. Only the prompt surfaces gate on it: the
-// first view is pushed rather than pulled, so emitting before the bundle has run
-// would drop it. Every other surface pulls its own state on mount, so its Ready
-// is a log line and nothing more - and must not be mistaken for the card's,
-// which would let a card window miss its first item.
+// Ready says a surface has mounted. The prompt surfaces additionally release
+// armCard's wait, which is the fast path: the view is pushed the moment the
+// bundle says it is listening, so an ordinary card paints without a round trip.
+//
+// Ready is no longer the ONLY way the first view arrives, which is R-05. The
+// push is a fire-and-forget Wails event with nothing to buffer it, and armCard
+// gives up waiting after two seconds and emits regardless - two seconds being a
+// guess about WebKit process startup on a loaded machine, measured nowhere. A
+// bundle that mounts after that guess got no view and nothing re-sent one until
+// the next queue change, so the human heard the earcon and looked at an empty
+// window while the daemon had already logged item.displayed and armed
+// escalation. View() below is the pull every other surface always had.
 func (b *Bridge) Ready(surface string) {
 	b.ui.log.Debug("webui.surface_ready", "component", "webui", "surface", surface)
 	if surface == "card" || surface == "toast" {
 		b.ui.markReady()
 	}
+}
+
+// View is what is on screen right now, for a prompt surface to ask for on mount.
+//
+// It is the pattern the other six surfaces already use (Inbox, Agents, Control,
+// Board, Progress, Document all pull on mount and take the push as an update),
+// and the fix R-05 asked for by name. The alternative it rejects is a longer
+// timeout in armCard, which only moves the guess.
+//
+// Item is nil when nothing is displayed. That is a real answer and not an error:
+// a window can outlive its item, and a surface that pulls an empty view knows to
+// stay quiet rather than paint whatever it had.
+func (b *Bridge) View() cardView {
+	return b.ui.encode(b.ui.currentView())
 }
 
 // The answer path. Every one of these returns "" when it did what was asked and

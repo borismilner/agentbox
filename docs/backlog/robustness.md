@@ -235,6 +235,33 @@ already has the pipe harness.
 
 ### R-05. The card surface never pulls its state, so a slow mount leaves a blank window over a live question
 
+> **Pull shipped on 2026-08-09; the live half is NOT done and is named below.**
+>
+> `Bridge.View()` answers what is on screen, and the card and toast call it on
+> mount - after `ready()`, so the push stays the fast path and an ordinary card
+> still paints without a round trip. It is the pattern the other six surfaces
+> already used. The timeout in `armCard` is unchanged, deliberately: a longer
+> guess is the fix this entry rejects.
+>
+> A push that arrived first WINS. The pull is guarded on `!view`, because
+> re-applying a view would reset a form the human has begun filling in - the
+> reset is shared through `applyView` so the pushed and pulled paths cannot
+> drift, and a test pins the race in both directions.
+>
+> `internal/webui/view_pull_test.go` (the pull answers the displayed item, agrees
+> with what the push carries, and admits an empty screen) and
+> `frontend/test/mount-pull.test.js` (10 tests, both surfaces: mount with NO push
+> at all and assert the question is on screen anyway). Neutering the card's pull
+> fails exactly the two that should fail and leaves the three negative controls
+> passing.
+>
+> **What is not done.** The live exercise this entry asks for - a cold daemon
+> under load, driven with `tools/uidrive/uidrive.py` and read back from a
+> screenshot. The mount latency that triggers the defect is still inferred and
+> still unmeasured, which was true before this fix and is true after it. What
+> changed is that the surface no longer depends on that latency being under two
+> seconds; what has not changed is that nobody has watched it happen.
+
 **How it fails.** Every other surface pulls on mount and says so:
 `Bridge.Ready` marks the prompt surfaces ready and its own comment records that
 the card's first view is pushed rather than pulled
