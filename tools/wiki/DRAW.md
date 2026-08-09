@@ -66,6 +66,22 @@ in for it:
 - Pass an empty `Theme: {}`, so `app.css`'s defaults decide every colour. A
   fixture that sets tokens is a fixture painting a product that does not exist.
 
+## It is also a regression check, which was not the plan
+
+Because a redraw is byte-identical and the frames are the SHIPPED surfaces, a
+diff in `docs/wiki/img/` after a frontend change means the change moved
+something on screen. That is worth more than it sounds: nothing else in this
+repository renders a Svelte component to pixels, and jsdom cannot answer a
+question about layout at all.
+
+It earned this on the day it was built. R-05 added a mount-time pull to
+`Card.svelte`, and redrawing `s1` produced the same PNG to the md5 - a real
+browser mounting the real component through the changed path, with the fixture's
+`View` answering nothing, which is precisely the "the pull returns nothing, the
+push wins" case. It is not a substitute for the desktop (this is chrome, not
+WebKitGTK, and no daemon is involved), but it is a cheap first answer to "did I
+break the card", and it is available before anybody takes the desktop.
+
 ## Which one to use
 
 **Draw by default.** Everything in `docs/wiki/DESIGN.md` section 5 is a staged

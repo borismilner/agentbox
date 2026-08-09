@@ -255,12 +255,19 @@ already has the pipe harness.
 > fails exactly the two that should fail and leaves the three negative controls
 > passing.
 >
-> **What is not done.** The live exercise this entry asks for - a cold daemon
-> under load, driven with `tools/uidrive/uidrive.py` and read back from a
-> screenshot. The mount latency that triggers the defect is still inferred and
-> still unmeasured, which was true before this fix and is true after it. What
-> changed is that the surface no longer depends on that latency being under two
-> seconds; what has not changed is that nobody has watched it happen.
+> **Exercised on the real desktop**, against the deployed build and Boris's own
+> daemon rather than a scratch one: a real card raised into the live queue
+> painted in full, answered on `1`, and handed `looks-right` back to the caller.
+> The drawn frame `s1` also re-renders byte-identical through the changed mount
+> path in a real browser, with the fixture's `View` answering nothing - which is
+> exactly the "pull returns nothing, push wins" case.
+>
+> **What is still not done.** The cold-daemon-under-load exercise the entry asks
+> for. The mount latency that triggers the defect is still inferred and still
+> unmeasured, which was true before this fix and is true after it. What changed
+> is that the surface no longer depends on that latency being under two seconds.
+> Nobody has watched the slow mount itself happen, and it is not reproducible on
+> demand - which is part of why the pull is the right shape of fix.
 
 **How it fails.** Every other surface pulls on mount and says so:
 `Bridge.Ready` marks the prompt surfaces ready and its own comment records that
