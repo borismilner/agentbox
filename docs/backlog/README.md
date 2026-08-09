@@ -4,9 +4,10 @@ Three audits produced three files, each ordered inside itself and none of them
 ordered against the others. This is the missing judgement: one sequence across all
 seventy-six items, and the rule that produced it.
 
-> **In a hurry.** Finish robustness band A (thirteen items left, about three weeks),
-> taking U-01, U-02 and U-03 with it because they are the same failures seen from
-> the surface. Then finish R-40, which is started but not done. Then F-01.
+> **In a hurry.** Finish robustness band A (twelve items left, about three weeks),
+> taking the ux band-A items with it because they are the same failures seen from
+> the surface - U-01, U-02 and U-03 are done, and U-16 arrived in their place.
+> Then finish R-40, which is started but not done. Then F-01.
 > Everything else waits, and B-1 waits on Boris rather than on capacity.
 
 ## The three files
@@ -65,10 +66,10 @@ on F-01 is two weeks and not two months.
 each with its reproduction kept as a test. Both entries stay in robustness.md with
 a fixed marker, because the reasoning is what stops them coming back.
 
-**Tier 1 - the claim is false while these stand.** Robustness band A, the thirteen
-remaining of fifteen, plus the three ux band-A items. About three weeks together. Take them in
-robustness.md's own order, which is already consequence-ordered, with these three
-folded in:
+**Tier 1 - the claim is false while these stand.** Robustness band A, the twelve
+remaining of fifteen, plus the ux band-A items. About three weeks together. Take
+them in robustness.md's own order, which is already consequence-ordered, with the
+ux items folded in:
 
 - ~~**U-01**~~ **done, deployed and seen on screen on 2026-08-09** (`a3e570d`),
   immediately after U-02 and for the reason U-02 predicted: the wrapper had
@@ -86,9 +87,10 @@ them opened a fourth.** U-16: the card's advertised keyboard map does not reach 
 unless it happens to hold focus, so `1` can do nothing at all and the card cannot
 even say so - U-01's symptom by a route U-01's wrapper cannot see, because no bridge
 call is ever made. It goes in band A because that is what band A is. What is left of
-tier 1 is therefore robustness band A's thirteen (R-03 onwards) plus U-16, and U-16
-wants one more repro before its fix is chosen: it was seen once each way, minutes
-apart, and "always" and "sometimes" argue for different answers.
+tier 1 is therefore robustness band A's twelve (R-03 onwards; R-14 was fixed on
+2026-08-09) plus U-16, and U-16 wants one more repro before its fix is chosen: it
+was seen once each way, minutes apart, and "always" and "sometimes" argue for
+different answers.
 
 **Tier 2 - the hub stops serving.** Robustness band B, eleven items, R-16 to R-26.
 Loud failures, mostly hours each. R-26 (no bound on anything an agent puts in a

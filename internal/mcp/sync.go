@@ -234,7 +234,7 @@ func (s *server) announce(ctx context.Context, _ *sdk.CallToolRequest, in announ
 	s.attach.mu.Unlock()
 
 	var res proto.SyncResult
-	if err := s.syncCall(ctx, proto.MethodSyncAnnounce, &req, &res); err != nil {
+	if err := s.syncCallFast(ctx, proto.MethodSyncAnnounce, &req, &res); err != nil {
 		return errResult[announceOut](err)
 	}
 	out := announceOut{OK: true, Peers: peers(res.Agents), Partial: res.Partial}
@@ -252,7 +252,7 @@ func (s *server) listAgents(ctx context.Context, _ *sdk.CallToolRequest, in list
 	s.ensureAttached()
 	req := proto.SyncListParams{Identity: s.id, Area: in.Area, Project: in.Project}
 	var res proto.SyncResult
-	if err := s.syncCall(ctx, proto.MethodSyncList, &req, &res); err != nil {
+	if err := s.syncCallFast(ctx, proto.MethodSyncList, &req, &res); err != nil {
 		return errResult[listOut](err)
 	}
 	out := listOut{OK: true, Agents: peers(res.Agents), Partial: res.Partial}
@@ -344,7 +344,7 @@ func (s *server) tryLock(ctx context.Context, _ *sdk.CallToolRequest, in lockIn)
 		ReleaseOnDetach: in.ReleaseOnDetach, PID: os.Getppid(),
 	}
 	var res proto.SyncLockResult
-	if err := s.syncCall(ctx, proto.MethodSyncTryLock, &req, &res); err != nil {
+	if err := s.syncCallFast(ctx, proto.MethodSyncTryLock, &req, &res); err != nil {
 		return errResult[lockOut](err)
 	}
 	return &sdk.CallToolResult{}, lockResult(res), nil
@@ -354,7 +354,7 @@ func (s *server) releaseLock(ctx context.Context, _ *sdk.CallToolRequest, in unl
 	s.ensureAttached()
 	req := proto.SyncLockParams{Identity: s.id, Name: in.Name}
 	var res proto.SyncLockResult
-	if err := s.syncCall(ctx, proto.MethodSyncUnlock, &req, &res); err != nil {
+	if err := s.syncCallFast(ctx, proto.MethodSyncUnlock, &req, &res); err != nil {
 		return errResult[lockOut](err)
 	}
 	return &sdk.CallToolResult{}, lockResult(res), nil
@@ -440,7 +440,7 @@ func (s *server) postSignal(ctx context.Context, _ *sdk.CallToolRequest, in post
 		req.Data = b
 	}
 	var res proto.SyncPostResult
-	if err := s.syncCall(ctx, proto.MethodSyncPost, &req, &res); err != nil {
+	if err := s.syncCallFast(ctx, proto.MethodSyncPost, &req, &res); err != nil {
 		return errResult[postOut](err)
 	}
 	return &sdk.CallToolResult{}, postOut{OK: res.OK, Topic: res.Topic,
@@ -569,7 +569,7 @@ func (s *server) sharedValues(ctx context.Context, _ *sdk.CallToolRequest, in sh
 		req.Value = b
 	}
 	var res proto.SyncSharedResult
-	if err := s.syncCall(ctx, proto.MethodSyncShared, &req, &res); err != nil {
+	if err := s.syncCallFast(ctx, proto.MethodSyncShared, &req, &res); err != nil {
 		return errResult[sharedOut](err)
 	}
 	out := sharedOut{OK: res.OK, Op: res.Op, Found: res.Found, More: res.More,

@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,11 @@ import (
 type server struct {
 	runtimeDir string
 	id         proto.Identity
+
+	// fastCap overrides nonBlockingCap, for tests that would otherwise have to
+	// wait the real one out against a daemon that never answers. Zero means the
+	// constant.
+	fastCap time.Duration
 
 	// base is Serve's context, which lives as long as this child does. The
 	// attach stream (sync.go) needs a context outliving any single tool call,
@@ -226,6 +232,78 @@ func (s *server) call(ctx context.Context, method string, it *proto.Item) (proto
 	return res, nil
 }
 
+// nonBlockingCap bounds a call whose tool description promises it returns at
+// once (R-14). Only the DIAL was bounded before: once a connection existed, a
+// daemon that accepts but is wedged - on its UI thread, or on a store write -
+// parked the caller with no deadline at all, while the keepalive went on
+// reporting the call as healthy. notify_user's own description says it "returns
+// at once, never blocks", and an agent's turn was being spent on it.
+//
+// Ten seconds rather than one or two. The daemon does real work on these paths
+// (a notify is written to the store and presented), and a cap that fires during
+// ordinary slowness would turn a working tool into a flaky one - which is worse
+// than the defect, because the item really is created and the agent is now told
+// it was not.
+const nonBlockingCap = 10 * time.Second
+
+// fast derives the context for a tool that promised not to block, and returns
+// the parent alongside so a caller can tell WHOSE deadline fired.
+//
+// It is opt-in, and deliberately so. The blocking family - ask_user and its
+// relatives, await_signal, acquire_lock, await_artifact_event, await_walkthrough
+// - is owed a human's answer and bounds itself with its own timeout_s; a
+// deadline applied here by default would cap how long a person is allowed to
+// think, and the failure would look like the daemon dropping their answer.
+// Forgetting to mark a tool fast leaves it exactly as it is today; marking a
+// blocking tool fast by mistake would be a much worse bug, so the safe direction
+// is the one that needs an edit.
+func (s *server) fast(ctx context.Context) (context.Context, context.CancelFunc) {
+	cap := s.fastCap
+	if cap <= 0 {
+		cap = nonBlockingCap
+	}
+	return context.WithTimeout(ctx, cap)
+}
+
+// fastErr turns the deadline this side imposed into a sentence worth reading.
+// parent is the caller's own context: if THAT is what expired, the message
+// belongs to the caller and is left alone.
+func (s *server) fastErr(parent context.Context, err error) error {
+	if err == nil || parent.Err() != nil || !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	cap := s.fastCap
+	if cap <= 0 {
+		cap = nonBlockingCap
+	}
+	return fmt.Errorf(
+		"the agentbox daemon accepted the connection but did not answer within %s. "+
+			"This tool does not block, so it gave up rather than spending your turn waiting; "+
+			"the item may well have been created. `agentbox pending` from a shell says what is there",
+		cap)
+}
+
+// The bounded twins of the three call helpers. A tool that promises to return at
+// once calls these; everything else keeps the caller's own context.
+func (s *server) callFast(ctx context.Context, method string, it *proto.Item) (proto.Result, error) {
+	fctx, cancel := s.fast(ctx)
+	defer cancel()
+	res, err := s.call(fctx, method, it)
+	return res, s.fastErr(ctx, err)
+}
+
+func (s *server) callIntoFast(ctx context.Context, method string, params, out any) error {
+	fctx, cancel := s.fast(ctx)
+	defer cancel()
+	return s.fastErr(ctx, s.callInto(fctx, method, params, out))
+}
+
+func (s *server) syncCallFast(ctx context.Context, method string, req, res any) error {
+	fctx, cancel := s.fast(ctx)
+	defer cancel()
+	return s.fastErr(ctx, s.syncCall(fctx, method, req, res))
+}
+
 // errResult reports a transport/validation failure as a tool error the model
 // can read, rather than a protocol-level error.
 func errResult[T any](err error) (*sdk.CallToolResult, T, error) {
@@ -261,7 +339,7 @@ func (s *server) notify(ctx context.Context, _ *sdk.CallToolRequest, in notifyIn
 			it.Cwd = wd
 		}
 	}
-	res, err := s.call(ctx, proto.MethodNotify, it)
+	res, err := s.callFast(ctx, proto.MethodNotify, it)
 	if err != nil {
 		return errResult[notifyOut](err)
 	}
@@ -293,7 +371,7 @@ func (s *server) retract(ctx context.Context, _ *sdk.CallToolRequest, in retract
 	// this one cannot set it.
 	req := proto.DismissParams{Identity: s.id, ID: in.ID, Mine: in.ID == ""}
 	var res proto.DismissResult
-	if err := s.syncCall(ctx, proto.MethodDismiss, &req, &res); err != nil {
+	if err := s.syncCallFast(ctx, proto.MethodDismiss, &req, &res); err != nil {
 		return errResult[retractOut](err)
 	}
 	out := retractOut{OK: res.OK, Retracted: res.Dismissed, IDs: res.IDs, Note: res.Note}
@@ -575,7 +653,7 @@ func (s *server) awaitArtifact(ctx context.Context, _ *sdk.CallToolRequest, in a
 
 func (s *server) readArtifact(ctx context.Context, _ *sdk.CallToolRequest, in readIn) (*sdk.CallToolResult, readOut, error) {
 	var res proto.ArtifactReadResult
-	if err := s.callInto(ctx, proto.MethodArtifactRead, proto.ArtifactWait{
+	if err := s.callIntoFast(ctx, proto.MethodArtifactRead, proto.ArtifactWait{
 		ArtifactID: in.ArtifactID, Names: in.Names,
 	}, &res); err != nil {
 		return errResult[readOut](err)
@@ -630,10 +708,12 @@ func (s *server) sendShow(ctx context.Context, req proto.ShowRequest) (*sdk.Call
 		return errResult[showOut](fmt.Errorf("cannot reach agentbox daemon: %w", err))
 	}
 	defer conn.Close()
-	rider, err := conn.CallRidden(ctx, proto.MethodShow, &req, nil)
+	fctx, cancelCall := s.fast(ctx)
+	defer cancelCall()
+	rider, err := conn.CallRidden(fctx, proto.MethodShow, &req, nil)
 	noteRider(ctx, rider)
 	if err != nil {
-		return errResult[showOut](err)
+		return errResult[showOut](s.fastErr(ctx, err))
 	}
 	return &sdk.CallToolResult{}, showOut{Shown: true}, nil
 }
@@ -752,10 +832,20 @@ func (s *server) control(ctx context.Context, req proto.ControlRequestParams) (c
 	}
 	defer conn.Close()
 	var res proto.ControlResult
-	rider, err := conn.CallRidden(ctx, proto.MethodControl, &req, &res)
+	// Only the handover waits, for the reason in the doc comment above. The other
+	// actions - set_activity and release_control - are one-way writes that
+	// promise to return at once, so they take the non-blocking cap (R-14). Doing
+	// it here rather than in the three handlers keeps the "which of these blocks"
+	// judgement in the one place that already explains it.
+	callCtx, cancelCall := ctx, context.CancelFunc(func() {})
+	if req.Action != proto.ControlRequest {
+		callCtx, cancelCall = s.fast(ctx)
+	}
+	defer cancelCall()
+	rider, err := conn.CallRidden(callCtx, proto.MethodControl, &req, &res)
 	noteRider(ctx, rider)
 	if err != nil {
-		return controlOut{}, err
+		return controlOut{}, s.fastErr(ctx, err)
 	}
 	return out(res), nil
 }
@@ -837,10 +927,12 @@ func (s *server) reportProgress(ctx context.Context, _ *sdk.CallToolRequest, in 
 	}
 	defer conn.Close()
 	var res proto.ProgressResult
-	rider, err := conn.CallRidden(ctx, proto.MethodProgress, u, &res)
+	fctx, cancelCall := s.fast(ctx)
+	defer cancelCall()
+	rider, err := conn.CallRidden(fctx, proto.MethodProgress, u, &res)
 	noteRider(ctx, rider)
 	if err != nil {
-		return errResult[progressOut](err)
+		return errResult[progressOut](s.fastErr(ctx, err))
 	}
 	return &sdk.CallToolResult{}, progressOut{ID: res.ID}, nil
 }
@@ -888,7 +980,7 @@ func (s *server) wtCreate(ctx context.Context, _ *sdk.CallToolRequest, in wtCrea
 		return errResult[wtCreateOut](err)
 	}
 	var res proto.WalkthroughCreateResult
-	if err := s.callInto(ctx, proto.MethodWalkthroughCreate, req, &res); err != nil {
+	if err := s.callIntoFast(ctx, proto.MethodWalkthroughCreate, req, &res); err != nil {
 		return errResult[wtCreateOut](err)
 	}
 	return &sdk.CallToolResult{}, wtCreateOut{WalkthroughID: res.ID, Rev: res.Rev, Warnings: res.Warnings}, nil
@@ -931,7 +1023,7 @@ func (s *server) wtRead(ctx context.Context, _ *sdk.CallToolRequest, in wtReadIn
 		return errResult[wtReadOut](fmt.Errorf("read_walkthrough needs a walkthrough_id; list_walkthroughs finds one"))
 	}
 	var res json.RawMessage
-	if err := s.callInto(ctx, proto.MethodWalkthroughRead, proto.WalkthroughRead{
+	if err := s.callIntoFast(ctx, proto.MethodWalkthroughRead, proto.WalkthroughRead{
 		ID: in.WalkthroughID, Ack: in.Ack,
 	}, &res); err != nil {
 		return errResult[wtReadOut](err)
@@ -950,7 +1042,7 @@ type wtListOut struct {
 
 func (s *server) wtList(ctx context.Context, _ *sdk.CallToolRequest, in wtListIn) (*sdk.CallToolResult, wtListOut, error) {
 	var res proto.WalkthroughListResult
-	if err := s.callInto(ctx, proto.MethodWalkthroughList, proto.WalkthroughList{
+	if err := s.callIntoFast(ctx, proto.MethodWalkthroughList, proto.WalkthroughList{
 		Query: in.Find, State: in.State, Limit: in.Limit,
 	}, &res); err != nil {
 		return errResult[wtListOut](err)
@@ -969,7 +1061,7 @@ type wtAmendOut struct {
 
 func (s *server) wtAmend(ctx context.Context, _ *sdk.CallToolRequest, in wtAmendIn) (*sdk.CallToolResult, wtAmendOut, error) {
 	var res proto.WalkthroughAmendResult
-	err := s.callInto(ctx, proto.MethodWalkthroughAmend, proto.WalkthroughAmend{
+	err := s.callIntoFast(ctx, proto.MethodWalkthroughAmend, proto.WalkthroughAmend{
 		ID: in.WalkthroughID, ExpectRev: in.ExpectRev, Identity: s.id,
 	}, &res)
 	if err != nil {
@@ -990,7 +1082,7 @@ func (s *server) wtDelete(ctx context.Context, _ *sdk.CallToolRequest, in wtDele
 		return errResult[wtDeleteOut](fmt.Errorf("delete_walkthrough needs a walkthrough_id"))
 	}
 	var res proto.WalkthroughDeleteResult
-	if err := s.callInto(ctx, proto.MethodWalkthroughDelete, proto.WalkthroughDelete{
+	if err := s.callIntoFast(ctx, proto.MethodWalkthroughDelete, proto.WalkthroughDelete{
 		ID: in.WalkthroughID,
 	}, &res); err != nil {
 		return errResult[wtDeleteOut](err)

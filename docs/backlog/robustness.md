@@ -428,6 +428,36 @@ is still owed on the next call. `internal/mcp/sync.go` has no test file at all.
 
 ### R-14. A tool documented as non-blocking can park an agent forever
 
+> **Fixed on 2026-08-09.** `nonBlockingCap` (10s) plus `s.fast` / `s.fastErr` and
+> bounded twins of the three call helpers (`callFast`, `callIntoFast`,
+> `syncCallFast`). Applied to every tool whose description promises it returns at
+> once: notify_user, retract, announce, set_activity, list_agents, try_lock,
+> release_lock, post_signal, shared, show_document, report_progress,
+> release_control, and the whole walkthrough and assignment CRUD family.
+>
+> **It is opt-in, and that is the design decision worth keeping.** Marking a
+> blocking tool fast by mistake would cap how long a human is allowed to think
+> and would read to the agent as the daemon dropping their answer - much worse
+> than the defect. Forgetting to mark a non-blocking tool leaves it exactly as it
+> is today. So the safe direction is the one that needs an edit, and the four
+> genuine waits (`ask` and its relatives, `await_signal`, `acquire_lock`,
+> `await_artifact_event`, `await_walkthrough`, `request_control`) keep the
+> caller's own context. `control()` branches on the action rather than the
+> handler, because that file already explains which of the three waits.
+>
+> `fastErr` refuses to blame the daemon when it was the CALLER who gave up: a
+> parent that is already done gets its own error back unchanged. The two are
+> indistinguishable to a model otherwise, and only one of them is AgentBox's
+> fault.
+>
+> `internal/mcp/deadline_test.go`: a daemon that accepts every connection and
+> then says nothing, which is what a wedged one looks like from outside. Six
+> tools asserted bounded, ask_user asserted NOT bounded, and the whole file
+> checked by neutering `s.fast` to a plain `WithCancel` - after which it hangs to
+> the 120s test timeout, which is the defect exactly. The existing MCP tests
+> point at a runtime dir with no daemon at all, so every one of them exercised
+> the dial deadline and none could ever have caught this.
+
 **How it fails.** Only the dial is bounded, at five seconds
 (`internal/client/client.go:39-64`). Once a connection exists, every tool passes
 the raw tool context to the call and no deadline is applied: `notify_user`,

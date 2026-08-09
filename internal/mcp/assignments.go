@@ -70,7 +70,7 @@ type assignListOut struct {
 
 func (s *server) assignList(ctx context.Context, _ *sdk.CallToolRequest, _ struct{}) (*sdk.CallToolResult, assignListOut, error) {
 	var res proto.AssignmentListResult
-	if err := s.callInto(ctx, proto.MethodAssignmentList, proto.AssignmentList{}, &res); err != nil {
+	if err := s.callIntoFast(ctx, proto.MethodAssignmentList, proto.AssignmentList{}, &res); err != nil {
 		return errResult[assignListOut](err)
 	}
 	return &sdk.CallToolResult{}, assignListOut{Assignments: res.Assignments}, nil
@@ -89,7 +89,7 @@ func (s *server) assignRead(ctx context.Context, _ *sdk.CallToolRequest, in assi
 		return errResult[assignReadOut](fmt.Errorf("read_assignment needs an assignment_id; list_assignments finds one"))
 	}
 	var res json.RawMessage
-	if err := s.callInto(ctx, proto.MethodAssignmentRead, proto.AssignmentRead{
+	if err := s.callIntoFast(ctx, proto.MethodAssignmentRead, proto.AssignmentRead{
 		ID: in.AssignmentID, Runs: in.Runs,
 	}, &res); err != nil {
 		return errResult[assignReadOut](err)
@@ -203,7 +203,7 @@ func (s *server) assignUpdate(ctx context.Context, _ *sdk.CallToolRequest, in as
 
 func (s *server) assignSave(ctx context.Context, req proto.AssignmentSave) (*sdk.CallToolResult, assignSaveOut, error) {
 	var res proto.AssignmentSaveResult
-	if err := s.callInto(ctx, proto.MethodAssignmentSave, req, &res); err != nil {
+	if err := s.callIntoFast(ctx, proto.MethodAssignmentSave, req, &res); err != nil {
 		return errResult[assignSaveOut](err)
 	}
 	return &sdk.CallToolResult{}, assignSaveOut{
@@ -251,7 +251,7 @@ func (s *server) assignDelete(ctx context.Context, _ *sdk.CallToolRequest, in as
 		return errResult[assignDeleteOut](fmt.Errorf("delete_assignment needs an assignment_id"))
 	}
 	var res proto.AssignmentDeleteResult
-	if err := s.callInto(ctx, proto.MethodAssignmentDelete, proto.AssignmentDelete{
+	if err := s.callIntoFast(ctx, proto.MethodAssignmentDelete, proto.AssignmentDelete{
 		ID: in.AssignmentID,
 	}, &res); err != nil {
 		return errResult[assignDeleteOut](err)
@@ -272,7 +272,7 @@ func (s *server) assignRun(ctx context.Context, _ *sdk.CallToolRequest, in assig
 		return errResult[assignRunOut](fmt.Errorf("run_assignment needs an assignment_id; list_assignments finds one"))
 	}
 	var res proto.AssignmentRunNowResult
-	if err := s.callInto(ctx, proto.MethodAssignmentRun, proto.AssignmentRunNow{
+	if err := s.callIntoFast(ctx, proto.MethodAssignmentRun, proto.AssignmentRunNow{
 		ID: in.AssignmentID, Trigger: "agent", Overrides: in.Overrides,
 	}, &res); err != nil {
 		return errResult[assignRunOut](err)
@@ -293,7 +293,7 @@ func (s *server) assignRuns(ctx context.Context, _ *sdk.CallToolRequest, in assi
 		return errResult[assignRunsOut](fmt.Errorf("assignment_runs needs an assignment_id; list_assignments finds one"))
 	}
 	var res proto.AssignmentRunsResult
-	if err := s.callInto(ctx, proto.MethodAssignmentRuns, proto.AssignmentRuns{
+	if err := s.callIntoFast(ctx, proto.MethodAssignmentRuns, proto.AssignmentRuns{
 		ID: in.AssignmentID, Limit: in.Limit,
 	}, &res); err != nil {
 		return errResult[assignRunsOut](err)
