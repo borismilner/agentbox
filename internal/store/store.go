@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -44,6 +45,17 @@ var ErrSchemaTooNew = errors.New("database schema is newer than this binary")
 
 type Store struct {
 	db *sql.DB
+
+	// Rows that would not decode, drained by the daemon at startup (R-11).
+	//
+	// Before this, ONE unreadable JSON blob in options, fields, actions or
+	// form_values failed the whole read - so Pending() failed, daemon.New
+	// returned the error, the process exited, and every auto-spawn repeated it.
+	// Total outage from one bad row, with the only evidence a line in a log file,
+	// because an auto-spawned daemon sends its stderr nowhere. A corrupt row is
+	// one lost item; refusing to start is all of them.
+	mu      sync.Mutex
+	skipped []string
 }
 
 // StoredItem is an Item plus its persistence state.
@@ -380,30 +392,32 @@ func (s *Store) query(q string, args ...any) ([]StoredItem, error) {
 		it.MissedWhileAway = missed != 0
 		it.Kind = proto.Kind(kind)
 		it.Level = proto.Level(level)
-		if err := json.Unmarshal([]byte(opts), &it.Options); err != nil {
-			return nil, fmt.Errorf("item %s has corrupt options: %w", it.ID, err)
-		}
-		if err := json.Unmarshal([]byte(fields), &it.Fields); err != nil {
-			return nil, fmt.Errorf("item %s has corrupt fields: %w", it.ID, err)
-		}
-		if err := json.Unmarshal([]byte(actions), &it.Actions); err != nil {
-			return nil, fmt.Errorf("item %s has corrupt actions: %w", it.ID, err)
-		}
+
+		// A blob that will not decode costs its own row and no others (R-11). The
+		// stack column already had this treatment for a different reason - a
+		// pre-migration "" is not corruption - and the other four now get it too.
+		bad := ""
+		switch {
+		case json.Unmarshal([]byte(opts), &it.Options) != nil:
+			bad = "options"
+		case json.Unmarshal([]byte(fields), &it.Fields) != nil:
+			bad = "fields"
+		case json.Unmarshal([]byte(actions), &it.Actions) != nil:
+			bad = "actions"
 		// Every item written before migration 0013 carries "", which is not JSON.
 		// It means "not a stack", so it is skipped rather than read as corruption -
 		// the alternative makes the whole read fail on a store older than FR30.
-		if stack != "" {
-			if err := json.Unmarshal([]byte(stack), &it.Stack); err != nil {
-				return nil, fmt.Errorf("item %s has corrupt stack: %w", it.ID, err)
-			}
+		case stack != "" && json.Unmarshal([]byte(stack), &it.Stack) != nil:
+			bad = "stack"
+		case values.Valid && json.Unmarshal([]byte(values.String), &it.Values) != nil:
+			bad = "form values"
+		}
+		if bad != "" {
+			s.noteSkipped(it.ID, bad)
+			continue
 		}
 		it.Answer = answer.String
 		it.Reply = reply.String
-		if values.Valid {
-			if err := json.Unmarshal([]byte(values.String), &it.Values); err != nil {
-				return nil, fmt.Errorf("item %s has corrupt form values: %w", it.ID, err)
-			}
-		}
 		it.CreatedAt = time.UnixMilli(created)
 		if resolved.Valid {
 			it.ResolvedAt = time.UnixMilli(resolved.Int64)
@@ -411,6 +425,29 @@ func (s *Store) query(q string, args ...any) ([]StoredItem, error) {
 		out = append(out, it)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) noteSkipped(id, column string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Bounded: a store that is comprehensively corrupt must not turn one bad
+	// startup into an unbounded slice and a card nobody can read. The count is
+	// what matters after the first few names.
+	if len(s.skipped) < 32 {
+		s.skipped = append(s.skipped, id+" ("+column+")")
+	}
+}
+
+// Skipped drains the rows that would not decode since the last call, newest read
+// first. The daemon asks once at startup and turns a non-empty answer into one
+// warning card: a row silently dropped is the same silence this replaced, one
+// item smaller.
+func (s *Store) Skipped() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.skipped
+	s.skipped = nil
+	return out
 }
 
 // Prune evicts resolved items older than maxAge whose level ranks below

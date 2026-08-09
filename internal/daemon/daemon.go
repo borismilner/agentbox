@@ -640,6 +640,16 @@ func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presente
 	if err != nil {
 		return nil, err
 	}
+	// R-11. A row whose JSON will not decode is skipped rather than failing the
+	// read, so one bad row costs one item instead of the whole daemon. It must
+	// still be SAID: a silently dropped item is the same silence, one item
+	// smaller, and the human has no other way to learn a question never arrived.
+	// Deferred to a goroutine because surfaceNotify takes d.mu and presents, and
+	// New is still assembling.
+	if skipped := st.Skipped(); len(skipped) > 0 {
+		log.Error("store.rows_skipped", "component", "daemon", "count", len(skipped), "rows", strings.Join(skipped, ", "))
+		go d.warnSkippedRows(skipped)
+	}
 	// FR30: a burst that was collapsed has to come back collapsed. Every item
 	// inside a stack card is pending in its own right - that is what "nothing is
 	// dropped" means - so restoring the list as it comes puts the stack card AND
@@ -2369,6 +2379,18 @@ func (d *Daemon) surfaceError(agent, title, body string) {
 // surfaceNotify enqueues a daemon-originated notify toast (an action error, a
 // progress completion) through the normal display path so it chimes, shows and
 // lands in history.
+// warnSkippedRows raises the one card R-11 asks for: a count, and enough of the
+// ids to find them in the store. It names no agent because none is to blame -
+// the item is unreadable, so who sent it is exactly what was lost.
+func (d *Daemon) warnSkippedRows(rows []string) {
+	title := fmt.Sprintf("%d stored %s could not be read", len(rows), plural(len(rows), "item"))
+	body := "They were skipped so the daemon could start; before this, one unreadable " +
+		"row stopped it starting at all. Anything they were still waiting for is gone, " +
+		"and an agent parked on one of them will not be answered.\n\n" +
+		"Rows:\n\n- `" + strings.Join(rows, "`\n- `") + "`"
+	d.surfaceNotify(proto.LevelWarning, proto.Identity{Agent: "agentbox"}, title, body)
+}
+
 func (d *Daemon) surfaceNotify(level proto.Level, id proto.Identity, title, body string, actions ...proto.Action) {
 	it := &proto.Item{
 		ID: newID(), Kind: proto.KindNotify, Level: level,

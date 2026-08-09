@@ -4,7 +4,7 @@ Three audits produced three files, each ordered inside itself and none of them
 ordered against the others. This is the missing judgement: one sequence across all
 seventy-six items, and the rule that produced it.
 
-> **In a hurry.** Finish robustness band A (nine items left, about two weeks),
+> **In a hurry.** Finish robustness band A (eight items left, under two weeks),
 > taking the ux band-A items with it because they are the same failures seen from
 > the surface - U-01, U-02 and U-03 are done, and U-16 arrived in their place.
 > Then finish R-40, which is started but not done. Then F-01.
@@ -66,7 +66,7 @@ on F-01 is two weeks and not two months.
 each with its reproduction kept as a test. Both entries stay in robustness.md with
 a fixed marker, because the reasoning is what stops them coming back.
 
-**Tier 1 - the claim is false while these stand.** Robustness band A, the nine
+**Tier 1 - the claim is false while these stand.** Robustness band A, the eight
 remaining of fifteen, plus the ux band-A items. About three weeks together. Take
 them in robustness.md's own order, which is already consequence-ordered, with the
 ux items folded in:
@@ -87,8 +87,8 @@ them opened a fourth.** U-16: the card's advertised keyboard map does not reach 
 unless it happens to hold focus, so `1` can do nothing at all and the card cannot
 even say so - U-01's symptom by a route U-01's wrapper cannot see, because no bridge
 call is ever made. It goes in band A because that is what band A is. What is left of
-tier 1 is therefore robustness band A's nine (R-06 onwards; R-03, R-04, R-05 and
-R-14 were all fixed on 2026-08-09, R-05 owing a live exercise) plus U-16, and U-16 wants one more repro before its fix is chosen: it
+tier 1 is therefore robustness band A's eight (R-06 onwards; R-03, R-04, R-05,
+R-11 and R-14 were all fixed on 2026-08-09) plus U-16, and U-16 wants one more repro before its fix is chosen: it
 was seen once each way, minutes apart, and "always" and "sometimes" argue for
 different answers.
 

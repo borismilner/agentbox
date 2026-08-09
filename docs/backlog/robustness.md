@@ -439,6 +439,25 @@ tests the no-token case as intended behaviour and never as a risk.
 
 ### R-11. One corrupt item row stops the daemon from starting at all
 
+> **Fixed on 2026-08-09.** `Store.query` skips a row whose blob will not decode
+> instead of failing the read, records its id and the column at fault, and the
+> daemon drains that at startup into one warning card naming the count and the
+> rows. The stack column's existing care (a pre-migration `""` means "not a
+> stack", not corruption) is kept and now has a test of its own, because reading
+> it as corruption would skip every row in a store older than FR30 - the same
+> defect at a far larger scale.
+>
+> **The skip is said, not silent.** A row quietly dropped is the same silence
+> this replaced, one item smaller: nobody would learn that a question never
+> arrived. The card names no agent, because the item is unreadable and who sent
+> it is exactly what was lost. The recorded list is capped at 32 so a
+> comprehensively corrupt store cannot produce a card nobody can read.
+>
+> `internal/store/corrupt_test.go`: a blob written directly for each of the five
+> decoded columns, asserting the readable rows survive; the report drains so the
+> card is raised once; the empty stack stays legal; and the cap holds. Neutered
+> back to the failing read, everything fails except the empty-stack control.
+
 **How it fails.** `Store.query` fails the whole read if any single row has an
 unreadable JSON blob in `options`, `fields`, `actions` or `form_values`
 (`internal/store/store.go:383-406`). `Pending()` uses it, `daemon.New` returns
