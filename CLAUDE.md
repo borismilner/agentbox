@@ -54,6 +54,13 @@ touching anything.
   without reloading the page.** After a frontend change, the surface you are
   looking at can be the old bundle even though the deploy succeeded. Close the
   window (or restart the daemon) before judging a UI change.
+- **A commit message with an AI tell in it is refused, and the refusal kills the
+  WHOLE command.** A guard hook scans commit and PR text (`harness` as a verb is
+  one of the banned words) and blocks the Bash call before any of it runs - so a
+  `python3 - <<PY ... PY && git add && git commit` one-liner leaves the file edit
+  undone too, not just the commit. The symptom is a file that looks like the edit
+  never applied, because it did not. Make the edit in its own call, or re-check
+  the file after a blocked commit rather than assuming the edit survived.
 - **Never click a list row at a coordinate read off an earlier screenshot.**
   Any queue change reflows the inbox - somebody answering a card two rows up
   collapses the Pending section and everything moves - so the row you measured

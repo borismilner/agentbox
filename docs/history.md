@@ -9,6 +9,117 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fifty-ninth session (2026-08-09): the owed look at a screen, and four band-A fixes
+
+Session 58 left one thing owed - nobody had looked at U-01 or U-02 on a desktop -
+and it was owed for a reason worth reading: the drive was interrupted a keystroke
+in because Boris could not tell a scratch card from his own.
+
+**The owed check, done.** Esc on the only card paints the amber line in full and
+the window grows 199 to 241 to fit it; the `x` puts it away and the window shrinks
+back, which is the other direction of the remeasure and the one that had to say so
+itself; answering clears the notice and hands `staging` to the caller. `Defer`'s
+empty-queue refusal made the whole trip from a Go sentence to a line a human can
+read, so one of the thirteen refusal reasons has now been seen rather than
+asserted.
+
+**It cost the desktop its only signal, and that is a trap now written down.** The
+HANDS OFF strip is a window the daemon draws, so `make stop` takes it down with
+everything else: control is granted, and the one thing telling Boris it is held
+disappears at the moment the driving starts. He asked, reasonably, why nothing was
+happening. Same shape as the deploy lock that cannot live inside the daemon the
+deploy stops. CLAUDE.md carries it, along with the tell - `set_activity` answering
+`{"live":false}` means the strip is already gone.
+
+**U-16, found by looking rather than reading.** The card advertises `Esc defer`,
+`⇧Esc dismiss` and a number per option, and none of it reaches the card unless the
+card holds focus - which it often does not, on purpose, because vision principle 3
+says AgentBox never grabs focus and the panel and the progress bar both paid for
+that rule. The first card raised by a fresh daemon took focus and its whole keymap
+worked. A second, raised seconds after the first closed, did not: `xdotool` named
+the terminal, `1` did nothing twice, and the same `1` answered immediately after
+one click. It is U-01's symptom by a route U-01's wrapper cannot see, because no
+bridge call is ever made to fail. It wants one more repro before its fix is
+chosen: "always" and "sometimes" argue for different answers.
+
+Two things follow from it. `ux.md` said "nothing here was found by looking at a
+running window", and that sentence is now false and amended. And R-40's harness
+would not have caught this either - the whole mechanism (who owns the X input
+focus) is outside every file that audit read.
+
+**FR99: the wiki's frames are drawn now.** `tools/wiki/draw.py` plus
+`frontend/draw/` serve the shipped surfaces with the daemon door aliased to a
+fixture and photograph them headless. No desktop, no daemon, no XTEST. Two frames
+are drawn - the card, and the agents board that the photographer could not get
+because `sync lock` mints a session key per lock and turned four agents into seven
+rows.
+
+Three things came out of building it that the request did not anticipate. The
+height is the product's own: every frameless surface already hands Go its measured
+height through `bridge.fit()`, so the picture is exactly as tall as the window a
+real run would open, rather than as tall as a viewport somebody guessed. A redraw
+is byte-identical, because the clock is frozen before the bundle loads - so a diff
+in `docs/wiki/img/` means the product changed, which is what makes these
+reviewable in a way a photograph never was. And the drawing is more faithful to
+its own specification than the photograph it replaced: DESIGN.md asks for no
+desktop context and `expires in 1:57`, and the photograph had a code editor behind
+it and read `1:40`.
+
+Drawing S2 then caught DESIGN.md being wrong about the product - it said the
+shared-values block sits below the agent rows, and `Agents.svelte:292` has always
+put it above. The photograph had shown the real order and been accepted, so the
+sentence survived a sitting it contradicted. The doc is corrected; whether above
+is the RIGHT order is left open, because that is a design decision and not a
+caption fix.
+
+**Four band-A robustness items, all deployed.**
+
+- **R-14**: every tool that promises to return at once was bounded only at the
+  DIAL. Once a connection existed, `notify_user` - whose description says it never
+  blocks - would wait forever on a daemon that accepts and then wedges, with the
+  keepalive reporting it healthy throughout. Now capped at 10s through bounded
+  twins of the three call helpers. Opt-in, deliberately: marking a blocking tool
+  fast by mistake would cap how long a human may think, which is worse than the
+  defect, so the safe direction is the one that needs an edit.
+- **R-03**: the expiry can fire and do nothing, because the answer is inside its
+  undo grace. The handler then fell into a bare receive with no deadline and no
+  ctx branch - so a later undo left the item pending with the timer already spent
+  (the agent's `timeout_s` silently unbounded), and the handler could no longer see
+  its own caller drop (the card showing a live caller for an agent that had gone).
+  The select is a loop now, and a bounced expiry is re-armed for a full window.
+- **R-04**: nothing capped what an agent could put in an item, so the only bound
+  was the 4 MB wire line - and passing it produced no refusal at all, just a
+  dropped connection and `EOF`, with nothing stored. Caps in `Validate` that name
+  the field, the limit and the actual size; `Serve` answers `ErrTooLong` before the
+  connection goes; and the client keeps that sentence rather than the EOF that
+  follows it, without which the refusal is sent and read by nobody.
+- **R-05**: the card and toast were the only surfaces with no pull. `Bridge.View()`
+  now exists and both call it on mount, after `ready()` so the push stays the fast
+  path. A push that arrived first wins, or a form somebody has begun filling in
+  would reset.
+
+Every one of the four was checked by neutering the fix and watching the tests fail
+- which is session 58's lesson repeated, and it paid twice: R-03's countdown test
+and R-14's whole file hang to the test timeout when neutered, which IS the defect
+rather than a proxy for it.
+
+**R-05 was then seen on a real card**, in the live queue on the deployed build,
+which is the second desktop trip of the session and a much cheaper one: raising
+one card into Boris's own queue and answering it needs no daemon swap at all. The
+lesson from the first trip is that the swap was the expensive part, and most
+checks do not need it.
+
+**An unplanned second use for the drawn frames.** They are a regression check on
+the surfaces. Redrawing the card after R-05 gave a byte-identical PNG - a real
+browser mounting the real component through the changed path - which answered "did
+I break the card" before anybody took the desktop. It is chrome rather than
+WebKitGTK and no daemon is involved, so it is a first answer and not the last one.
+
+**One thing the tooling taught.** A commit message containing "harness" is
+refused by a guard hook, and the refusal blocks the WHOLE Bash call - so an edit
+bundled into the same command never ran either. Worth knowing before diagnosing
+why a file looks unchanged.
+
 ## Fifty-eighth session (2026-08-09): the answer path learns to say no
 
 Tier 1 of the merged backlog, and the two items it named: U-02 then U-01, which are
