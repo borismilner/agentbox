@@ -1,7 +1,7 @@
 # STATUS
 
-Updated: 2026-08-07, fifty-third session (the wiki, and every doc claim checked
-against source).
+Updated: 2026-08-09, fifty-ninth session (band A down to seven, and the wiki's
+frames are drawn rather than photographed).
 
 **This file is the current state, and only that.** What each session shipped,
 broke, learned and verified is in [history.md](history.md), which is the log; the
@@ -18,6 +18,27 @@ verification and refinement queue. The showcase re-record was dropped for good o
 config keys nothing reads, three wrong verb lists, two wrong defaults and a tool
 count that had been wrong in three places; [wiki/FACTS.md](wiki/FACTS.md) is the
 audited base, and it is what to quote from now on.
+
+**Where the backlog stands (2026-08-09).** `docs/backlog/README.md` is the one
+order across the three audits and is current. Tier 1 is down to **seven robustness
+band-A items** (R-06, R-07, R-09, R-10, R-12, R-13, R-15) **plus U-16**. Fixed and
+deployed on 2026-08-09: R-03, R-04, R-05, R-08, R-11, R-14, and before them U-01,
+U-02 and U-03. Every one was checked by neutering the fix and watching its tests
+fail; two of them hang to the test timeout when neutered, which is the defect
+rather than a proxy for it.
+
+**U-16 is the newest item and the only one found by looking at a screen.** The
+card advertises `Esc defer`, `⇧Esc dismiss` and a number per option, and none of
+it reaches the card unless the card holds focus - which it often does not, because
+vision principle 3 says AgentBox never grabs focus. It needs one more repro before
+its fix is chosen.
+
+**The wiki's frames are drawn now (FR99).** `tools/wiki/draw.py` renders the
+shipped surfaces headless with the daemon door aliased to a fixture; `DRAW.md` is
+the runbook and says which frames should still be photographed. Two of thirteen
+are drawn (`card.png`, `agents-board.png`); the rest are a fixture each and no new
+mechanism. A redraw is byte-identical, so the frames double as a regression check
+on the surfaces.
 
 AgentBox is **deployed and live on this machine**: module
 `github.com/borismilner/agentbox`, binary and CLI `agentbox`, socket `agentbox.sock`, config

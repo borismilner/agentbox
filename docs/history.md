@@ -72,7 +72,7 @@ sentence survived a sitting it contradicted. The doc is corrected; whether above
 is the RIGHT order is left open, because that is a design decision and not a
 caption fix.
 
-**Four band-A robustness items, all deployed.**
+**Six band-A robustness items, all deployed.** Band A is down from fifteen to seven.
 
 - **R-14**: every tool that promises to return at once was bounded only at the
   DIAL. Once a connection existed, `notify_user` - whose description says it never
@@ -97,8 +97,18 @@ caption fix.
   now exists and both call it on mount, after `ready()` so the push stays the fast
   path. A push that arrived first wins, or a form somebody has begun filling in
   would reset.
+- **R-11**: one unreadable JSON blob failed the WHOLE store read, so `Pending()`
+  failed, `daemon.New` returned the error, the process exited, and every
+  auto-spawn repeated it. Total outage from one bad row, with the only evidence a
+  line in a log file nobody was reading. The row is skipped now and said out loud
+  in a warning card, because a silently dropped item is the same silence one item
+  smaller.
+- **R-08**: the undo grace holds its outcome in memory for three seconds, which a
+  deploy fits inside comfortably, and a daemon stopping in there lost the answer -
+  the item came back pending and the human was asked again, into a caller that had
+  gone. `BeginShutdown` ships it now.
 
-Every one of the four was checked by neutering the fix and watching the tests fail
+Every one of the six was checked by neutering the fix and watching the tests fail
 - which is session 58's lesson repeated, and it paid twice: R-03's countdown test
 and R-14's whole file hang to the test timeout when neutered, which IS the defect
 rather than a proxy for it.
