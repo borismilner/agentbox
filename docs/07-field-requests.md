@@ -2982,6 +2982,44 @@ tip. Marks and comments survive on untouched steps; a mark on an amended step is
 flagged stale rather than dropped. `expect_rev` already exists on the tool, so
 the concurrency story is there - what is missing is the operations themselves.
 
+---
+
+## FR99 [field] The wiki's pictures should be drawn, not photographed
+
+**Session.** 2026-08-09, working the backlog. Boris, after the first sitting had
+been run and published: *"I want you to generate 'screenshots' for the wiki pages
+and not real screenshots, because that looks much better and much easier to
+generate precisely and well made with good content and well placed contents."*
+
+**What the current pipeline costs.** `tools/wiki/shots.py` stages real items on a
+throwaway daemon and photographs the real windows over XTEST. The first run of it
+cost eight defects in the harness before ten frames were fit to publish, and four
+shots are still outstanding for reasons that are all about the capture and none
+about the product: the agents board shows seven roster rows where DESIGN wants
+four, because `sync lock` mints a session key per lock and every lock is a row;
+the viewer frame is scrolled to the wrong part of its document; the hands-off pair
+sits over the review board rather than an editor; a card sat over the subject in
+three frames the script's own check passed. Every one of those is "the desktop did
+not happen to be in the state the page wanted".
+
+**Shape it wants.** Draw the frames instead: HTML and CSS built from the real
+tokens (`frontend/src/app.css`), rendered headless at a fixed size, with the
+content written for the page rather than whatever the staging script could
+produce. That buys exact content, exact composition, no desktop, no daemon, no
+XTEST, and a diff that is reviewable - a mockup is a file in the repo, a
+photograph is not.
+
+**What it costs.** The pictures stop being evidence. A real capture proves the
+product looks like that; a drawing proves only that somebody drew it, so a page
+whose point is "this is what it looks like" now depends on the drawing being kept
+honest by hand. The rule that keeps it honest: a drawn frame is built from the
+product's own tokens and its own strings, and the page says nothing a real run
+would contradict. Screenshot-as-proof stays available for the one or two places
+that need it, and the runbook should say which those are.
+
+**Where.** `tools/wiki/shots.py`, `tools/wiki/SHOTS.md`, `docs/wiki/DESIGN.md`,
+and the ten frames already published in `docs/wiki/img/`.
+
 ## Mechanics discovered
 
 Verified facts from field sessions, kept so a later session does not re-derive
