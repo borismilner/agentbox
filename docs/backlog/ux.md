@@ -34,6 +34,14 @@ recording. It counted the card's mount-time measurement as a response to the cha
 under test, and so reported the defect as already fixed. Draining the microtask
 queue is what separates the two, and `settle()` in that file exists for it.
 
+**And on 2026-08-09 the claim stopped being true altogether.** U-16 was found on a
+running window, by a check of U-01 that went looking for one thing and met another.
+It is the first item here that reading could not have produced, and it is worth
+noting what kind of item that turned out to be: not a subtler version of the ones
+above, but one whose whole mechanism (who owns the X input focus) is outside every
+file this audit read. Fifteen surfaces mounting nothing was not the gap that hid
+it, and R-40's harness would not have found it either.
+
 **The bands**
 
 | Band | What defines it |
@@ -60,9 +68,16 @@ decides whether the card is what it says it is.*
 > panel and the inbox detail all show it, and the card re-measures so the notice
 > is not clipped off a frameless window. The card and toast also got the board's
 > two `window` listeners. 15 tests in `frontend/test/failure.test.js`, checked by
-> neutering `note()` and confirming 13 of them fail. **Not yet exercised on a real
-> desktop** - the drive was interrupted one keystroke in, so this is the one part
-> of it verified by tests alone.
+> neutering `note()` and confirming 13 of them fail.
+>
+> **Exercised on a real desktop on 2026-08-09** against a throwaway daemon on
+> scratch state. Esc on the only card painted the amber line in full, and the
+> window grew 470x199 to 470x241 and recentred, so the notice is not clipped off
+> the frameless window - the thing jsdom cannot answer. The notice's `x` put it
+> away and the window shrank back to 199, which exercises the other direction of
+> the remeasure (the observer sees growth only, so the shrink path is the one that
+> had to say so itself). Answering with `1` cleared the notice and handed
+> `staging` back to the caller. Screenshots in the session scratchpad.
 
 **How it fails.** `Card.svelte` makes 26 `bridge.*` calls. Not one is awaited, not
 one has a `.catch`, and the file contains no `try {`. Counted across the tree, the
@@ -115,6 +130,12 @@ happen.
 > in the log. `lateResolver`, which swallowed every call made before the daemon
 > existed, says so. 13 daemon tests (one per reason a refusal can happen) and 6 in
 > webui.
+>
+> **Exercised on a real desktop on 2026-08-09.** `Defer`'s empty-queue refusal
+> made the whole round trip: Go sentence to bridge return value to `trouble` store
+> to a painted line a human can read, on the keystroke that produces it. One
+> refusal reason of the thirteen has now been seen rather than asserted; the other
+> twelve share the path from the return value onwards.
 
 **How it fails.** Every answer-path method on the bridge is declared to return no
 value:
@@ -188,6 +209,56 @@ false and assert the surface says something. Needs R-40's harness.
 its triage key in the inbox.
 **Size.** hours.
 **Confidence.** Confirmed by reading both sides.
+
+### U-16. The card advertises a keyboard map it has not been given the keyboard for
+
+**How it fails.** The card's header states `Esc defer · ⇧Esc dismiss` and numbers
+every option, and none of it reaches the card unless the card happens to hold
+focus. It often does not, on purpose: vision principle 3 says agentbox never grabs
+focus, and `panel.go:19` and `control.go:26` both cite it as the reason a surface
+declines the keyboard - a focus steal while the human is mid-sentence in a terminal
+is the worse failure. So the principle is right and the hint is right, and between
+them is a card whose stated controls do nothing.
+
+**Found on a real desktop**, not by reading, on 2026-08-09 while checking U-01. The
+first card raised by a fresh daemon took focus and its whole keymap worked (`Escape`
+deferred, `1` answered). A second card raised seconds after the first one closed did
+not: `xdotool getwindowfocus` named the terminal, `1` did nothing twice in a row,
+and the same `1` answered immediately after one click anywhere on the card. Two
+cards, two different behaviours, from the same daemon minutes apart.
+
+**Consequence.** This is U-01 approached from the other side. U-01 fixed "the call
+failed and the card said nothing"; here the keystroke never becomes a call at all,
+and the card again says nothing. The human presses `1`, the card sits there, and
+what they learn is that the card is unreliable - which is the reputation U-01 was
+fixed to prevent. It is worse than U-01's case in one way: the trouble notice
+cannot fire, because no bridge call was ever made to fail.
+
+**Where.** the hint sites at `Card.svelte:381-385`, `:492-493`, `:558`, `:569`; the
+principle at `internal/webui/panel.go:19` and `internal/webui/control.go:26-28`.
+
+**Fix.** Not "grab focus" - the principle stands and the panel and progress bar both
+paid for it. Either the hints tell the truth about the state they are in (the ask
+panel already does exactly this at `AskPanel.svelte:40-58`: it changes the hint to
+match whether the keyboard is live), or the card claims focus only when it is
+raised over a window that is not taking input. The first is cheap and honest; the
+second is a WM question and should not be attempted without the second monitor case
+in hand.
+
+**Test that would have caught it.** Nothing in-process would: the whole defect lives
+outside the webview, in who owns the X input focus. It wants the `tools/uidrive`
+path - raise a card while another window holds focus, send its advertised keys,
+assert the item did not resolve - which is a check no test in this tree performs and
+is why fifteen surfaces mounting nothing did not matter here.
+
+**On screen.** Raise a card, click into a terminal, press `1`.
+
+**Size.** hours for the honest-hint fix.
+**Confidence.** The behaviour is confirmed - focus was read from X, not inferred.
+Which of the two cards is the normal case is not: n=1 each, and the difference may
+be nothing more than a WM handing focus to the first window a new process maps.
+Worth one more repro before choosing the fix, because "always" and "sometimes"
+argue for different answers.
 
 ---
 

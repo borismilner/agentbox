@@ -30,6 +30,17 @@ touching anything.
   Point it at a copy of the state (`XDG_STATE_HOME=/tmp/x`, plus
   `XDG_CONFIG_HOME` for a theme) so Boris's own reviews and settings are not
   what you are experimenting on.
+- **`request_control` cannot protect a run that stops the daemon.** The HANDS OFF
+  strip is a window the daemon draws, so `make stop` takes it down with everything
+  else: you are granted the desktop, and the one signal telling Boris you hold it
+  disappears at the exact moment you start driving. He is then looking at a card he
+  did not raise with nothing on screen saying why, which is the confusion the strip
+  exists to prevent - it happened on 2026-08-09 and he asked whether the session was
+  stuck. This is the same shape as the deploy lock that cannot live inside the
+  daemon the deploy stops. Until the strip outlives a restart, a check that stops
+  the daemon must say in the turn, BEFORE `make stop`, what will be on screen and
+  that the strip is about to vanish - and `set_activity` returning `{"live":false}`
+  is how you know it already has.
 - **A control can be fully styled in the stylesheet and unstyled on screen.**
   A segmented control in Board.svelte rendered as two bare words while its rules
   sat in the bundle with the right scope hash; moving it into its own component

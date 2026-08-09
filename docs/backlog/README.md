@@ -70,9 +70,10 @@ remaining of fifteen, plus the three ux band-A items. About three weeks together
 robustness.md's own order, which is already consequence-ordered, with these three
 folded in:
 
-- ~~**U-01**~~ **done and deployed on 2026-08-09** (`a3e570d`), immediately after
-  U-02 and for the reason U-02 predicted: the wrapper had something to show. Still
-  owes a pass on a real desktop.
+- ~~**U-01**~~ **done, deployed and seen on screen on 2026-08-09** (`a3e570d`),
+  immediately after U-02 and for the reason U-02 predicted: the wrapper had
+  something to show. The desktop pass it owed is done: the notice paints in full,
+  the window grows to fit it and shrinks when it goes, and answering clears it.
 - ~~**U-02**~~ **done and deployed on 2026-08-09** (`63373b2`). The answer path
   reports refusals in words, which is what made U-01 worth building and what R-01
   was missing for as long as it was invisible.
@@ -80,8 +81,14 @@ folded in:
   it, because `Triage` already returned the value the other methods do not. Awaiting
   it cost an afternoon, eight tests and a keyboard pass over the real inbox.
 
-**All three ux band-A items are now closed.** What is left of tier 1 is robustness
-band A alone: thirteen items, R-03 onwards.
+**All three original ux band-A items are closed, and the desktop pass that closed
+them opened a fourth.** U-16: the card's advertised keyboard map does not reach it
+unless it happens to hold focus, so `1` can do nothing at all and the card cannot
+even say so - U-01's symptom by a route U-01's wrapper cannot see, because no bridge
+call is ever made. It goes in band A because that is what band A is. What is left of
+tier 1 is therefore robustness band A's thirteen (R-03 onwards) plus U-16, and U-16
+wants one more repro before its fix is chosen: it was seen once each way, minutes
+apart, and "always" and "sometimes" argue for different answers.
 
 **Tier 2 - the hub stops serving.** Robustness band B, eleven items, R-16 to R-26.
 Loud failures, mostly hours each. R-26 (no bound on anything an agent puts in a
