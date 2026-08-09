@@ -4,9 +4,18 @@
   import { markdown } from "../lib/markdown.svelte.js";
   import { ticker, remaining } from "../lib/clock.svelte.js";
   import { parseDiff } from "../lib/diff.js";
+  import { trouble, note, forget } from "../lib/trouble.svelte.js";
 
   // The card is the product (03-ui-ux.md): one blocking item, answerable in
   // under two seconds without the mouse. Everything here serves that.
+
+  // U-01. The card's promise is a two-second answer; its worst failure was an
+  // answer that looked like it was still being typed. Every call it makes is now
+  // wrapped (lib/bridge.js), and whatever comes back lands here. These two
+  // listeners are the board's, for the same reason the board has them: on a
+  // frameless window a render error is otherwise a silent freeze.
+  window.addEventListener("error", (e) => note("card error: " + e.message));
+  window.addEventListener("unhandledrejection", (e) => note("card error: " + e.reason));
 
   let view = $state(null);
   let draft = $state("");
@@ -122,6 +131,8 @@
     const fresh = v?.item?.id !== item?.id;
     view = v;
     if (fresh) {
+      // A failure belonging to the last question is not news about this one.
+      forget();
       draft = "";
       comment = "";
       replying = false;
@@ -189,6 +200,10 @@
     void replying;
     void view?.item?.id;
     void view?.graced;
+    // U-01's line is one of the things that changes the card's height, and a
+    // failure notice clipped off the bottom of a frameless window is the same
+    // defect it was written to fix.
+    void trouble.text;
     queueMicrotask(() => remeasure());
   });
 
@@ -357,6 +372,18 @@
 {#if item}
   <div class="card" class:urgent={level === "urgent"} style="--sev: {severity}" bind:this={shell}>
     <span class="rail"></span>
+
+    <!-- U-01: the one thing the card could never say. It sits above everything
+         else, in both the graced and the ordinary branch, because it is about
+         the keystroke that was just pressed and not about the item. Dismissable
+         by click, so it cannot cover a card the human wants to answer. -->
+    {#if trouble.text}
+      <div class="trouble" role="alert">
+        <span class="bang">!</span>
+        <span class="what selectable">{trouble.text}</span>
+        <button class="shut" title="hide this" aria-label="hide this" onclick={forget}>×</button>
+      </div>
+    {/if}
 
     {#if graced}
       <!-- FR28: answered, but the answer has not shipped yet. -->
@@ -1165,5 +1192,44 @@
   }
   .undo:hover {
     background: var(--k-surface-3);
+  }
+
+  /* U-01's line. Warning rather than error chroma: the item is usually still
+     answerable, and painting it as a crash would be its own kind of lie. Every
+     var() carries a fallback on purpose - a token that resolves to nothing
+     takes its whole declaration with it, and a notice that has lost its
+     background still reads as working to everything except the screen. */
+  .trouble {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px 6px 10px;
+    border: 1px solid var(--k-warning, #b8860b);
+    border-radius: calc(var(--k-radius, 8px) * 0.7);
+    background: color-mix(in srgb, var(--k-warning, #b8860b) 12%, var(--k-surface-2, #1c1c20));
+    font-size: 0.84rem;
+    line-height: 1.35;
+  }
+  .trouble .bang {
+    flex: none;
+    font-weight: 700;
+    color: var(--k-warning, #b8860b);
+  }
+  .trouble .what {
+    flex: 1;
+    color: var(--k-ink-1, #e8e8ea);
+  }
+  .trouble .shut {
+    flex: none;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    color: var(--k-ink-3, #8a8a90);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .trouble .shut:hover {
+    color: var(--k-ink-1, #e8e8ea);
   }
 </style>

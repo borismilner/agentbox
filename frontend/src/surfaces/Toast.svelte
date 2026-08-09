@@ -4,6 +4,7 @@
   import { bridge, on } from "../lib/bridge.js";
   import { markdown } from "../lib/markdown.svelte.js";
   import { ticker, remaining } from "../lib/clock.svelte.js";
+  import { trouble, note, forget } from "../lib/trouble.svelte.js";
 
   // The toast (03-ui-ux.md): the rendering of a notify. Nobody has to answer it,
   // so it is a strip at the top of the screen rather than a card in the middle -
@@ -32,10 +33,19 @@
   const clockText = $derived(!view?.dismissAtMs ? "" : closesIn === "0s" ? "closing" : closesIn);
   const actions = $derived(view?.actionsEnabled ? (item?.actions ?? []) : []);
 
+  // U-01, the toast's share of it. A dismiss that did not land left the strip on
+  // screen looking exactly like one that had not been clicked yet, so the human
+  // clicked again. The listeners are the card's, for the same reason.
+  window.addEventListener("error", (e) => note("toast error: " + e.message));
+  window.addEventListener("unhandledrejection", (e) => note("toast error: " + e.reason));
+
   on("agentbox:view", (v) => {
     const fresh = v?.item?.id !== item?.id;
     view = v;
-    if (fresh) expanded = false;
+    if (fresh) {
+      expanded = false;
+      forget();
+    }
   });
 
   bridge.ready("toast");
@@ -133,6 +143,13 @@
 
       {#if clamped}
         <span class="more">click to expand</span>
+      {/if}
+
+      <!-- U-01: what the last click actually did. It is inside the strip's own
+           text column so the notice grows the window rather than sitting over
+           the words it is about. -->
+      {#if trouble.text}
+        <div class="trouble" role="alert"><span class="bang">!</span>{trouble.text}</div>
       {/if}
 
       {#if actions.length}
@@ -279,5 +296,24 @@
   }
   .act:hover {
     background: var(--k-surface-3);
+  }
+
+  /* U-01's line, same chroma as the card's so the two surfaces say a failure the
+     same way. Fallbacks on every var(): one that resolves to nothing takes its
+     whole declaration with it. */
+  .trouble {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+    padding: 4px 7px;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--k-warning, #d9a441) 14%, transparent);
+    color: var(--k-ink-1, #e8ecf3);
+    font-size: 0.76rem;
+    line-height: 1.35;
+  }
+  .trouble .bang {
+    font-weight: 700;
+    color: var(--k-warning, #d9a441);
   }
 </style>

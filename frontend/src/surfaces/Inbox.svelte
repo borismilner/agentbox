@@ -1,5 +1,6 @@
 <script>
   import { bridge } from "../lib/bridge.js";
+  import { trouble, forget } from "../lib/trouble.svelte.js";
   import { ticker } from "../lib/clock.svelte.js";
   import { markdown } from "../lib/markdown.svelte.js";
   import { parseDiff } from "../lib/diff.js";
@@ -95,6 +96,8 @@
     open = id;
     det = null;
     detFor = null;
+    // A failure that belonged to the row above is not news about this one.
+    forget();
     // Clicking a pending row selects it too. Without this the keys still act on
     // wherever j/k was left, so reading one row and pressing d would dismiss
     // another - and a resolved row was inert before this, so nobody had reason to
@@ -312,6 +315,12 @@
                     <button type="button" class="show" onclick={() => bridge.promote(det.id)}>
                       Show the card
                     </button>
+                    <!-- U-01/U-02: the row can outlive the item behind it, which
+                         is R-01's shape seen from here. A button that summons
+                         nothing has to say so rather than look clicked. -->
+                    {#if trouble.text}
+                      <span class="trouble" role="alert">{trouble.text}</span>
+                    {/if}
                   {/if}
                 </div>
 
@@ -703,6 +712,17 @@
   }
   .show:hover {
     background: color-mix(in srgb, var(--k-accent) 28%, transparent);
+  }
+  /* U-01's line, worded and coloured the way the card says the same thing.
+     Every var() carries a fallback: one that resolves to nothing takes its
+     whole declaration with it, and a notice with no background still reads as
+     fine to everything except the screen. */
+  .trouble {
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--k-warning, #d9a441) 16%, transparent);
+    color: var(--k-ink, #dbe2ee);
+    font-size: 0.74rem;
   }
 
   /* The body, and the one rule this whole surface exists for: no max-height, no

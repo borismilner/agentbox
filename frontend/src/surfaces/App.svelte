@@ -1,5 +1,6 @@
 <script>
   import { bridge, on } from "../lib/bridge.js";
+  import { forget } from "../lib/trouble.svelte.js";
   import Home from "./Home.svelte";
   import Session from "./Session.svelte";
   import Agents from "./Agents.svelte";
@@ -22,6 +23,15 @@
 
   const selected = $derived(sessions.find((s) => s.selected) ?? null);
   const working = $derived(sessions.filter((s) => s.state === "working").length);
+
+  // U-01's notice is one line per window, and this window has nine surfaces in
+  // it. A failure that happened on the inbox is not something the sessions
+  // surface should still be showing a minute later, so leaving a surface takes
+  // its line with it.
+  $effect(() => {
+    void tab;
+    forget();
+  });
 
   // The shell owns the inbox snapshot rather than the surface, because the rail
   // badge and the status strip need the pending count whichever surface is in

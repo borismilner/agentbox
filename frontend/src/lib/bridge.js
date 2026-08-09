@@ -1,4 +1,5 @@
 import { Call, Events, Window } from "@wailsio/runtime";
+import { note, why } from "./trouble.svelte.js";
 
 // One place that knows how the frontend talks to the daemon. Everything the
 // UI can do to an item goes through Bridge.* on the Go side; everything the
@@ -8,21 +9,49 @@ import { Call, Events, Window } from "@wailsio/runtime";
 const PKG = "github.com/borismilner/agentbox/internal/webui";
 const svc = (m) => `${PKG}.Bridge.${m}`;
 
+// answering wraps the calls a human's keystroke makes, and it is the whole of
+// U-01's fix: one wrapper instead of a .catch at 26 call sites, because 26 call
+// sites is 26 chances to forget one and the tempting version - .catch(() => {})
+// per call - turns a silent failure into a silent failure that passes review.
+//
+// Two things can go wrong and both end up in the same place. The call can reject
+// (a torn-down window, a serialization failure, a method that no longer binds),
+// and the daemon can answer with a sentence saying it refused (U-02). Either
+// way trouble.text gets it and whichever surface is on screen shows it. A call
+// that lands clears the line, so nothing has to remember to.
+//
+// The wrapper never rethrows: an unhandled rejection reaching the window is
+// exactly the state this exists to end. It returns the sentence instead, so a
+// caller that wants to branch (the inbox does) still can.
+const answering =
+  (call) =>
+  async (...args) => {
+    try {
+      const refused = await call(...args);
+      note(typeof refused === "string" ? refused : "");
+      return refused;
+    } catch (e) {
+      const text = why(e);
+      note(text);
+      return text;
+    }
+  };
+
 export const bridge = {
-  answer: (id, label) => Call.ByName(svc("Answer"), id, label),
-  reply: (id, text) => Call.ByName(svc("Reply"), id, text),
-  answerForm: (id, values) => Call.ByName(svc("AnswerForm"), id, values),
-  confirm: (id, yes) => Call.ByName(svc("Confirm"), id, yes),
-  secret: (id, value) => Call.ByName(svc("Secret"), id, value),
-  review: (id, approved, comment) => Call.ByName(svc("Review"), id, approved, comment),
-  veto: (id) => Call.ByName(svc("Veto"), id),
-  defer: (id) => Call.ByName(svc("Defer"), id),
-  dismiss: (id) => Call.ByName(svc("Dismiss"), id),
-  undo: (id) => Call.ByName(svc("Undo"), id),
-  runAction: (id, index) => Call.ByName(svc("RunAction"), id, index),
+  answer: answering((id, label) => Call.ByName(svc("Answer"), id, label)),
+  reply: answering((id, text) => Call.ByName(svc("Reply"), id, text)),
+  answerForm: answering((id, values) => Call.ByName(svc("AnswerForm"), id, values)),
+  confirm: answering((id, yes) => Call.ByName(svc("Confirm"), id, yes)),
+  secret: answering((id, value) => Call.ByName(svc("Secret"), id, value)),
+  review: answering((id, approved, comment) => Call.ByName(svc("Review"), id, approved, comment)),
+  veto: answering((id) => Call.ByName(svc("Veto"), id)),
+  defer: answering((id) => Call.ByName(svc("Defer"), id)),
+  dismiss: answering((id) => Call.ByName(svc("Dismiss"), id)),
+  undo: answering((id) => Call.ByName(svc("Undo"), id)),
+  runAction: answering((id, index) => Call.ByName(svc("RunAction"), id, index)),
   // FR30: lift one row out of a stack card and make it a card again. The stack
   // id travels so the daemon can refuse an item the human is not looking at.
-  openStacked: (stackId, itemId) => Call.ByName(svc("OpenStacked"), stackId, itemId),
+  openStacked: answering((stackId, itemId) => Call.ByName(svc("OpenStacked"), stackId, itemId)),
   copy: (id) => Call.ByName(svc("Copy"), id),
 
   // session surface
@@ -61,7 +90,10 @@ export const bridge = {
   // with the snapshot: the rows carry a snippet precisely so a hundred rendered
   // bodies do not ride every repaint. `found: false` means the item has aged out.
   itemDetail: (id) => Call.ByName(svc("ItemDetail"), id),
-  promote: (id) => Call.ByName(svc("Promote"), id),
+  // Wrapped like the rest of the answer path: a row whose item is gone answers
+  // with a sentence rather than opening a card (U-02), and that has to be
+  // something other than a click that appears to work.
+  promote: answering((id) => Call.ByName(svc("Promote"), id)),
   triage: (id, key) => Call.ByName(svc("Triage"), id, key),
   copyItem: (id) => Call.ByName(svc("CopyItem"), id),
   stats: (window) => Call.ByName(svc("Stats"), window),

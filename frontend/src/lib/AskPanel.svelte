@@ -3,6 +3,7 @@
   import { bridge } from "./bridge.js";
   import { markdown } from "./markdown.svelte.js";
   import { ticker, remaining } from "./clock.svelte.js";
+  import { trouble, forget } from "./trouble.svelte.js";
 
   // The inline ask panel (FR49): the agent whose conversation this is has asked
   // something, and it is answered here rather than in a card over the window.
@@ -27,6 +28,14 @@
       "var(--k-info)",
   );
   const expiresIn = $derived(remaining(ask.expiresAtMs, clock.now));
+
+  // U-01. A question answered in place had the same blind spot the card did: six
+  // calls, none awaited, none caught. A new question is a clean slate, so the
+  // previous one's failure does not sit under it.
+  $effect(() => {
+    void ask.id;
+    forget();
+  });
 
   function act(opt) {
     if (opt.verb === "dismiss") return bridge.dismiss(ask.id);
@@ -96,6 +105,10 @@
       </button>
     {/each}
   </div>
+
+  {#if trouble.text}
+    <div class="trouble" role="alert"><span class="bang">!</span>{trouble.text}</div>
+  {/if}
 
   <div class="hint">
     {#if typing}
@@ -265,5 +278,24 @@
     font-family: var(--k-font-mono);
     font-size: 0.62rem;
     color: var(--k-ink-3);
+  }
+
+  /* U-01's line, worded and coloured like the card's. Fallback on every var():
+     one that resolves to nothing takes its declaration with it, and a notice
+     that has lost its background still reads as fine to everything but the
+     screen. */
+  .trouble {
+    display: flex;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--k-warning, #d9a441) 14%, transparent);
+    color: var(--k-ink-1, #e8ecf3);
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+  .trouble .bang {
+    font-weight: 700;
+    color: var(--k-warning, #d9a441);
   }
 </style>
