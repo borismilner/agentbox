@@ -27,8 +27,10 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -98,12 +100,17 @@ class Server:
         self.url = None
 
     def __enter__(self):
+        # Its own process group, because `npx vite` is a wrapper around a child
+        # node process: terminating the wrapper alone orphans the server, which
+        # then holds its port and keeps running after the script exits. One was
+        # found still up an hour after a run.
         self.proc = subprocess.Popen(
             ["npx", "vite", "--config", "draw.config.js"],
             cwd=FRONTEND,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            start_new_session=True,
         )
         # Read the port off vite's own banner rather than assuming 5173, which is
         # taken the moment anybody runs `npm run dev` beside this.
@@ -119,12 +126,19 @@ class Server:
         raise SystemExit("vite did not report a URL within 90s")
 
     def __exit__(self, *exc):
-        if self.proc:
-            self.proc.terminate()
+        if not self.proc:
+            return
+        # Signal the GROUP, so the node child goes with the npx wrapper.
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(self.proc.pid, sig)
+            except (ProcessLookupError, PermissionError):
+                return
             try:
                 self.proc.wait(timeout=10)
+                return
             except subprocess.TimeoutExpired:
-                self.proc.kill()
+                continue
 
 
 def chrome(url: str, width: int, height: int, *extra: str) -> subprocess.CompletedProcess:
