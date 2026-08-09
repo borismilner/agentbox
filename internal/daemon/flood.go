@@ -292,13 +292,13 @@ func (d *Daemon) persistStack(it *proto.Item) {
 // The stack card keeps the row: the human is looking at a list and a row that
 // vanished under the pointer is how the wrong thing gets clicked. The row is
 // marked instead, by the item resolving in the normal way.
-func (d *Daemon) OpenStacked(stackID, itemID string) {
+func (d *Daemon) OpenStacked(stackID, itemID string) string {
 	d.mu.Lock()
 	stack := d.liveStackLocked(stackID)
 	if stack == nil || stack.Kind != proto.KindStack {
 		d.mu.Unlock()
 		d.log.Warn("stack.open_rejected", "component", "daemon", "stack_id", stackID, "item_id", itemID, "reason", "no live stack card")
-		return
+		return "that stack card is no longer on screen."
 	}
 	held := false
 	for _, e := range stack.Stack {
@@ -310,26 +310,27 @@ func (d *Daemon) OpenStacked(stackID, itemID string) {
 	if !held {
 		d.mu.Unlock()
 		d.log.Warn("stack.open_rejected", "component", "daemon", "stack_id", stackID, "item_id", itemID, "reason", "not in this stack")
-		return
+		return "that row is not one of the items in this stack."
 	}
 	// Already on screen or already queued: nothing to promote, and promoting a
-	// second copy would put two cards on one item.
+	// second copy would put two cards on one item. Not a refusal - what the row
+	// asked for has already happened.
 	if (d.current != nil && d.current.ID == itemID) || d.liveStackLocked(itemID) != nil {
 		d.mu.Unlock()
-		return
+		return ""
 	}
 	d.mu.Unlock()
 
 	stored, err := d.st.Item(itemID)
 	if err != nil || stored == nil {
 		d.log.Warn("stack.open_rejected", "component", "daemon", "stack_id", stackID, "item_id", itemID, "reason", "item is gone from the store")
-		return
+		return "that item is gone: the store has no record of it."
 	}
 	if stored.State != store.StatePending {
 		// Answered from the inbox, expired, or dismissed while the stack sat open.
 		// Re-presenting it would ask a question that already has an answer.
 		d.log.Info("stack.open_skipped", "component", "daemon", "item_id", itemID, "state", stored.State)
-		return
+		return "that item was already " + stored.State + ", so there is no card to open."
 	}
 
 	it := stored.Item
@@ -353,6 +354,7 @@ func (d *Daemon) OpenStacked(stackID, itemID string) {
 	d.mu.Unlock()
 	d.log.Info("stack.opened", "component", "daemon", "stack_id", stackID, "item_id", itemID)
 	d.ui.Present(view)
+	return ""
 }
 
 // sweepStack is what dismissing a stack card means for the burst under it: the

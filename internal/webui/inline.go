@@ -213,12 +213,21 @@ func (s *sessions) askKey(id, key string) bool {
 	if !ok || v.Item.ID != id {
 		return false
 	}
+	// A refusal from the answer path (U-02) means the key did not land, which is
+	// the same thing this method's bool already says. The reason goes to the log:
+	// the panel has no line of its own to put a sentence on, and swallowing the
+	// key while reporting success is the defect being fixed.
+	why := ""
 	switch cmd := triageFor(store.StoredItem{Item: *v.Item, State: store.StatePending}, key); cmd.intent {
 	case triageAnswer:
-		s.ui.res.Answer(id, cmd.answer)
+		why = s.ui.res.Answer(id, cmd.answer)
 	case triageDismiss:
-		s.ui.res.Dismiss(id)
+		why = s.ui.res.Dismiss(id)
 	default:
+		return false
+	}
+	if why != "" {
+		s.ui.log.Info("ask.key_refused", "component", "webui", "item_id", id, "key", key, "reason", why)
 		return false
 	}
 	return true

@@ -40,34 +40,43 @@ func (b *Bridge) Ready(surface string) {
 	}
 }
 
-func (b *Bridge) Answer(id, label string) { b.ui.res.Answer(id, label) }
-func (b *Bridge) Reply(id, text string)   { b.ui.res.Reply(id, text) }
-func (b *Bridge) Defer(id string)         { b.ui.res.Defer(id) }
-func (b *Bridge) Dismiss(id string)       { b.ui.res.Dismiss(id) }
-func (b *Bridge) Undo(id string)          { b.ui.res.Undo(id) }
-func (b *Bridge) Veto(id string)          { b.ui.res.Veto(id) }
-func (b *Bridge) Secret(id, value string) { b.ui.res.Secret(id, value) }
+// The answer path. Every one of these returns "" when it did what was asked and
+// a sentence when it did not, which is the surface's only way to tell an answer
+// that landed from a key that went nowhere (U-02). Before that they returned
+// nothing, so a refusal the daemon had already decided on - and often logged -
+// could not reach the human who had just pressed the key.
+
+func (b *Bridge) Answer(id, label string) string { return b.ui.res.Answer(id, label) }
+func (b *Bridge) Reply(id, text string) string   { return b.ui.res.Reply(id, text) }
+func (b *Bridge) Defer(id string) string         { return b.ui.res.Defer(id) }
+func (b *Bridge) Dismiss(id string) string       { return b.ui.res.Dismiss(id) }
+func (b *Bridge) Undo(id string) string          { return b.ui.res.Undo(id) }
+func (b *Bridge) Veto(id string) string          { return b.ui.res.Veto(id) }
+func (b *Bridge) Secret(id, value string) string { return b.ui.res.Secret(id, value) }
 
 // OpenStacked opens one row of a stack card (FR30). The stack ID travels with
 // it so the daemon can refuse an ID the human is not actually looking at - the
 // surface may only reach items in the card on screen, which is the same keyhole
 // rule as the rest of this file.
-func (b *Bridge) OpenStacked(stackID, itemID string) { b.ui.res.OpenStacked(stackID, itemID) }
+func (b *Bridge) OpenStacked(stackID, itemID string) string {
+	return b.ui.res.OpenStacked(stackID, itemID)
+}
 
-func (b *Bridge) AnswerForm(id string, values map[string]string) { b.ui.res.AnswerForm(id, values) }
-func (b *Bridge) RunAction(id string, index int)                 { b.ui.res.RunAction(id, index) }
-func (b *Bridge) Review(id string, approved bool, comment string) {
-	b.ui.res.Review(id, approved, comment)
+func (b *Bridge) AnswerForm(id string, values map[string]string) string {
+	return b.ui.res.AnswerForm(id, values)
+}
+func (b *Bridge) RunAction(id string, index int) string { return b.ui.res.RunAction(id, index) }
+func (b *Bridge) Review(id string, approved bool, comment string) string {
+	return b.ui.res.Review(id, approved, comment)
 }
 
 // Confirm keeps the yes/no vocabulary out of the frontend: the daemon expects
 // the label, the surface should not have to know which string that is.
-func (b *Bridge) Confirm(id string, yes bool) {
+func (b *Bridge) Confirm(id string, yes bool) string {
 	if yes {
-		b.ui.res.Answer(id, "yes")
-		return
+		return b.ui.res.Answer(id, "yes")
 	}
-	b.ui.res.Answer(id, "no")
+	return b.ui.res.Answer(id, "no")
 }
 
 // Fit is how a frameless card gets the right height. Guessing from the item
@@ -257,11 +266,16 @@ func (b *Bridge) Inbox() wireInbox { return b.ui.inbox.snapshot() }
 // nothing.
 func (b *Bridge) ItemDetail(id string) wireDetail { return b.ui.inbox.detail(id) }
 
-// Promote summons a pending item's card (a row click, FR10).
-func (b *Bridge) Promote(id string) {
-	if src := b.ui.source(); src != nil {
-		src.Promote(id)
+// Promote summons a pending item's card (a row click, FR10). It answers like
+// the rest of the answer path: "" when the card is on its way, a sentence when
+// the row led nowhere. That case is R-01's - an item pending in the store and
+// held nowhere in memory - and it is the reason U-02 exists.
+func (b *Bridge) Promote(id string) string {
+	src := b.ui.source()
+	if src == nil {
+		return "agentbox is still starting up."
 	}
+	return src.Promote(id)
 }
 
 // Triage applies one keystroke to one pending item (FR34). The surface sends the

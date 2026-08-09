@@ -192,6 +192,9 @@ type fakeSource struct {
 	muted    []string
 	promoted []string
 	err      error
+	// refuse is what Promote hands back (U-02): a sentence means the row led
+	// nowhere, which is R-01's shape seen from the inbox.
+	refuse string
 }
 
 func (f *fakeSource) RecentItems(int) ([]store.StoredItem, error) { return f.items, f.err }
@@ -204,7 +207,10 @@ func (f *fakeSource) RecentBySession(key string, _ int) ([]store.StoredItem, err
 	}
 	return out, f.err
 }
-func (f *fakeSource) Promote(id string)                    { f.promoted = append(f.promoted, id) }
+func (f *fakeSource) Promote(id string) string {
+	f.promoted = append(f.promoted, id)
+	return f.refuse
+}
 func (f *fakeSource) MutedAgents() []string                { return f.muted }
 func (f *fakeSource) Stats(time.Time) (proto.Stats, error) { return proto.Stats{}, nil }
 
@@ -214,25 +220,36 @@ type fakeResolver struct {
 	dismiss []string
 	opened  [][2]string // FR30: (stack id, item id) pairs the surface asked to open
 	events  []proto.ArtifactEvent
+	// refuse is what every answer-path method hands back (U-02): empty for the
+	// normal case, a sentence to make the daemon say it did nothing.
+	refuse string
 }
 
-func (f *fakeResolver) Answer(id, label string) {
+func (f *fakeResolver) Answer(id, label string) string {
 	if f.answers == nil {
 		f.answers = map[string]string{}
 	}
 	f.answers[id] = label
+	return f.refuse
 }
-func (f *fakeResolver) Reply(string, string)                 {}
-func (f *fakeResolver) AnswerForm(string, map[string]string) {}
-func (f *fakeResolver) Dismiss(id string)                    { f.dismiss = append(f.dismiss, id) }
-func (f *fakeResolver) Defer(string)                         {}
-func (f *fakeResolver) Undo(string)                          {}
-func (f *fakeResolver) Veto(id string)                       { f.vetoed = append(f.vetoed, id) }
-func (f *fakeResolver) Secret(string, string)                {}
-func (f *fakeResolver) RunAction(string, int)                {}
-func (f *fakeResolver) Review(string, bool, string)          {}
-func (f *fakeResolver) OpenStacked(stackID, itemID string) {
+func (f *fakeResolver) Reply(string, string) string                 { return f.refuse }
+func (f *fakeResolver) AnswerForm(string, map[string]string) string { return f.refuse }
+func (f *fakeResolver) Dismiss(id string) string {
+	f.dismiss = append(f.dismiss, id)
+	return f.refuse
+}
+func (f *fakeResolver) Defer(string) string { return f.refuse }
+func (f *fakeResolver) Undo(string) string  { return f.refuse }
+func (f *fakeResolver) Veto(id string) string {
+	f.vetoed = append(f.vetoed, id)
+	return f.refuse
+}
+func (f *fakeResolver) Secret(string, string) string       { return f.refuse }
+func (f *fakeResolver) RunAction(string, int) string       { return f.refuse }
+func (f *fakeResolver) Review(string, bool, string) string { return f.refuse }
+func (f *fakeResolver) OpenStacked(stackID, itemID string) string {
 	f.opened = append(f.opened, [2]string{stackID, itemID})
+	return f.refuse
 }
 func (f *fakeResolver) ArtifactEvent(ev proto.ArtifactEvent) { f.events = append(f.events, ev) }
 

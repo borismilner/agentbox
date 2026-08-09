@@ -23,7 +23,10 @@ type Source interface {
 	// quiet agent's last item can be a hundred items down, and a filter over the
 	// recent hundred would show its row as having raised nothing.
 	RecentBySession(key string, limit int) ([]store.StoredItem, error)
-	Promote(id string)
+	// Promote puts a pending item back on screen. Like the Resolver's methods it
+	// answers "" or a sentence saying why not (U-02): an inbox row can outlive the
+	// item behind it, and a click that led nowhere used to look like one that worked.
+	Promote(id string) string
 	MutedAgents() []string                      // FR47: agents to badge "(muted)"
 	Stats(since time.Time) (proto.Stats, error) // FR35: the history surface
 }
@@ -593,17 +596,40 @@ func (ib *inbox) act(id, key string) bool {
 		return false
 	}
 
+	// A refusal from the answer path (U-02) reads the same way here as a key that
+	// meant nothing: the keystroke did not land. The sentence goes to the log
+	// rather than to the row, because the row's hint is written in the key's own
+	// vocabulary and this method's answer is a bool by design (FR34) - the surface
+	// is told the key did nothing, and the reason is where a session can find it.
+	refuse := func(why string) bool {
+		if why == "" {
+			return true
+		}
+		ib.ui.log.Info("inbox.triage_refused", "component", "webui", "item_id", it.ID, "key", key, "reason", why)
+		return false
+	}
+
 	cmd := triageFor(it, key)
 	switch cmd.intent {
 	case triageAnswer:
-		ib.ui.res.Answer(it.ID, cmd.answer)
+		if !refuse(ib.ui.res.Answer(it.ID, cmd.answer)) {
+			return false
+		}
 	case triageVeto:
-		ib.ui.res.Veto(it.ID)
+		if !refuse(ib.ui.res.Veto(it.ID)) {
+			return false
+		}
 	case triageDismiss:
-		ib.ui.res.Dismiss(it.ID)
+		if !refuse(ib.ui.res.Dismiss(it.ID)) {
+			return false
+		}
 	case triagePromote:
-		if src := ib.ui.source(); src != nil {
-			src.Promote(it.ID)
+		src := ib.ui.source()
+		if src == nil {
+			return false
+		}
+		if !refuse(src.Promote(it.ID)) {
+			return false
 		}
 	default:
 		return false

@@ -1842,28 +1842,40 @@ func (d *Daemon) resolve(id, toState string, out store.Outcome) bool {
 
 // Answer and the methods below are the UI's side of the contract. User
 // answers pass through the undo grace; dismissals do not.
+//
+// Every one of them answers "" when it did the thing and a sentence when it did
+// not (U-02). They used to return nothing, which meant a refusal the daemon had
+// already decided on could not reach the human who had just pressed the key: a
+// promote for an item held nowhere, an undo after the grace closed and a defer
+// with an empty queue all looked exactly like a working keystroke. The sentence
+// is written for a card to show, so it says what happened rather than naming a
+// method.
 
-func (d *Daemon) Answer(id, label string) {
-	d.maybeGrace(id, store.Outcome{Answer: label}, "Answered: "+label)
+// gone is what every one of these says when the store has no pending row left:
+// the item ended somewhere else while this window was looking at it.
+const gone = "that item has already ended, so there was nothing left to answer."
+
+func (d *Daemon) Answer(id, label string) string {
+	return d.maybeGrace(id, store.Outcome{Answer: label}, "Answered: "+label)
 }
 
-func (d *Daemon) Reply(id, text string) {
-	d.maybeGrace(id, store.Outcome{Reply: text}, "Reply sent")
+func (d *Daemon) Reply(id, text string) string {
+	return d.maybeGrace(id, store.Outcome{Reply: text}, "Reply sent")
 }
 
-func (d *Daemon) AnswerForm(id string, values map[string]string) {
-	d.maybeGrace(id, store.Outcome{Values: values}, "Form submitted")
+func (d *Daemon) AnswerForm(id string, values map[string]string) string {
+	return d.maybeGrace(id, store.Outcome{Values: values}, "Form submitted")
 }
 
 // Review delivers a diff-review verdict (FR33): approve or request changes,
 // with an optional comment. Like any answer it passes through the undo
 // grace; the comment rides in Reply, the verdict in Answer and Approved.
-func (d *Daemon) Review(id string, approved bool, comment string) {
+func (d *Daemon) Review(id string, approved bool, comment string) string {
 	word, text := "rejected", "Changes requested"
 	if approved {
 		word, text = "approved", "Approved"
 	}
-	d.maybeGrace(id, store.Outcome{Approved: approved, Answer: word, Reply: comment}, text)
+	return d.maybeGrace(id, store.Outcome{Approved: approved, Answer: word, Reply: comment}, text)
 }
 
 // Dismiss retires an item. Dismissing a STACK card (FR30) also retires the
@@ -1873,9 +1885,27 @@ func (d *Daemon) Review(id string, approved bool, comment string) {
 // an agent parked on a question is not answered by somebody closing a summary,
 // so those stay pending and are resolved from the inbox, which is the triage
 // route FR30 named.
-func (d *Daemon) Dismiss(id string) {
+func (d *Daemon) Dismiss(id string) string {
 	d.sweepStack(id)
-	d.resolve(id, store.StateDismissed, store.Outcome{})
+	if !d.resolve(id, store.StateDismissed, store.Outcome{}) {
+		// Also the grace guard: while an answer sits in its undo window nothing
+		// but the finalizer may resolve that item, so a dismiss aimed at it does
+		// nothing and the human deserves to know which of the two it was.
+		if d.gracedFor(id) {
+			return "that card is showing an answer you can still undo, so it cannot be dismissed yet."
+		}
+		return "that item had already ended, so there was nothing to dismiss."
+	}
+	return ""
+}
+
+// gracedFor reports whether id is the item currently sitting in its undo grace.
+// The refusal sentences need it: resolve says only that it did nothing, and the
+// two reasons it can say that read very differently to somebody at the keyboard.
+func (d *Daemon) gracedFor(id string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.graced != nil && d.graced.id == id
 }
 
 // DismissItems retires pending items from a door that is not the mouse (FR89).
@@ -1978,14 +2008,25 @@ func (d *Daemon) DismissItems(p proto.DismissParams) (proto.DismissResult, *prot
 // Veto stops an act-unless-stopped item (FR22); the caller learns it was
 // vetoed. No undo grace: the countdown already gave the deliberation
 // window, and a stop must take effect at once.
-func (d *Daemon) Veto(id string) { d.resolve(id, store.StateAnswered, store.Outcome{Vetoed: true}) }
+func (d *Daemon) Veto(id string) string {
+	if !d.resolve(id, store.StateAnswered, store.Outcome{Vetoed: true}) {
+		return "too late to stop it: that item has already ended."
+	}
+	return ""
+}
 
 // Secret delivers a masked value (FR23). No undo grace: the value must not
 // linger on screen, and the answered strip has nothing safe to show. The
 // value rides the in-memory Outcome only; finishSecret routes it to disk or
 // stdout, and it is never logged or stored.
-func (d *Daemon) Secret(id, value string) {
-	d.resolve(id, store.StateAnswered, store.Outcome{Secret: value})
+func (d *Daemon) Secret(id, value string) string {
+	if !d.resolve(id, store.StateAnswered, store.Outcome{Secret: value}) {
+		// Worth saying plainly rather than as a generic refusal: the value the
+		// human just typed went nowhere, and they are the only one who can tell
+		// whoever asked for it.
+		return "that request has already ended, so the value was not delivered."
+	}
+	return ""
 }
 
 // finishSecret routes a delivered secret value (FR23): to its 0600 file when
@@ -2033,16 +2074,18 @@ func writeSecretFile(path, value string) error {
 // (FR28). Only the displayed card can be graced; anything else delivers
 // directly. A second answer while graced is dropped: the strip is showing
 // and undo is the only live control.
-func (d *Daemon) maybeGrace(id string, out store.Outcome, text string) {
+func (d *Daemon) maybeGrace(id string, out store.Outcome, text string) string {
 	d.mu.Lock()
 	if d.graced != nil {
 		d.mu.Unlock()
-		return
+		return "an answer is already on its way; undo it first if you want to send a different one."
 	}
 	if d.cfg.UndoGrace <= 0 || d.current == nil || d.current.ID != id {
 		d.mu.Unlock()
-		d.resolve(id, store.StateAnswered, out)
-		return
+		if !d.resolve(id, store.StateAnswered, out) {
+			return gone
+		}
+		return ""
 	}
 	grace := d.cfg.UndoGrace
 	g := &graced{id: id, out: out, text: text, until: time.Now().Add(grace)}
@@ -2058,6 +2101,7 @@ func (d *Daemon) maybeGrace(id string, out store.Outcome, text string) {
 	// item.undone.
 	d.log.Info("item.grace_started", "component", "daemon", "item_id", id, "grace_ms", grace.Milliseconds())
 	d.ui.Present(view)
+	return ""
 }
 
 func (d *Daemon) finalizeGrace(g *graced) {
@@ -2073,11 +2117,11 @@ func (d *Daemon) finalizeGrace(g *graced) {
 
 // Undo retracts a graced answer; the card returns untouched and the caller
 // never learns it happened (FR28).
-func (d *Daemon) Undo(id string) {
+func (d *Daemon) Undo(id string) string {
 	d.mu.Lock()
 	if d.graced == nil || d.graced.id != id {
 		d.mu.Unlock()
-		return
+		return "too late to undo: that answer has already gone to the agent."
 	}
 	d.graced.timer.Stop()
 	d.graced = nil
@@ -2085,6 +2129,7 @@ func (d *Daemon) Undo(id string) {
 	d.mu.Unlock()
 	d.log.Info("item.undone", "component", "daemon", "item_id", id)
 	d.ui.Present(view)
+	return ""
 }
 
 // RecentItems feeds the inbox window (FR10).
@@ -2108,16 +2153,16 @@ func (d *Daemon) Stats(since time.Time) (proto.Stats, error) {
 // the one route to it off the screen. The inbox row was then the last door left and
 // it led to a queue the item had never been in, so a question with an agent still
 // parked on it could not be answered from anywhere at all. Reproduced 2026-08-07.
-func (d *Daemon) Promote(id string) {
+func (d *Daemon) Promote(id string) string {
 	d.mu.Lock()
 	if d.promoteHeldLocked(id) {
 		view := d.viewLocked()
 		d.mu.Unlock()
 		d.ui.Present(view)
-		return
+		return ""
 	}
 	d.mu.Unlock()
-	d.promoteStored(id)
+	return d.promoteStored(id)
 }
 
 // promoteHeldLocked puts an item agentbox is already holding on screen and reports
@@ -2158,17 +2203,17 @@ func (d *Daemon) displaceLocked(it *proto.Item) {
 // held nowhere in memory. The store read happens with the lock down, so the item
 // can arrive in memory underneath it; that is why it looks again afterwards rather
 // than assuming.
-func (d *Daemon) promoteStored(id string) {
+func (d *Daemon) promoteStored(id string) string {
 	stored, err := d.st.Item(id)
 	if err != nil || stored == nil {
 		d.log.Warn("item.promote_rejected", "component", "daemon", "item_id", id, "reason", "not in the store")
-		return
+		return "that item is gone: agentbox is not holding it and the store has no record of it."
 	}
 	if stored.State != store.StatePending {
 		// Answered from somewhere else, expired, or dismissed while the row sat on
 		// screen. Re-presenting it would ask a question that already has an answer.
 		d.log.Info("item.promote_skipped", "component", "daemon", "item_id", id, "state", stored.State)
-		return
+		return "that item was already " + stored.State + ", so there is no card to open."
 	}
 	it := stored.Item
 
@@ -2177,22 +2222,29 @@ func (d *Daemon) promoteStored(id string) {
 		view := d.viewLocked()
 		d.mu.Unlock()
 		d.ui.Present(view)
-		return
+		return ""
 	}
 	d.displaceLocked(&it)
 	view := d.viewLocked()
 	d.mu.Unlock()
 	d.log.Info("item.promoted_from_store", "component", "daemon", "item_id", id, "kind", it.Kind)
 	d.ui.Present(view)
+	return ""
 }
 
 // Defer sends the current card to the back of the queue; the caller keeps
 // waiting (Esc, 03-ui-ux.md).
-func (d *Daemon) Defer(id string) {
+func (d *Daemon) Defer(id string) string {
 	d.mu.Lock()
-	if d.current == nil || d.current.ID != id || len(d.queue) == 0 {
+	if d.current == nil || d.current.ID != id {
 		d.mu.Unlock()
-		return
+		return "that card is no longer the one on screen."
+	}
+	if len(d.queue) == 0 {
+		d.mu.Unlock()
+		// Not a failure so much as a no-op with nowhere to go, and it is the one
+		// people hit: Esc on the last card looks broken because the card stays.
+		return "nothing else is waiting, so there is nothing to move this behind."
 	}
 	it := d.current
 	d.stopTimerLocked(id)
@@ -2201,6 +2253,7 @@ func (d *Daemon) Defer(id string) {
 	view := d.viewLocked()
 	d.mu.Unlock()
 	d.ui.Present(view)
+	return ""
 }
 
 // actionOutputCap bounds how much exec output a failure toast quotes; the
@@ -2211,23 +2264,27 @@ const actionOutputCap = 400
 // (FR32). Only the on-screen item's buttons are live, so a queued card cannot
 // be triggered blind. The exec runs off the lock and off the UI goroutine so
 // a slow command never freezes the card; the click is fire-and-forget.
-func (d *Daemon) RunAction(id string, index int) {
+func (d *Daemon) RunAction(id string, index int) string {
 	d.mu.Lock()
 	if d.cfg.ActionsDisabled {
 		d.mu.Unlock()
 		d.log.Warn("action.rejected", "component", "daemon", "item_id", id, "reason", "actions disabled")
-		return
+		return "action buttons are switched off in your config (actions.enabled)."
 	}
 	it := d.current
 	if it == nil || it.ID != id || index < 0 || index >= len(it.Actions) {
 		d.mu.Unlock()
-		return
+		return "that button belongs to an item that is no longer on screen."
 	}
 	act := it.Actions[index]
 	cwd := it.Cwd
 	agent := it.Identity.Agent
 	d.mu.Unlock()
+	// Only the spawn is reported here. What the command then does is the exec's
+	// own business and it raises its own error card, so "" means the command was
+	// started rather than that it succeeded.
 	go d.safely("action.exec", func() { d.execAction(id, agent, cwd, act) })()
+	return ""
 }
 
 // execAction runs one action command via sh -c, in the item's cwd, as the

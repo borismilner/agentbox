@@ -29,21 +29,29 @@ import (
 
 // Resolver is the daemon's answer-taking side, unchanged from internal/ui so
 // the same *daemon.Daemon satisfies both.
+//
+// Every method answers the same way: an empty string means it happened, and
+// anything else is a sentence for the surface to show the human. That shape is
+// the whole of U-02. These methods used to return nothing at all, so a daemon
+// that knew perfectly well it had done nothing - a promote for an item held
+// nowhere, an undo after the grace had closed - had no way to say so, and the
+// surface could only leave the key looking like it had worked. The same
+// convention is already in use by the assignment editor and BreakLock.
 type Resolver interface {
-	Answer(id, label string)
-	Reply(id, text string)
-	AnswerForm(id string, values map[string]string)
-	Dismiss(id string)
-	Defer(id string)
-	Undo(id string)
-	Veto(id string)
-	Secret(id, value string)
-	RunAction(id string, index int)
-	Review(id string, approved bool, c string)
+	Answer(id, label string) string
+	Reply(id, text string) string
+	AnswerForm(id string, values map[string]string) string
+	Dismiss(id string) string
+	Defer(id string) string
+	Undo(id string) string
+	Veto(id string) string
+	Secret(id, value string) string
+	RunAction(id string, index int) string
+	Review(id string, approved bool, c string) string
 	// OpenStacked lifts one collapsed item out of a stack card and onto the
 	// screen (FR30). It is how a question caught in a flood gets answered: the
 	// stack card shows the row, this makes it a real card again.
-	OpenStacked(stackID, itemID string)
+	OpenStacked(stackID, itemID string) string
 	// ArtifactEvent is the human acting inside an artifact rather than on a card
 	// (M10): a click or a slider, on its way to whichever agent is waiting for it.
 	ArtifactEvent(ev proto.ArtifactEvent)

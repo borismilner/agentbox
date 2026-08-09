@@ -34,17 +34,33 @@ func (d *demoResolver) log(what string, args ...any) {
 	}
 }
 
-func (d *demoResolver) Answer(id, label string)                   { d.log("answer", id, label) }
-func (d *demoResolver) Reply(id, text string)                     { d.log("reply", id, text) }
-func (d *demoResolver) AnswerForm(id string, v map[string]string) { d.log("form", id, v) }
-func (d *demoResolver) Dismiss(id string)                         { d.log("dismiss", id) }
-func (d *demoResolver) Defer(id string)                           { d.log("defer", id) }
-func (d *demoResolver) Undo(id string)                            { d.log("undo", id) }
-func (d *demoResolver) Veto(id string)                            { d.log("veto", id) }
-func (d *demoResolver) Secret(id, value string)                   { d.log("secret", id, "***") }
-func (d *demoResolver) RunAction(id string, index int)            { d.log("action", id, index) }
-func (d *demoResolver) Review(id string, ok bool, comment string) { d.log("review", id, ok, comment) }
-func (d *demoResolver) OpenStacked(stackID, itemID string)        { d.log("open-stacked", stackID, itemID) }
+// Every demo answer succeeds: there is no queue behind it to refuse anything,
+// and a demo that invented refusals would be showing a failure path the surfaces
+// are meant to be judged without.
+
+func (d *demoResolver) Answer(id, label string) string { d.log("answer", id, label); return "" }
+func (d *demoResolver) Reply(id, text string) string   { d.log("reply", id, text); return "" }
+func (d *demoResolver) AnswerForm(id string, v map[string]string) string {
+	d.log("form", id, v)
+	return ""
+}
+func (d *demoResolver) Dismiss(id string) string       { d.log("dismiss", id); return "" }
+func (d *demoResolver) Defer(id string) string         { d.log("defer", id); return "" }
+func (d *demoResolver) Undo(id string) string          { d.log("undo", id); return "" }
+func (d *demoResolver) Veto(id string) string          { d.log("veto", id); return "" }
+func (d *demoResolver) Secret(id, value string) string { d.log("secret", id, "***"); return "" }
+func (d *demoResolver) RunAction(id string, index int) string {
+	d.log("action", id, index)
+	return ""
+}
+func (d *demoResolver) Review(id string, ok bool, comment string) string {
+	d.log("review", id, ok, comment)
+	return ""
+}
+func (d *demoResolver) OpenStacked(stackID, itemID string) string {
+	d.log("open-stacked", stackID, itemID)
+	return ""
+}
 
 // The artifact channel with no daemon behind it: the demo prints what an agent
 // would have been handed, which is enough to judge that the channel works (M10).
@@ -58,8 +74,8 @@ func (d *demoResolver) ArtifactEvent(ev proto.ArtifactEvent) {
 // no demo branch inside internal/webui.
 type demoSource struct{}
 
-func (demoSource) Promote(id string)     { fmt.Printf("  ← promote %s\n", id) }
-func (demoSource) MutedAgents() []string { return []string{"codex"} }
+func (demoSource) Promote(id string) string { fmt.Printf("  ← promote %s\n", id); return "" }
+func (demoSource) MutedAgents() []string    { return []string{"codex"} }
 
 // The demo has no store to narrow, and the Agents fixture carries its own items
 // inline, so this answers nothing rather than the whole canned list under every

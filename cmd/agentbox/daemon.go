@@ -53,70 +53,86 @@ func (l *lateResolver) set(d *daemon.Daemon) {
 	l.d = d
 }
 
-func (l *lateResolver) Answer(id, label string) {
+// notYet is what every method below answers before the daemon exists. It used
+// to be silence, which is the worst version of U-02: a window that opened during
+// startup swallowed the keystroke and looked exactly like one that worked.
+const notYet = "agentbox is still starting up. Try that again in a moment."
+
+func (l *lateResolver) Answer(id, label string) string {
 	if d := l.get(); d != nil {
-		d.Answer(id, label)
+		return d.Answer(id, label)
 	}
+	return notYet
 }
 
-func (l *lateResolver) Reply(id, text string) {
+func (l *lateResolver) Reply(id, text string) string {
 	if d := l.get(); d != nil {
-		d.Reply(id, text)
+		return d.Reply(id, text)
 	}
+	return notYet
 }
 
-func (l *lateResolver) OpenStacked(stackID, itemID string) {
+func (l *lateResolver) OpenStacked(stackID, itemID string) string {
 	if d := l.get(); d != nil {
-		d.OpenStacked(stackID, itemID)
+		return d.OpenStacked(stackID, itemID)
 	}
+	return notYet
 }
 
-func (l *lateResolver) Dismiss(id string) {
+func (l *lateResolver) Dismiss(id string) string {
 	if d := l.get(); d != nil {
-		d.Dismiss(id)
+		return d.Dismiss(id)
 	}
+	return notYet
 }
 
-func (l *lateResolver) Veto(id string) {
+func (l *lateResolver) Veto(id string) string {
 	if d := l.get(); d != nil {
-		d.Veto(id)
+		return d.Veto(id)
 	}
+	return notYet
 }
 
-func (l *lateResolver) Secret(id, value string) {
+func (l *lateResolver) Secret(id, value string) string {
 	if d := l.get(); d != nil {
-		d.Secret(id, value)
+		return d.Secret(id, value)
 	}
+	return notYet
 }
 
-func (l *lateResolver) Defer(id string) {
+func (l *lateResolver) Defer(id string) string {
 	if d := l.get(); d != nil {
-		d.Defer(id)
+		return d.Defer(id)
 	}
+	return notYet
 }
 
-func (l *lateResolver) Undo(id string) {
+func (l *lateResolver) Undo(id string) string {
 	if d := l.get(); d != nil {
-		d.Undo(id)
+		return d.Undo(id)
 	}
+	return notYet
 }
 
-func (l *lateResolver) AnswerForm(id string, values map[string]string) {
+func (l *lateResolver) AnswerForm(id string, values map[string]string) string {
 	if d := l.get(); d != nil {
-		d.AnswerForm(id, values)
+		return d.AnswerForm(id, values)
 	}
+	return notYet
 }
 
-func (l *lateResolver) RunAction(id string, index int) {
+func (l *lateResolver) RunAction(id string, index int) string {
 	if d := l.get(); d != nil {
-		d.RunAction(id, index)
+		return d.RunAction(id, index)
 	}
+	return notYet
 }
 
-func (l *lateResolver) Review(id string, approved bool, comment string) {
+func (l *lateResolver) Review(id string, approved bool, comment string) string {
 	if d := l.get(); d != nil {
-		d.Review(id, approved, comment)
+		return d.Review(id, approved, comment)
 	}
+	return notYet
 }
 
 func (l *lateResolver) ArtifactEvent(ev proto.ArtifactEvent) {
