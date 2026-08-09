@@ -2961,6 +2961,27 @@ that trade: nothing may harm or drop what a human chose to hear.
 
 ---
 
+## FR98 [field] Amend a walkthrough instead of writing a new one
+
+**Session.** 2026-08-08, PR 6634 backfill work. Boris: *"add that I want it to
+support ammending walkthroughs - it doesn't make any sense to write a new one
+for every small change."*
+
+**What AgentBox cannot do.** `amend_walkthrough` exists as a tool but refuses in
+this build: its own description says revised content means creating a fresh
+walkthrough. The case that hit it: walkthrough `w72aee73c0401` covers PR 6634 at
+16 steps, complete coverage, no marks yet; the diff then grew by one bounded
+change (a deadlock retry plus three file moves). Amending would touch four
+steps' citations, rewrite one doubt, and add one step. Recreating means a new id,
+a full re-verify of every untouched step's citations, and the old walkthrough
+lingering beside the new one - all cost, no signal.
+
+**Shape it wants.** Step-scoped operations against a rev: update a step's
+citations and text, add a step into a domain, retire a step, re-pin the base and
+tip. Marks and comments survive on untouched steps; a mark on an amended step is
+flagged stale rather than dropped. `expect_rev` already exists on the tool, so
+the concurrency story is there - what is missing is the operations themselves.
+
 ## Mechanics discovered
 
 Verified facts from field sessions, kept so a later session does not re-derive
