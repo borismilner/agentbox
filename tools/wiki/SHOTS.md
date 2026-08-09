@@ -3,6 +3,15 @@
 `tools/wiki/shots.py` stages and captures the twelve shots specified in
 `docs/wiki/DESIGN.md` section 5. This file is how a person runs it.
 
+> **Read `DRAW.md` first: photographing is no longer the default** (FR99, decided
+> 2026-08-09). `tools/wiki/draw.py` renders the same frames from fixtures with no
+> desktop, no daemon and no XTEST, and the frames were always staged rather than
+> captured - so the camera was buying no evidence and costing a daemon swap. This
+> script stays for the frames whose point is that they are real: terminal output,
+> and anything added to settle a doubt about how the product actually looks.
+> `card.png` is drawn as of 2026-08-09; the other twelve here are still
+> photographs from the first sitting.
+
 The procedure lives here rather than in DESIGN.md because the two answer
 different questions and change at different speeds. DESIGN.md says what must be
 on screen and why, and it is the thing a page author reads. This is an operations

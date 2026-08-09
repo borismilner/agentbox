@@ -2986,6 +2986,30 @@ the concurrency story is there - what is missing is the operations themselves.
 
 ## FR99 [field] The wiki's pictures should be drawn, not photographed
 
+> **Harness built and the first frame drawn on 2026-08-09.**
+> `tools/wiki/draw.py` plus `frontend/draw/` render the shipped surfaces with the
+> daemon door aliased to a fixture; `docs/wiki/img/card.png` is now a drawing and
+> is the first of the thirteen. Runbook in `tools/wiki/DRAW.md`; `SHOTS.md` now
+> opens by saying photographing is no longer the default.
+>
+> Three things came out of building it that the request did not anticipate.
+> **The height is the product's own**: every frameless surface already hands Go
+> its measured height through `bridge.fit()`, so the harness reads that number
+> back and photographs exactly it - a drawn frame is as tall as the window a real
+> run would open, rather than as tall as a viewport somebody guessed.
+> **A redraw is byte-identical**, because the clock is frozen before the bundle
+> loads; a diff in `docs/wiki/img/` therefore means the product changed, which is
+> what makes these reviewable in a way a photograph never was.
+> **The drawing is more faithful to the specification than the photograph it
+> replaced**: DESIGN.md's S1 says "out of frame: everything" and asks for
+> `expires in 1:57`, and the photographed `card.png` had a code editor visible
+> behind it and read `1:40`. That is the argument for FR99 made by its own first
+> frame - the camera could not hit the spec, and the drawing does it by
+> construction.
+>
+> Twelve frames remain photographs. Each is a `frames.js` entry and the mechanism
+> is done; the app-shell frames need their surface's mount-time calls filled in.
+
 **Session.** 2026-08-09, working the backlog. Boris, after the first sitting had
 been run and published: *"I want you to generate 'screenshots' for the wiki pages
 and not real screenshots, because that looks much better and much easier to

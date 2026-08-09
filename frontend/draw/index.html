@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:" />
+    <title>agentbox · drawn frame</title>
+    <script>
+      // Freeze the clock BEFORE the bundle loads, because lib/clock.svelte.js
+      // reads Date.now() at module scope and a countdown computed from the real
+      // clock makes every re-draw a different picture. frames.js computes its
+      // deadlines from the same instant, so "expires in 1:57" is 1:57 forever.
+      (function () {
+        var NOW = Date.UTC(2026, 6, 30, 10, 12, 0);
+        var RealDate = Date;
+        function FrozenDate(...args) {
+          return args.length ? new RealDate(...args) : new RealDate(NOW);
+        }
+        FrozenDate.prototype = RealDate.prototype;
+        FrozenDate.now = function () {
+          return NOW;
+        };
+        FrozenDate.parse = RealDate.parse;
+        FrozenDate.UTC = RealDate.UTC;
+        window.Date = FrozenDate;
+      })();
+    </script>
+    <style>
+      /* The desktop the surface sits on. A frameless card's shadow is part of how
+         it reads, and a screenshot cropped flush to the window loses it - so the
+         page gives it somewhere to fall. --ground is set per frame by draw.py.
+
+         Deliberately NOT a token: this is wallpaper, not product. The surface
+         inside is styled entirely by the shipped app.css, and nothing in this
+         file may reach into it. */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+      }
+      body {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: var(--ground, 24px);
+        /* A near-black desktop rather than pure black: pure black hides the
+           shadow it exists to show. */
+        background: #16181d;
+      }
+      #root {
+        /* The surfaces set their own width; this keeps the flex parent from
+           stretching them past what Go would have opened. */
+        flex: 0 0 auto;
+        max-width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
