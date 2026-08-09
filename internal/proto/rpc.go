@@ -845,6 +845,7 @@ type Conn struct {
 	mu      sync.Mutex
 	pending map[int64]chan response
 	readErr error
+	connErr error // a refusal the peer sent with no id, preferred over a bare EOF
 	reading bool
 	rider   func(method string, params json.RawMessage) string
 }
@@ -946,12 +947,34 @@ func (c *Conn) CallRidden(ctx context.Context, method string, params, result any
 	}
 }
 
+// MaxLineBytes is the wire cap on one JSON-RPC line, in both directions. It was
+// the ONLY bound on an item's size until R-04 put caps in Item.Validate, and it
+// is deliberately the outer one: Validate refuses with a readable message naming
+// the field, and this is what catches anything that never went through it.
+//
+// Raising it is the wrong fix for a payload that does not fit. That moves the
+// cliff and leaves the same silence at the new edge.
+const MaxLineBytes = 4 * 1024 * 1024
+
 func (c *Conn) readLoop() {
 	sc := bufio.NewScanner(c.rwc)
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	sc.Buffer(make([]byte, 0, 64*1024), MaxLineBytes)
 	for sc.Scan() {
 		var resp response
-		if err := json.Unmarshal(sc.Bytes(), &resp); err != nil || resp.ID == nil {
+		if err := json.Unmarshal(sc.Bytes(), &resp); err != nil {
+			continue
+		}
+		if resp.ID == nil {
+			// A connection-level refusal (R-04). The peer could not read the
+			// request at all, so it has no id to answer on - but it said WHY, and
+			// that sentence is worth more than the EOF that follows it. Every
+			// pending call on this connection is about to fail; this is what they
+			// report instead of "connection closed: EOF".
+			if resp.Error != nil {
+				c.mu.Lock()
+				c.connErr = errors.New(resp.Error.Message)
+				c.mu.Unlock()
+			}
 			continue
 		}
 		c.mu.Lock()
@@ -966,6 +989,9 @@ func (c *Conn) readLoop() {
 		err = io.EOF
 	}
 	c.mu.Lock()
+	if c.connErr != nil {
+		err = c.connErr
+	}
 	c.readErr = err
 	for id, ch := range c.pending {
 		close(ch)
@@ -994,7 +1020,7 @@ func (c *Conn) Serve(ctx context.Context, h Handler) error {
 	defer cancel()
 
 	sc := bufio.NewScanner(c.rwc)
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	sc.Buffer(make([]byte, 0, 64*1024), MaxLineBytes)
 	for sc.Scan() {
 		line := make([]byte, len(sc.Bytes()))
 		copy(line, sc.Bytes())
@@ -1044,8 +1070,23 @@ func (c *Conn) Serve(ctx context.Context, h Handler) error {
 			_ = c.send(resp)
 		}(req)
 	}
-	if err := sc.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-		return err
+	if err := sc.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			// R-04. The line was never parsed, so there is no id to answer on, and
+			// the connection is about to go. Saying so first is the whole
+			// difference between a refusal and a silence: what the agent used to
+			// get was "connection closed during agentbox.v1.ask: EOF", which named
+			// neither the size nor the field, and nothing was stored, so there was
+			// not even a history row to find afterwards.
+			_ = c.send(response{JSONRPC: "2.0", Error: &RPCError{
+				Code: CodeInvalidRequest,
+				Message: fmt.Sprintf("that request was over the %d-byte wire limit, so it was never read and nothing was stored; "+
+					"put the large part in a file and show_document it", MaxLineBytes),
+			}})
+		}
+		if !errors.Is(err, io.ErrClosedPipe) {
+			return err
+		}
 	}
 	return nil
 }

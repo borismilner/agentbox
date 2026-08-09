@@ -248,6 +248,27 @@ type DayCount struct {
 
 const MaxOptions = 9 // options map to the 1-9 number row
 
+// The size caps on what an agent may put in an item (R-04).
+//
+// Until these existed the only bound in the path was the wire line itself
+// (rpc.go's 4 MB scanner limit). Passing it did not produce a refusal: the
+// daemon's scanner returned ErrTooLong, Serve returned, and the connection
+// closed with NO response written - so the agent got "connection closed during
+// agentbox.v1.ask: EOF", naming neither the size nor the field at fault, and
+// nothing was stored, so there was not even a history row to find afterwards.
+//
+// Sized so that a maximal item clears the wire cap with room to spare, the way
+// internal/walkthrough/spec.go sizes its own: 2 MB of diff plus 256 kB of body
+// plus the rest of the envelope is comfortably under 4 MB. The wrong fix is
+// raising the scanner limit, which moves the cliff and leaves the same silence
+// at the new edge.
+const (
+	MaxTitleBytes = 4 << 10   // one line on a card; 4 kB is already absurd for it
+	MaxBodyBytes  = 256 << 10 // markdown prose, rendered into a window
+	MaxDiffBytes  = 2 << 20   // the same ceiling walkthrough.MaxDiffBytes uses
+	MaxSpeakBytes = 4 << 10   // a sentence to read out loud
+)
+
 func (it *Item) Validate() error {
 	switch it.Kind {
 	case KindNotify, KindText, KindConfirm:
@@ -320,6 +341,25 @@ func (it *Item) Validate() error {
 	}
 	if it.Title == "" {
 		return errors.New("title is required")
+	}
+	// R-04. Named field, named limit, named actual size: the failure this
+	// replaces told the agent none of the three, and an agent that cannot see
+	// which field was too big cannot shorten it.
+	for _, cap := range []struct {
+		field string
+		val   string
+		max   int
+	}{
+		{"title", it.Title, MaxTitleBytes},
+		{"body", it.Body, MaxBodyBytes},
+		{"diff", it.Diff, MaxDiffBytes},
+		{"speak", it.Speak, MaxSpeakBytes},
+	} {
+		if len(cap.val) > cap.max {
+			return fmt.Errorf("%s is %d bytes, over the %d-byte limit: "+
+				"put the long version in a file and show_document it, or trim it",
+				cap.field, len(cap.val), cap.max)
+		}
 	}
 	if it.Identity.Agent == "" {
 		return errors.New("identity.agent is required")

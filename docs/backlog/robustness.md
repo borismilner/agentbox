@@ -174,6 +174,36 @@ the half of this that works.
 
 ### R-04. An item over 4 MB kills the connection with no reply, and takes every other call on it
 
+> **Fixed on 2026-08-09**, in the three places the entry names.
+>
+> `Item.Validate` caps title, body, diff and speak (`MaxTitleBytes`,
+> `MaxBodyBytes`, `MaxDiffBytes`, `MaxSpeakBytes`), sized under the wire line the
+> way `walkthrough/spec.go` sizes its own, and refuses with the field, the limit
+> AND the actual size - an agent that cannot see which field was too big cannot
+> shorten it, which was the whole complaint about the EOF.
+>
+> `Serve` answers `bufio.ErrTooLong` before the connection goes, on a null id
+> because the line was never parsed, and the client's read loop keeps that
+> sentence as the reason its pending calls fail rather than the EOF that follows
+> a moment later. Without that second half the refusal is sent and read by
+> nobody. The 4 MB literal is now `proto.MaxLineBytes` in one place instead of
+> two.
+>
+> **Not** raised, per the entry: that moves the cliff and leaves the same silence
+> at the new edge.
+>
+> `internal/proto/oversize_test.go`: the Validate table at each cap, a maximal
+> item asserted to still fit inside the wire line (or Validate would accept what
+> the connection cannot carry), Serve's refusal read off the wire, and a pending
+> call asserted to report it rather than EOF. All four fail when the caps and the
+> two halves are neutered.
+>
+> One thing learned writing it: the obvious end-to-end test deadlocks. `net.Pipe`
+> is unbuffered, so a 4 MB write blocks until somebody consumes it, and the
+> server stops consuming at exactly the moment under test. The two halves are
+> therefore driven separately, which is also why the client half runs a handler
+> that parks rather than answers.
+
 **How it fails.** `Item.Validate` has no length check on `Title`, `Body` or
 `Diff` (`internal/proto/types.go:251-352`). The only bound in the path is the
 wire line: `sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)`
