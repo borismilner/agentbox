@@ -122,6 +122,26 @@ the last view is not the answered strip.
 
 ### R-03. An answer undone after a deadline has passed strands the caller and blinds the caller-gone detector
 
+> **Fixed on 2026-08-09.** The handler's single `select` is a loop, and the two
+> bare `return <-wait, nil` receives are gone. When the expiry fires and bounces
+> off the undo grace, `rearmExpiry` gives it a fresh window and moves
+> `d.expiries` with it, then the loop continues - so `ctx.Done()` stays live for
+> as long as the call is.
+>
+> **A full window rather than the remainder**, because there is no remainder: the
+> original one elapsed, and the reason the item is still open is that the human
+> reached for it at the last moment. Restarting their clock is the only reading
+> that serves both sides, and it is the alternative to the fix the entry warned
+> against - forbidding undo after the deadline, which takes away the one control
+> that is live while the strip is showing.
+>
+> `internal/daemon/undo_expiry_test.go`, one test per half plus the countdown and
+> a negative control. Verified by neutering the loop back to the bare receives:
+> the caller-gone test fails, the re-arm test fails, and the countdown test hangs
+> to the 120s timeout - which is the defect itself, an agent parked forever on a
+> wait it asked to have bounded. The control (a graced answer nobody undoes) goes
+> on passing either way, which is what makes the other three worth having.
+
 **How it fails.** `ask` with `timeout_s: 60`. At t=59 the human answers and the
 undo grace opens. At t=60 the arrival-anchored timer fires, `resolve(expired)`
 bounces off the grace by design (`daemon.go:1764-1767`), and the handler falls

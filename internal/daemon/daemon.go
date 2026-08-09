@@ -1287,54 +1287,98 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 		return proto.Result{ID: it.ID}, nil
 	}
 
+	window := time.Duration(it.TimeoutS) * time.Second
 	var timeout <-chan time.Time
+	var timer *time.Timer
 	if it.TimeoutS > 0 {
 		defer func() {
 			d.mu.Lock()
 			delete(d.expiries, it.ID)
 			d.mu.Unlock()
 		}()
-		t := time.NewTimer(time.Duration(it.TimeoutS) * time.Second)
-		defer t.Stop()
-		timeout = t.C
+		timer = time.NewTimer(window)
+		defer timer.Stop()
+		timeout = timer.C
 	}
-	select {
-	case res := <-wait:
-		if it.Kind == proto.KindSecret {
-			return d.finishSecret(&it, res)
-		}
-		return res, nil
-	case <-timeout:
-		if it.Kind == proto.KindVeto {
-			// The window elapsed unstopped: the action proceeds (FR22).
-			if d.resolve(it.ID, store.StateExpired, store.Outcome{}) {
-				return proto.Result{ID: it.ID, Vetoed: false}, nil
+
+	// A LOOP rather than one select, which is the whole of R-03.
+	//
+	// The expiry can fire and do nothing: the human answered inside the undo
+	// grace, so resolve() bounces off it by design. This used to fall through to
+	// a bare `return <-wait, nil` - a receive with no deadline and no ctx branch -
+	// and two things followed from it. The one-shot timer had been spent, so if
+	// the human then pressed undo, the item was pending again with no expiry at
+	// all and the timeout_s the agent asked for had silently become unbounded.
+	// And having left the select, the handler could no longer see its own caller
+	// go: callerGone was never called and the card went on showing a live caller
+	// for an agent that had gone, so the human spent a decision on a question
+	// nobody would read.
+	//
+	// Looping keeps ctx.Done() live for as long as the call is, and re-arms the
+	// window each time the expiry bounces.
+	for {
+		select {
+		case res := <-wait:
+			if it.Kind == proto.KindSecret {
+				return d.finishSecret(&it, res)
 			}
-			return <-wait, nil
+			return res, nil
+		case <-timeout:
+			if it.Kind == proto.KindVeto {
+				// The window elapsed unstopped: the action proceeds (FR22).
+				if d.resolve(it.ID, store.StateExpired, store.Outcome{}) {
+					return proto.Result{ID: it.ID, Vetoed: false}, nil
+				}
+				timeout = d.rearmExpiry(it.ID, timer, window)
+				continue
+			}
+			dflt := it.Default
+			if it.Kind == proto.KindForm {
+				dflt = "" // forms have per-field defaults, no whole-form default
+			}
+			if d.resolve(it.ID, store.StateExpired, store.Outcome{Answer: dflt}) {
+				return proto.Result{ID: it.ID, Answered: false, Answer: dflt, DefaultApplied: dflt != ""}, nil
+			}
+			// The human answered inside the undo grace. Either that answer lands
+			// when the window closes and `wait` returns it, or they press undo and
+			// the question is theirs again - and that second path is the one that
+			// needs a timer.
+			timeout = d.rearmExpiry(it.ID, timer, window)
+			continue
+		case <-ctx.Done():
+			if d.closing.Load() {
+				// Daemon teardown, not a caller drop: cancel quietly. Pending items
+				// re-present on the next start (NFR7).
+				d.resolve(it.ID, store.StateCancelled, store.Outcome{})
+				return nil, &proto.RPCError{Code: proto.CodeShuttingDown, Message: "daemon shutting down"}
+			}
+			// The caller's socket dropped while the question was still open (FR45):
+			// mark the card disconnected, let it auto-dismiss, and stop waiting on
+			// a peer that is gone. Any answer now reaches history only (FR6).
+			d.callerGone(it.ID)
+			return proto.Result{ID: it.ID}, nil
 		}
-		dflt := it.Default
-		if it.Kind == proto.KindForm {
-			dflt = "" // forms have per-field defaults, no whole-form default
-		}
-		if d.resolve(it.ID, store.StateExpired, store.Outcome{Answer: dflt}) {
-			return proto.Result{ID: it.ID, Answered: false, Answer: dflt, DefaultApplied: dflt != ""}, nil
-		}
-		// The user answered inside the undo grace; the real result is on
-		// its way once the window closes.
-		return <-wait, nil
-	case <-ctx.Done():
-		if d.closing.Load() {
-			// Daemon teardown, not a caller drop: cancel quietly. Pending items
-			// re-present on the next start (NFR7).
-			d.resolve(it.ID, store.StateCancelled, store.Outcome{})
-			return nil, &proto.RPCError{Code: proto.CodeShuttingDown, Message: "daemon shutting down"}
-		}
-		// The caller's socket dropped while the question was still open (FR45):
-		// mark the card disconnected, let it auto-dismiss, and stop waiting on
-		// a peer that is gone. Any answer now reaches history only (FR6).
-		d.callerGone(it.ID)
-		return proto.Result{ID: it.ID}, nil
 	}
+}
+
+// rearmExpiry gives a bounced expiry a fresh window and moves the countdown the
+// card is showing to match. It returns the channel to select on next.
+//
+// A FULL window rather than the remainder, because there is no remainder left -
+// the original one elapsed, and the reason the item is still open is that the
+// human reached for it at the last moment. Restarting their own clock is the
+// only reading that serves both sides: the agent's wait is bounded again, and
+// the undo it was bounded around is not made pointless by expiring the instant
+// it is pressed.
+func (d *Daemon) rearmExpiry(id string, timer *time.Timer, window time.Duration) <-chan time.Time {
+	if timer == nil {
+		return nil
+	}
+	timer.Reset(window)
+	d.mu.Lock()
+	d.expiries[id] = time.Now().Add(window)
+	d.mu.Unlock()
+	return timer.C
 }
 
 // breaksDnd reports whether an item may surface during do-not-disturb.
