@@ -360,6 +360,27 @@ server context, and assert the item is still pending and the caller got
 
 ### R-08. An answer inside the undo grace does not survive a restart
 
+> **Fixed on 2026-08-09.** `BeginShutdown` ships a graced answer before the
+> process goes (`finalizeGraceNow`), which is the cheap option this entry
+> preferred over persisting the outcome.
+>
+> It is the right one rather than merely the cheap one: the human has already
+> decided, the undo window is a courtesy, and the caller is gone either way - so
+> persisting buys nothing anybody can act on. The cost is at most an undo
+> somebody was reaching for as the daemon went down; the saving is the decision
+> itself. A deploy fits inside the three-second default window comfortably, so
+> this was not a rare race.
+>
+> `internal/daemon/undo_expiry_test.go`: answer into a grace long enough that no
+> timer can finalize it, call the shutdown path, and assert the caller gets the
+> answer and the store records it - plus a control that shutdown with nothing
+> graced invents no answer. Neutered, the first fails with the defect in its own
+> words and the control still passes.
+>
+> One thing the test had to learn: `BeginShutdown` only flags the teardown and
+> ships the grace. Releasing parked callers is the server context's job, so a
+> test that awaits a caller after calling it waits forever.
+
 **How it fails.** The undo grace holds the outcome in memory only: `graced`
 carries the outcome and a timer, and the store is not touched until
 `finalizeGrace` runs (`internal/daemon/daemon.go:2014-2050`). The default window

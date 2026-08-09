@@ -1807,7 +1807,39 @@ func (d *Daemon) callerGone(id string) {
 // BeginShutdown records that the daemon is tearing down, so a per-connection
 // context cancel is read as shutdown rather than a caller drop (FR45). Call
 // it before cancelling the server context.
-func (d *Daemon) BeginShutdown() { d.closing.Store(true) }
+func (d *Daemon) BeginShutdown() {
+	d.closing.Store(true)
+	d.finalizeGraceNow()
+}
+
+// finalizeGraceNow ships an answer sitting in its undo window, rather than
+// letting the process take it (R-08).
+//
+// The grace holds its outcome in MEMORY until finalizeGrace runs, and the
+// default window is three seconds - which a deploy fits inside comfortably. A
+// daemon that stopped in there lost the outcome: the item is still pending, so
+// it comes back after the restart and the human is asked a second time, into a
+// socket whose caller is long gone.
+//
+// Finalizing rather than persisting the graced outcome is the cheap option the
+// backlog entry preferred, and it is the right one. The human has already
+// decided; the undo window is a courtesy; and the caller is gone either way, so
+// persisting it buys nothing the human can act on. What this costs is at most an
+// undo somebody was reaching for as the daemon went down. What it saves is the
+// decision itself.
+func (d *Daemon) finalizeGraceNow() {
+	d.mu.Lock()
+	g := d.graced
+	if g != nil {
+		g.timer.Stop()
+	}
+	d.mu.Unlock()
+	if g == nil {
+		return
+	}
+	d.log.Info("item.grace_shipped_on_shutdown", "component", "daemon", "item_id", g.id)
+	d.finalizeGrace(g)
+}
 
 // resolve finishes an item exactly once: the store transition is the
 // arbiter, delivery and display advance follow. Reports whether this call

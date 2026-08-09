@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/borismilner/agentbox/internal/proto"
+	"github.com/borismilner/agentbox/internal/store"
 )
 
 // R-03. The expiry can fire and do nothing: the human answered inside the undo
@@ -142,5 +143,59 @@ func TestGracedAnswerStillWinsAfterTheRearm(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("the graced answer was never delivered")
+	}
+}
+
+// R-08. The undo grace holds its outcome in MEMORY until finalizeGrace runs, and
+// the default window is three seconds - which a deploy fits inside comfortably.
+// A daemon that stopped in there lost the answer: the item was still pending, so
+// it came back after the restart and the human was asked a second time, into a
+// socket whose caller was long gone.
+func TestShutdownShipsAnAnswerSittingInItsUndoWindow(t *testing.T) {
+	// A grace long enough that nothing finalizes it on its own: the shutdown has
+	// to be what ships it, or the test proves only that timers work.
+	d, ui, _, st := newTestDaemon(t, Config{UndoGrace: 30 * time.Second})
+	ch := askAsyncCtx(t, d, askItem(), context.Background())
+	shown := waitForItem(t, ui)
+
+	d.Answer(shown.ID, "Yes")
+	// Still in its window, so nothing is in the store yet.
+	waitForState(t, st, shown.ID, store.StatePending)
+
+	d.BeginShutdown()
+
+	select {
+	case res := <-ch:
+		if !res.Answered || res.Answer != "Yes" {
+			t.Fatalf("result = %+v, want the answer the human had already given", res)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the answer was dropped by shutdown: the item comes back pending and " +
+			"the human is asked a second time, into a caller that is gone")
+	}
+	waitForState(t, st, shown.ID, store.StateAnswered)
+}
+
+// Shutdown with nothing in a grace must stay harmless, and must not invent an
+// answer for a question nobody has answered.
+func TestShutdownWithNothingGracedIsQuiet(t *testing.T) {
+	d, ui, _, st := newTestDaemon(t, Config{UndoGrace: 30 * time.Second})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	askAsyncCtx(t, d, askItem(), ctx)
+	shown := waitForItem(t, ui)
+
+	// BeginShutdown only flags the teardown and ships a grace; releasing parked
+	// callers is the server context's job, which is why nothing is awaited here.
+	d.BeginShutdown()
+
+	items, err := st.Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if it.ID == shown.ID && it.State == store.StateAnswered {
+			t.Fatalf("shutdown recorded an answer for a question nobody answered: %+v", it)
+		}
 	}
 }
