@@ -70,15 +70,18 @@ remaining of fifteen, plus the three ux band-A items. About three weeks together
 robustness.md's own order, which is already consequence-ordered, with these three
 folded in:
 
-- **U-01** (the card has no failure path, in any of its 26 calls) next to R-05,
-  because both are the card being unable to say what is happening to it.
-- **U-02** (the Go answer path returns nothing) early, because it is the
-  precondition for U-01 being worth building: a card that can display a failure
-  still needs to be told about one. It is also the reason R-01 was invisible for as
-  long as it was.
+- ~~**U-01**~~ **done and deployed on 2026-08-09** (`a3e570d`), immediately after
+  U-02 and for the reason U-02 predicted: the wrapper had something to show. Still
+  owes a pass on a real desktop.
+- ~~**U-02**~~ **done and deployed on 2026-08-09** (`63373b2`). The answer path
+  reports refusals in words, which is what made U-01 worth building and what R-01
+  was missing for as long as it was invisible.
 - ~~**U-03**~~ **done and deployed on 2026-08-07**, ahead of U-02 rather than after
   it, because `Triage` already returned the value the other methods do not. Awaiting
   it cost an afternoon, eight tests and a keyboard pass over the real inbox.
+
+**All three ux band-A items are now closed.** What is left of tier 1 is robustness
+band A alone: thirteen items, R-03 onwards.
 
 **Tier 2 - the hub stops serving.** Robustness band B, eleven items, R-16 to R-26.
 Loud failures, mostly hours each. R-26 (no bound on anything an agent puts in a
@@ -140,7 +143,7 @@ argues the case at its "non-goal I would revisit". That is a decision, not a tas
 
 | Tier | Items | Rough cost |
 |---|---|---|
-| 1 | 13 robustness + 3 ux | three weeks |
+| 1 | 13 robustness (the 3 ux are done) | under three weeks |
 | 2 | 11 robustness (+ R-30 pulled up) | two weeks |
 | 3 | R-40 and the three checks U-15 adds | two weeks, one spent |
 | 4 | F-01, F-09, F-02, F-11, F-05 | four weeks |

@@ -54,6 +54,16 @@ decides whether the card is what it says it is.*
 
 ### U-01. The card has no failure path, in any of its twenty-six calls to the daemon
 
+> **Fixed and deployed on 2026-08-09** (`a3e570d`). One wrapper in `bridge.js`
+> around the answer path, not a `.catch` per call site; `lib/trouble.svelte.js`
+> holds the last failure, one line per window; the card, the toast, the inline ask
+> panel and the inbox detail all show it, and the card re-measures so the notice
+> is not clipped off a frameless window. The card and toast also got the board's
+> two `window` listeners. 15 tests in `frontend/test/failure.test.js`, checked by
+> neutering `note()` and confirming 13 of them fail. **Not yet exercised on a real
+> desktop** - the drive was interrupted one keystroke in, so this is the one part
+> of it verified by tests alone.
+
 **How it fails.** `Card.svelte` makes 26 `bridge.*` calls. Not one is awaited, not
 one has a `.catch`, and the file contains no `try {`. Counted across the tree, the
 three surfaces where a human actually answers an agent - the card, the toast and
@@ -96,6 +106,15 @@ happen.
 **Confidence.** Confirmed by reading, with the counts verified by grep over the tree.
 
 ### U-02. The answer path in Go returns nothing, so the daemon cannot report a refusal even when it refuses
+
+> **Fixed and deployed on 2026-08-09** (`63373b2`). `Resolver`, `Source.Promote`
+> and every `Bridge` method on the answer path now answer `""` when the thing
+> happened and a sentence when it did not - the convention the assignment editor
+> and `BreakLock` already used. `Triage` and `AskKey` keep their bool (FR34) but a
+> refusal now makes them report the key as having done nothing, with the sentence
+> in the log. `lateResolver`, which swallowed every call made before the daemon
+> existed, says so. 13 daemon tests (one per reason a refusal can happen) and 6 in
+> webui.
 
 **How it fails.** Every answer-path method on the bridge is declared to return no
 value:

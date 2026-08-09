@@ -9,6 +9,62 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Fifty-eighth session (2026-08-09): the answer path learns to say no
+
+Tier 1 of the merged backlog, and the two items it named: U-02 then U-01, which are
+one defect from the two ends. Both are deployed (`a3e570de160d`).
+
+**U-02 first, because U-01 is worthless without it.** Every method on the answer
+path was declared to return nothing. `func (b *Bridge) Answer(id, label string)` -
+no value, nowhere for a refusal to go, even where the daemon had already decided on
+one and written it to the log. `Resolver`, `Source.Promote` and every `Bridge`
+method on that path now answer `""` or a sentence for the surface to show, which is
+the convention the assignment editor and `BreakLock` already used. The refusals were
+written one per reason rather than one for all of them, and the tests assert they
+are readable rather than matching the words: a sentence, lowercase, ending in a
+full stop, twenty characters or more. `Triage` and `AskKey` keep their bool (FR34) -
+a refusal makes them report the key as having done nothing, which is what the
+surface already knows how to paint, with the sentence in the log. `lateResolver`,
+which swallowed every call made before the daemon existed, says so now: that was
+the worst version of the defect, since a window opened during startup ate the
+keystroke and looked exactly like one that worked.
+
+**Then U-01, which is the same failure from the webview.** The card made 26 calls
+and awaited, caught and handled none of them; across the card, the toast and the
+inline ask panel it was 38 calls and zero error handling of any kind. One wrapper in
+`bridge.js` rather than a `.catch` at each site, because 26 sites is 26 chances to
+forget one and the tempting fix - `.catch(() => {})` per call - converts a silent
+failure into a silent failure that passes review. The wrapper takes both ways a
+keystroke fails (a rejection, and U-02's sentence) and never rethrows.
+`lib/trouble.svelte.js` holds the last one, one line per window; the card, the
+toast, the ask panel and the inbox detail show it, the card re-measures so it is not
+clipped off a frameless window, and the card and toast gained the board's two
+`window` listeners.
+
+**The check worth copying.** The 15 vitest tests all passed on the first run, which
+is not evidence. Neutering `note()` to a no-op and re-running was: 13 failed and the
+2 that passed were the two negative controls. A test that cannot fail is a comment.
+
+**What is owed.** The live pass. The build was put on a throwaway daemon
+(`XDG_STATE_HOME` in /tmp, config copied), a choice card was raised and the drive
+was interrupted one keystroke in - Boris saw a card he had not asked for and asked
+whether the session was stuck. Nothing was wrong and his own store was never
+touched, but the lesson is the interruption itself: a card from a scratch daemon is
+indistinguishable from a real one, and holding the desktop does not make an
+unexplained card on it any less alarming. Say what is about to appear, not only that
+something will.
+
+**One behaviour change he will meet daily.** Esc on the only card now says "nothing
+else is waiting, so there is nothing to move this behind" instead of doing nothing.
+The card's own header promises `Esc defer`, so the silence was the defect; whether
+the notice earns its place every single time is a judgement only use will settle.
+
+**FR99, from the same sitting.** The wiki's pictures should be drawn rather than
+photographed. The photo pipeline cost eight harness defects on its first run and
+still has four shots stuck on things that are about the desktop and not the product.
+Drawn frames buy exact content and a reviewable diff, and cost the one thing a
+photograph has: it is evidence. The rule that keeps them honest is in the entry.
+
 ## Fifty-seventh session (2026-08-07): the deploy that was owed, and the first surface a test has ever mounted
 
 Session 56 left a deploy owed and three things unbuilt. All four are done, and one
