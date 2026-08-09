@@ -711,8 +711,8 @@ caption about a footer the shot does not have.
 
 **S2. The Agents board.** Used on `agents-board.md` and `taking-turns.md`.
 
-- *Copy:* one area heading (`checkout-api`) with four rows and, below them, the
-  shared-values block. Row 1 `release-bot`, purpose *cutting release 2026.7.30*,
+- *Copy:* one area heading (`checkout-api`) with four rows and the shared-values
+  block. Row 1 `release-bot`, purpose *cutting release 2026.7.30*,
   chip **asking you**, activity *waiting on the region choice · 40s*. Row 2
   `test-runner`, purpose *running the pre-release suite*, chip **blocked**, wait
   line naming `deploy:checkout-api` and `release-bot` as the holder, queue place
@@ -734,6 +734,15 @@ caption about a footer the shot does not have.
   the shot is wrong; restage rather than annotate.
 - *Note:* the dim row matters. A board that only shows well-behaved agents is not
   believable.
+- *Corrected 2026-08-09, by drawing it.* This spec said the shared-values block
+  sits BELOW the four rows. The surface puts it above them
+  (`Agents.svelte:292` renders `shared`, `:381` renders the areas), and has for
+  as long as it has existed, so the sentence described a board nobody has ever
+  had. Nothing was staged to match it, which is how it survived a sitting: the
+  photograph showed the real order and was read as a good frame. The wording is
+  now the product's. Whether above is the RIGHT order is a separate question and
+  an open one - the blackboard leading the agents on a screen called Agents is
+  at least arguable - but that is a design decision and not a caption fix.
 
 **S3. The inbox, after an hour away.** Used on `nothing-gets-lost.md`.
 

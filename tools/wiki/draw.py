@@ -69,7 +69,7 @@ def frame_specs() -> dict:
     const out = {{}};
     for (const [k, v] of Object.entries(FRAMES)) {{
       out[k] = {{ out: v.out ?? (k + ".png"), surface: v.surface, width: v.width,
-                  height: v.height, ground: v.ground ?? 24 }};
+                  height: v.height, ground: v.ground ?? 24, query: v.query ?? "" }};
     }}
     process.stdout.write(JSON.stringify(out));
     """
@@ -180,7 +180,12 @@ def draw(server_url: str, name: str, spec: dict, out_dir: Path) -> tuple[Path, s
     """Photograph one frame; return where it landed and how its height was decided."""
     ground = int(spec["ground"])
     width = int(spec["width"]) + 2 * ground
+    # A surface can need more of the query string than its own name: the app
+    # shell reads ?tab= to decide which of its nine surfaces is in front, and a
+    # frame of the agents board is the app window with tab=agents.
     url = f"{server_url}/draw/index.html?surface={spec['surface']}&frame={name}"
+    if spec["query"]:
+        url += "&" + spec["query"].lstrip("&")
 
     if spec["height"] == "fit":
         asked = measure(url, width)
@@ -222,7 +227,8 @@ def main() -> None:
     with Server() as server:
         if args.keep_serving:
             for name, spec in specs.items():
-                print(f"{name}: {server.url}/draw/index.html?surface={spec['surface']}&frame={name}")
+                q = ("&" + spec["query"].lstrip("&")) if spec["query"] else ""
+                print(f"{name}: {server.url}/draw/index.html?surface={spec['surface']}&frame={name}{q}")
             print("\nserving; Ctrl-C to stop")
             try:
                 server.proc.wait()

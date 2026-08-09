@@ -99,9 +99,32 @@ by name rather than guessing, and the frame needs an explicit height.
 
 ## What it does not do yet
 
-Only `s1` (the card) is drawn. The other twelve frames in DESIGN.md section 5
-are still the photographs from the 2026-08-07 sitting, and the four that sitting
-never produced are still outstanding. Each is a `frames.js` entry and the
-harness is the same; the app-shell frames (S2's agents board, the inbox, the
-history stats) need their surface's mount-time `calls` filled in, which is more
-fixture than the card needed but no new mechanism.
+Two frames are drawn: `s1` (the card, frameless) and `s2` (the agents board, the
+app shell with `tab=agents`). Between them they cover both kinds of surface, so
+what is left is fixture-writing rather than harness work - the remaining eleven
+need their surface's mount-time `calls` filled in and nothing else.
+
+The eleven are still photographs from the 2026-08-07 sitting, and the frames that
+sitting never produced are still outstanding: the viewer scrolled to the wrong
+part of its document, the unplaced progress and history-stats frames, and the two
+`SHOT:` placeholders in `is-it-safe.md:18` and `settings.md:51`.
+
+## What drawing S2 turned up
+
+Worth reading before drawing the next one, because both are the kind of thing
+only drawing finds.
+
+**The specification was wrong about the product, and a photograph had already
+proved it.** DESIGN.md said the shared-values block sits below the four agent
+rows. `Agents.svelte:292` renders it above them and always has. The photographed
+frame showed the real order and was accepted as a good frame, so the sentence
+survived a sitting it contradicted. Drawing catches this because a fixture makes
+you state what you expect before you see it.
+
+**A window at its default height is not automatically a good frame.** The app
+window opens at 1180x860 and four agents fill about 700 of it, so the honest
+capture had 160px of empty board under the last row - which reads on a page as a
+screen with nothing in it, the thing DESIGN.md warns about for the empty inbox.
+`s2` declares 720 instead. That is a height a human could drag to and it hides
+nothing, but it is a judgement, and a frame that needed one should say so in its
+entry.
