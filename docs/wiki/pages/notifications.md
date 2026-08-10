@@ -19,6 +19,8 @@ You know what kind of thing this is before you have read the title.
 
 ![A warning-level toast at the top of the screen from dependency-bot on checkout-api: two transitive dependencies moved to a yanked version, both in the release candidate. It carries a dismiss cross and no countdown, because a warning waits to be read](img/toast.png)
 
+<sub>Info and success take themselves off the screen. This one waits.</sub>
+
 The title always shows whole; the body wraps to three lines and then offers to
 expand in place. One arrives at a time, and a second waits its turn instead of
 stacking.
@@ -91,6 +93,14 @@ A question at an empty desk gives up sounding like a metronome without giving up
 waiting.
 
 ## A long job gets a bar in the corner, not a place in the queue
+
+![The progress window in the bottom-right corner of the screen: three thin bars,
+one at 64% reindexing a search catalogue, one at 12% backfilling a column, and
+one just started with no percentage yet. It has no answer zone and no
+countdown](img/progress.png)
+
+<sub>Bottom right, never focused. The middle of the screen belongs to whatever is
+asking you something.</sub>
 
 A reindex that takes twenty minutes is not a question and must never wait behind
 one, so progress reports get their own window in the bottom-right corner. It opens

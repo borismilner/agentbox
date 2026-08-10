@@ -26,6 +26,8 @@ That is the problem. Not the model, not the prompt. The last meter.
 
 <sub>Every option carries its number. The whole exchange is one keystroke.</sub>
 
+<sub>Every option carries its number. The whole exchange is one keystroke.</sub>
+
 The card appears dead centre of the monitor your pointer is on, above every
 window, and it does not take your keyboard. That last part is the decision the
 rest of the product is built around: a card that grabs focus while you are typing

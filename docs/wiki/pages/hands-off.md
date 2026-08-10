@@ -11,7 +11,13 @@
 
 ![The amber HANDS OFF strip pinned to the top of the screen, reading renaming the staging secret in the console, with a Pause button, over the window the reader was using](img/hands-off.png)
 
+<sub>While the strip is up, the desktop is the agent's. It is state, not a card:
+it never needs dismissing and never queues.</sub>
+
 ![The same strip in green, reading PAUSED - YOURS with the activity line frozen and still legible, and a Resume button in place of Pause](img/hands-off-paused.png)
+
+<sub>Pause inverts it and keeps the run alive. Nothing an agent can call
+resumes it.</sub>
 
 ## A sign that is on screen for exactly as long as it is true
 

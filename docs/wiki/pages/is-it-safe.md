@@ -15,13 +15,12 @@ The last section is the same thing as a list you can run yourself.
 
 ## A secret goes to a file, and the agent is handed the path
 
-<!-- SHOT: the secret card mid-entry. The field masked with a few dots in it, and
-directly under it the destination line reading "written to
-/run/user/1000/agentbox/secrets/<hex>.secret". The identity pill says
-oncall-helper . checkout-api and the title asks for a staging token. The point of the
-frame is that the path is on screen before you type, so crop tight to the card. Do
-NOT stage the --stdout variant here: its red warning line belongs to the paragraph
-below, not to this one. -->
+![A secret card from oncall-helper on checkout-api asking for a staging token for
+the canary run. Under the empty masked field, before anything is typed, a line
+reads: written to /run/user/1000/agentbox/secrets/8f3c1d2a.secret](img/secret.png)
+
+<sub>The destination is on screen before you type. The field is empty on purpose:
+the promise is about where the value goes, and it is already made.</sub>
 
 The card is a masked field, and it prints the destination underneath: `written to`,
 then the path. What you type does not go back through the tool call that asked for

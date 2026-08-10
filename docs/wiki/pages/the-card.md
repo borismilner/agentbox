@@ -11,6 +11,8 @@
 
 ![A card from release-bot on project checkout-api: the title Where should 2026.7.30 go first, three numbered options each with a one-line reason, and a footer reading expires in 1:57](img/card.png)
 
+<sub>Every option carries its number. The whole exchange is one keystroke.</sub>
+
 <sub>Top right, before you have read a word of it: what the Esc key on this
 particular card will do.</sub>
 

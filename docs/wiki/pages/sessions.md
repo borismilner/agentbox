@@ -8,7 +8,13 @@
 > **Read on if** you want the agent and the answer in the same window. **Skip to**
 > [[Work it does on its own|assignments]] for the runs nobody starts.
 
-![The console rolled down over the editor: session chips along the top, a turn mid-stream showing code, and an inline question above the composer asking whether to persist per-segment offsets, with three numbered answers and its key hints](img/panel.png)
+![The console rolled down over the editor: session chips along the top, a turn
+showing the code an agent is proposing to reorder, and below it an inline question
+from release-bot asking whether to make that change before the canary or after,
+with two numbered answers and its key hints, sitting above the composer](img/panel.png)
+
+<sub>The one case where a question does not get a window: it renders in the
+conversation it is about, and never takes the composer's keyboard.</sub>
 
 ## A turn you can read, with the machinery folded away
 

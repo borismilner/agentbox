@@ -16,7 +16,10 @@ The inbox is an ordinary window with two sections. **Pending** first, then
 decided before the list reaches the screen, so a question can never sink below
 the answered noise.
 
-![The inbox: two pending questions at the top, the selected one showing its key hints (1 yes, 2 no, d dismiss, c copy), and below them recent history whose outcome column reads eu-west, approved, proceeded and expired](img/inbox.png)
+![The inbox: two pending questions at the top, the selected one showing its key hints - y yes, n no, d dismiss, c copy - and below them the hour that resolved itself, whose outcome column reads eu-west, approved, proceeded and expired](img/inbox.png)
+
+<sub>Pending on top, answerable with the same keys the card takes. The outcome
+column is what the day cost you - including the one nobody got to.</sub>
 
 One search box covers title, agent, project, kind and outcome. There is no level
 filter and no per-agent dropdown, which is a smaller surface than it sounds: typing

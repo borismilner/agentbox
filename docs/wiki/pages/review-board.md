@@ -31,6 +31,9 @@ rests on: this is finite, and nothing may grow it mid-walk.
 
 ![The review board: the rail of steps on the left, one step open at its TL;DR, and under it the real code at cmd/agentbox/main.go lines 30 to 45 with a note anchored to the exit-code constants reading 0 through 4: answered, refused, misused, unanswered, broken](img/review-board.png)
 
+<sub>The comment carries the exact file, the exact lines and the exact text you
+highlighted.</sub>
+
 Only one of the four step kinds is code. A ground step carries the vocabulary and
 does not count toward the total, and a check step is a command with an expected
 result.

@@ -11,6 +11,14 @@
 
 ## A report that a terminal would have flattened
 
+![A reading window titled release-2026.7.30.md with a watching badge lit: a table
+of four checks and their results, a flowchart of the canary decision drawn as a
+diagram, and the start of a highlighted Go block, all on one fixed reading
+measure](img/viewer.png)
+
+<sub>The same window with `--watch` is a live preview of whatever an agent is
+writing.</sub>
+
 `agentbox show FILE` opens one window with the document in it, on a fixed reading
 measure, not stretched to whatever width the window happens to be. Tables
 get real columns. Code gets per-language highlighting done before it reaches the
@@ -91,11 +99,20 @@ small page and blocks until you have used it.
 
 ![An artifact running in its own window: a canary console titled How much traffic should the new build take, a slider at 50% of live traffic with 2,100 req/min on the new build under it, and two buttons reading Start the rollout and Hold it. The bar above carries an interactive badge and the runtime it asked for, react + tailwind](img/artifact.png)
 
-Above every artifact is a bar: an `interactive` badge, which runtime it asked for,
-a **preview and code toggle**, and a reload button. The code tab is the source
-that is running, character for character. Reading what an agent wants to run
-before you run it is not a power-user feature here, it is the point of having the
-toggle at all.
+<sub>The slider mid-track is the whole point: this is a thing you operate, not a
+thing you read. What you settle on leaves as one event.</sub>
+
+Above every artifact is a bar carrying an `interactive` badge and which runtime it
+asked for. In a document or a conversation the bar also holds a **preview and code
+toggle** and a reload button, and the code tab is the source that is running,
+character for character: reading what an agent wants to run before you run it is
+not a power-user feature here, it is the point of having the toggle at all.
+
+An artifact opened on its own is the exception, and not a flattering one. It fills
+the window, and the toggle and the reload button are not drawn - so the one shape
+where the artifact has the whole screen is the one where you cannot read its source
+without opening the file yourself. That is a gap rather than a decision, and it is
+on the list.
 
 ```sh
 agentbox show --artifact canary-console.html

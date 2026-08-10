@@ -11,6 +11,9 @@
 
 ![The Agents board: a shared-values block over rows grouped by area. One agent is chipped asking you, one blocked while it waits on the lock deploy:checkout-api held by release-bot, one listening on tests:green, and a dim row reading no purpose given](img/agents-board.png)
 
+<sub>Blocked and listening look alike and mean opposite things: one cannot
+proceed, the other is the feature working.</sub>
+
 ## Three questions, always in the same place
 
 Every row reads the same way. The purpose is the headline: one line the agent
