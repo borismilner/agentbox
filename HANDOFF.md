@@ -1,198 +1,187 @@
-# Handoff - AgentBox: band A halved, and the wiki's frames are drawn now
+# Handoff - AgentBox: the wiki's pictures are drawings, and they are live
 
-*Written by session 59, which took the one thing session 58 owed - nobody had looked
-at U-01 or U-02 on a screen - did it, and found a new defect doing it (U-16). Then
-FR99 (the wiki's frames are drawn rather than photographed) and six robustness
-band-A items: R-03, R-04, R-05, R-08, R-11, R-14. All deployed. Band A is down from
-fifteen to seven.*
+*Written by session 60, which took one assignment from Boris - create the wiki's
+examples instead of capturing them, fix the pages, push them - and finished it.
+Twelve of the fourteen frames are drawn, every one sits on a desktop, both wiki
+hosts have them, and `README.md` uses them too. Four defects in the drawing had
+to be fixed first and four wrong claims in the docs came out of it.*
 
-**Written:** 2026-08-09 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
+**Written:** 2026-08-10 · **Assignment:** /home/boris-milner/me/projects/agentbox · **Type:** personal
 
 ## Do this next
 
 ```bash
 cd ~/me/projects/agentbox
-git status -sb              # expect clean, in sync with origin/main (gitlab)
-make deployed               # expect c306e5e5a972 - see the note below, this is
-                            # NOT the newest commit and that is correct
-agentbox pending            # expect nothing pending
+git status -sb                          # expect clean, in sync with origin/main
+python3 tools/wiki/draw.py --out /tmp/x # expect 14 frames, no error, ~4 minutes
+bash tools/wiki/publish.sh --dry-run    # expect "already up to date" on both
+agentbox pending                        # expect nothing pending
 ```
 
-**On the deployed build.** `make deployed` reports `c306e5e5a972` while HEAD is
-`5622237`. That is not drift: the two commits after `c306e5e` changed
-`tools/wiki/draw.py` and docs only, nothing that goes in the binary. Redeploy if you
-prefer them equal; nothing depends on it.
+**The deployed daemon is untouched by this session.** Nothing here goes in the
+binary except `tools/wiki/drawhtml`, which is a command nobody runs at runtime.
+`make deployed` still reports `c306e5e5a972`; that is session 59's note and still
+correct.
 
-**Budget.** Boris raised the cap from 70% to 75% of the weekly quota for this
-session and it ended at ~72%, so there is room. Check
-`claude -p /usage | grep -E '^Current '` before starting; the week resets Aug 12,
-4:59am (Asia/Jerusalem).
+**Budget.** This session ran to roughly 78% of the week. The week resets Aug 12,
+4:59am (Asia/Jerusalem). Check `claude -p /usage | grep -E '^Current '` before
+starting anything large.
 
-1. **Robustness band A, seven left**: R-06, R-07, R-09, R-10, R-12, R-13, R-15, in
-   `docs/backlog/robustness.md`'s own order. **R-12 and R-13 are the hours-sized
-   ones** and are the place to start; R-06, R-07, R-09 and R-10 are a day each, and
-   R-15 needs a live MCP-host repro before it can be fixed at all.
-2. **U-16 wants one more repro** before its fix is chosen. It is the only ux band-A
-   item left and the entry says exactly what to do.
-3. **The remaining eleven wiki frames.** The mechanism is finished and two frames
-   are drawn; each of the rest is a `frames.js` entry. `tools/wiki/DRAW.md` is the
-   runbook.
+1. **Robustness band A, seven left**: R-06, R-07, R-09, R-10, R-12, R-13, R-15,
+   in `docs/backlog/robustness.md`'s own order. **R-12 and R-13 are the
+   hours-sized ones** and are the place to start; R-06, R-07, R-09 and R-10 are a
+   day each, and R-15 needs a live MCP-host repro before it can be fixed at all.
+2. **U-16 wants one more repro** before its fix is chosen. Carried unchanged from
+   session 59, which means nobody has looked at it since - go and observe it
+   rather than re-reading the entry.
+3. **U-17 and U-18 are new and both are artifact defects.** U-17 is hours and
+   well understood. U-18 is a symptom with no diagnosis yet and should be taken
+   with it, because the reproduction is the same window.
 
 ## Where we are
 
-Session 57 wrote the audits and the one order across them. 58 executed the top of
-it. This one finished what 58 owed and then took six more.
-
-The through-line, now six sessions old, held again twice and in a new form. **A
-document asserted something and the code contradicted it** - this time
-`docs/backlog/ux.md` claiming "nothing here was found by looking at a running
-window" (U-16 was), and `docs/wiki/DESIGN.md` saying the shared-values block sits
-below the agent rows when `Agents.svelte` has always put it above. Both are
-corrected in place rather than quietly fixed.
+The wiki's frames were photographs from a 2026-08-07 sitting; two had been
+redrawn in session 59. All the rest are drawings now, and the two things that
+made drawing worth doing both showed up: a drawn frame can be composed exactly
+(the photographer could never get four agent rows, because `sync lock` mints a
+session key per lock), and a fixture makes you state what you expect before you
+see it, which is what turns a wrong document into a visible error.
 
 ## Live state (volatile - verify on resume)
 
-- **Background jobs:** none. A `vite` server leaked from an early `draw.py` run and
-  was found still up an hour later; that is fixed (`5622237`) and verified.
+- **Background jobs:** none. Several stray `vite` servers were started by hand
+  while debugging and killed with `pkill -f draw.config.js`; check with
+  `pgrep -af "draw.config"` if a port seems taken.
 - **PRs:** none, ever. Boris pushes `main` directly.
-- **Git:** `main` clean. **Pushed to `origin` (gitlab), which is main's upstream**,
-  through `33d951b`. **`5622237` is one commit past that and is NOT pushed** - push
-  it. The `github` remote is a mirror and was **not** pushed this session: the
-  permission classifier blocked it, so it needs Boris or a permission rule.
-- **Deployed daemon:** `c306e5e5a972`, asked of the running daemon. See the note
-  above on why that is behind HEAD.
-- **Desktop:** released. Held twice, both released.
+- **Git:** `main` clean and **pushed to `origin` (gitlab)** through `af73111`,
+  plus one commit for CLAUDE.md if it is not in yet. The `github` remote is a
+  mirror of the *code* repo and was **not** pushed this session; the permission
+  classifier blocked it in session 59 and nothing has changed there.
+- **Wiki:** both hosts current (`publish.sh --dry-run` says so). The GitHub wiki
+  is a separate repo from the code mirror and pushes fine.
+- **Deployed daemon:** untouched, `c306e5e5a972`.
+- **Desktop:** never taken. Nothing this session needed it, which is the point of
+  drawing.
 - **In-flight edits:** none.
 
 ## Blocked on you (Boris)
 
 1. **Whether `docs/backlog/features.md`'s one non-goal revision is on.** Carried
-   unchanged from sessions 56, 57 and 58, and nobody has looked at it: B-1, "away
-   without becoming a cloud service", wants the vision's non-goal 3 amended in
-   public the way ADR-0009 amended principle 6. A principle change, therefore
-   yours. Ranked 6th in features.md, highest absolute value in that file.
-2. **Whether the Esc notice earns its place.** Carried from 58 and now *seen*: Esc
-   on the only card paints "nothing else is waiting, so there is nothing to move
-   this behind." It reads well on screen and the window grows to fit it, so the
-   question is no longer whether it works but whether you want it daily. One string
-   in `internal/daemon/daemon.go` (`Defer`) if the answer is no.
-3. **Whether the agents board should lead with shared values.** New. The surface
-   puts the blackboard above the agent rows and always has; DESIGN.md said the
-   opposite and is now corrected to match the code. Whether the code is *right* is
-   a design call and is yours - the frame `s2` is drawn either way.
-4. **The `github` mirror push** (see Live state).
+   unchanged from sessions 56 through 59 and still nobody's: B-1, "away without
+   becoming a cloud service", wants the vision's non-goal 3 amended in public the
+   way ADR-0009 amended principle 6. A principle change, therefore yours.
+2. **Whether the Esc notice earns its place.** Carried from 58 and seen on screen
+   in 59: it reads well and the window grows to fit it, so the question is
+   whether you want it daily. One string in `internal/daemon/daemon.go`.
+3. **Whether the agents board should lead with shared values.** The surface puts
+   the blackboard above the agent rows and always has; whether that is right is a
+   design call. The frame is drawn either way.
+4. **U-17's shape.** An artifact opened on its own has no way to read its source,
+   because the preview/code toggle is hidden for exactly that case. Two fixes and
+   the choice is taste: put the toggle back in the bar for every shape, or move
+   it into the viewer's title bar beside `find`, `A-`, `A+`. The entry argues
+   both.
 
 ## I can do solo (no input needed)
 
 1. **R-12 and R-13**, the two hours-sized band-A items left.
 2. **U-16's second repro**, then its fix.
-3. **The eleven remaining wiki frames**, a fixture each.
+3. **U-18's diagnosis** - why a failed artifact leaves the bar's error slot empty.
 4. **R-06, R-07, R-09, R-10**, a day each.
 5. **R-40's open fixes (2) and (3)**: a hostile payload against the card, and
-   executing `buildDocument` to assert the CSP and sandbox attributes that today are
-   only checked as string constants.
-6. **U-05**, hours: `theme.motion = "reduced"` is honoured by four components of the
-   thirteen that animate, because the global rule in `app.css` is scoped to `"none"`.
+   executing `buildDocument` to assert the CSP and sandbox attributes that today
+   are only checked as string constants.
+6. **U-05**, hours: `theme.motion = "reduced"` is honoured by four components of
+   the thirteen that animate.
+7. **`settings.md`'s SHOT placeholder**, if somebody wants it: it needs either a
+   photograph or a fixture that can answer `previewTheme` with Go's own token
+   builder, and `DRAW.md` says why the second is the harder half.
 
 ## Facts - verified vs assumed
 
-- [verified] **U-01 and U-02 on a real desktop.** Esc on the only card paints the
-  amber line in full; the window grows 470x199 to 470x241 and recentres, so it is
-  not clipped; the `x` puts it away and the window shrinks back to 199; answering
-  with `1` clears it and hands `staging` to the caller. Screenshots were read, not
-  just captured.
-- [verified] **U-16's behaviour, twice, from X rather than by inference.** The first
-  card of a fresh daemon took focus and its whole keymap worked; a second raised
-  seconds after the first closed did not (`xdotool getwindowfocus` named the
-  terminal), `1` did nothing twice, and the same `1` answered after one click.
-- [verified] **All six robustness fixes pass, and their tests can fail.** Every one
-  was checked by neutering the fix: R-14's file and R-03's countdown test hang to
-  the 120s test timeout when neutered, which is the defect rather than a proxy for
-  it. `make check` exits 0 (gofmt, vet, race tests, 43 vitest passing + 1 expected
-  fail).
-- [verified] **R-05 seen on a real card** in the live queue on the deployed build,
-  answered, answer returned. Not a scratch daemon.
-- [verified] **The drawn frames are byte-identical across runs**, and redrawing the
-  card after R-05 gave the same md5 - a real browser through the changed mount path.
-- [verified] **`draw.py` no longer leaks its vite server**, checked by process list
-  after a run.
-- [assumed] **Whether U-16 is "always" or "sometimes".** n=1 each way, minutes
-  apart, and the two argue for different fixes. This is the one thing to settle
-  before touching it.
-- [assumed] **One `make check` run failed once and never again.** Three subsequent
-  full runs and `-race -count=3/4` over the three packages this session touched were
-  all clean, so it is not attributable to this work - but it was seen, and a second
-  sighting would matter.
-- [assumed] The carried set from sessions 50, 51, 55 and 57, none of which this
-  session looked at: the artifact-restart-while-streaming edge; the 30-minute fuse
-  in a live daemon; the demoted marker on a second monitor; `perform.py`'s
-  fullscreen check on two monitors; the domain drawer animation; the demo fallback
-  painting; a detail holding a mermaid diagram; `provisionalFor` retiring a
-  hook-only row; the 200-key prefix cap; `@me` in a shared key; a real client's
-  `await_signal` parked past 20s; the two lock warnings; and the identity
-  cross-check's no-node skip.
+- [verified] **All fourteen frames drawn or accounted for, and every one read on
+  screen before publishing.** Twelve drawn, three deliberately photographed
+  (`install-doctor`, `history-stats`, `review-board`); `review-board` is in both
+  counts because it is a photograph that stays.
+- [verified] **A redraw is byte-identical.** Checked by drawing four frames twice
+  into different directories and comparing md5s, after the animation-settling fix
+  and again after the desktop change.
+- [verified] **The measuring and capture defects are real and fixed.** The
+  progress window measured 1857px in a 2000px probe before the fix and 259px
+  after; the artifact rendered in one run and not the next under the old capture,
+  and has been consistent since.
+- [verified] **Both wikis are current**, by `publish.sh --dry-run` reporting
+  "already up to date" for gitlab and github, and by fetching two published pages
+  and reading back the captions.
+- [verified] **`make check` exits 0** - gofmt, vet, race tests, 43 vitest passing
+  and 1 expected fail.
+- [verified] **U-17 by drawing it**: the drawn artifact frame has no toggle
+  because `app.css:960-963` hides it, and the page that claimed otherwise is
+  corrected.
+- [assumed] **U-18's cause.** The symptom reproduced many times: a failed
+  artifact shows bar, badge, runtime label, empty stage and an empty error slot.
+  Why the failure never reached the note is not diagnosed.
+- [assumed] **That the desk's blurred backdrop reads well to a stranger.** Boris
+  approved the direction by calling the flat frames ugly and asking for all of
+  them to match; nobody has read the pages end to end since as a new reader.
+- [assumed] The carried set from sessions 50, 51, 55, 57 and 59, none of which
+  this session looked at: the artifact-restart-while-streaming edge; the
+  30-minute fuse in a live daemon; the demoted marker on a second monitor;
+  `perform.py`'s fullscreen check on two monitors; the domain drawer animation;
+  the demo fallback painting; a detail holding a mermaid diagram;
+  `provisionalFor` retiring a hook-only row; the 200-key prefix cap; `@me` in a
+  shared key; a real client's `await_signal` parked past 20s; the two lock
+  warnings; and the identity cross-check's no-node skip.
 
 ## Two traps this session paid for
 
-- **`request_control` cannot protect a run that stops the daemon.** The HANDS OFF
-  strip is a window the daemon draws, so `make stop` takes it down: control is
-  granted and the one signal saying so vanishes exactly when the driving starts.
-  Boris saw a card he did not raise, with nothing on screen explaining it, and
-  reasonably asked whether the session was stuck. `set_activity` answering
-  `{"live":false}` is how you know the strip is already gone. In CLAUDE.md.
-- **A commit message with an AI tell is refused, and the refusal kills the whole
-  Bash call.** `harness` as a verb is one of the banned words. A
-  `python3 <<PY ... PY && git add && git commit` one-liner leaves the *file edit*
-  undone too - the symptom is a file that looks like the edit never applied, because
-  it did not. In CLAUDE.md.
+- **A virtual clock is not a wait.** `chrome --headless --screenshot
+  --virtual-time-budget=N` fast-forwards a page's timers, not its CPU, so the
+  budget is spent in a few real milliseconds and the picture is of whatever
+  finished. It looks like flakiness and reads like a content bug: an hour went
+  into blaming the fixture's markup - a stat row, then a class name, then a grid
+  - before "two runs of one input differ" pointed at timing. If a capture is
+  non-deterministic, suspect the wait before the input.
+- **`git checkout <file>` on a file with uncommitted work throws the work away.**
+  Used it to revert one line of debug instrumentation in `frontend/draw/runtime.js`
+  and it also reverted `index.html`'s whole layout script, which was an hour of
+  uncommitted harness work in the same directory. Rewriting it cost ten minutes;
+  it could have cost the session. Revert the line, not the file.
 
 ## What this session changed
 
 | Commit | What |
 |---|---|
-| `5900934` | U-01 and U-02 marked seen on screen; U-16 written up; the CLAUDE.md strip trap |
-| `13fc41d` | FR99: `tools/wiki/draw.py` + `frontend/draw/`, and `card.png` drawn |
-| `b25112d` | the agents board drawn, and the DESIGN.md spec it contradicted corrected |
-| `2d9d7ff` | R-14: the tools that promise not to block are bounded |
-| `f998a1e` | R-03: an undo past the deadline no longer strands the caller |
-| `cec53eb` | R-04: an oversized item is refused by name, not by a dropped connection |
-| `6bb45c9` | R-05: the card and toast pull their view on mount |
-| `d6f0dd6` | R-05 seen on a real card; the frames as a regression check |
-| `d597259` | session 59 in history.md; the commit-guard trap |
-| `4d89618` | R-11: one unreadable row no longer stops the daemon starting |
-| `c306e5e` | R-08: a graced answer ships on shutdown |
-| `33d951b` | STATUS.md brought current (it was session 53's) |
-| `5622237` | `draw.py` stops the vite server it started |
+| `d0401e0` | the nine remaining frames, the desk, `drawhtml`, `shoot.mjs`, and the four drawing defects |
+| `9f9a0f6` | captions on every frame, the two new placements, the artifact-toggle correction |
+| `d158e32` | every frame on a desktop; README repointed; `docs/img` screenshots deleted; the diff review card |
+| `af73111` | FR99 closed, DESIGN.md's four corrections, DRAW.md rewritten, U-17 and U-18 filed |
 
 ## Declutter ledger
 
 | Removed / condensed | Where its knowledge now lives |
 |---|---|
-| Session 58's "the live check, exactly" recipe | Done, so the recipe is spent. What it taught survives as two things: the CLAUDE.md trap about the strip, and R-05's entry recording that raising one card into the live queue needs no daemon swap at all - which is the cheaper shape for most future checks |
-| The claim in `ux.md` that nothing was found by looking at a running window | Not deleted. Amended in place with what changed and why it matters, because the sentence was an argument about the audit's own reach and U-16 is the counter-example |
-| Session 58's "four shots still outstanding" | Superseded, not lost: they are named in `tools/wiki/DRAW.md` under what the drawing does not do yet, and FR99 in `docs/07-field-requests.md` |
-| The 4 MB literal duplicated in two scanners | Now `proto.MaxLineBytes`, with the reasoning about why raising it is the wrong fix attached to the constant |
+| Session 59's "the remaining eleven wiki frames" item | Done. What it taught is in `DRAW.md`: the four ways a drawing goes wrong, and which frames must stay photographs |
+| `docs/img/{card,review,progress,viewer,artifact,app}.png` | Deleted, not moved. They were taken before the rename and said `qq` in their title bars; `README.md` uses the drawn frames now |
+| DESIGN.md's "crop to the card plus about 24px of dark desktop" | Superseded in place, with the reason attached: a transparent frameless window clips its own shadow, so the desktop is what draws one |
+| Session 59's note that `make deployed` is behind HEAD | Still true and still fine, restated once in "Do this next" rather than argued again |
 
 ## Map
 
 1. [HANDOFF.md](HANDOFF.md) - this file.
-2. **[docs/backlog/README.md](docs/backlog/README.md) - read this first.** One order
-   across all three audits, current as of today. Tier 1 is seven robustness items
-   plus U-16.
+2. **[docs/backlog/README.md](docs/backlog/README.md) - read this first.** One
+   order across all three audits. Tier 1 is seven robustness items plus U-16.
 3. [docs/STATUS.md](docs/STATUS.md) - current state, updated today.
-4. [docs/backlog/robustness.md](docs/backlog/robustness.md) - 45 items in six bands.
-   R-01, R-02, R-03, R-04, R-05, R-08, R-11, R-14 fixed; R-40 started.
-5. [docs/backlog/ux.md](docs/backlog/ux.md) - 16 surface items. U-01, U-02, U-03
-   fixed; **U-16 is the new one and the only band-A item left**.
-6. [docs/backlog/features.md](docs/backlog/features.md) - B-1 waits on Boris.
-7. [tools/wiki/DRAW.md](tools/wiki/DRAW.md) - how the frames are drawn, what keeps a
-   drawing honest, and which frames should still be photographed.
-8. [docs/07-field-requests.md](docs/07-field-requests.md) - FR99 carries what
-   building it turned up.
-9. [docs/wiki/FACTS.md](docs/wiki/FACTS.md) - **read before quoting any number about
-   the product.**
-10. [docs/history.md](docs/history.md) - session 59 is at the top.
-11. Tests worth reading before writing more: `internal/mcp/deadline_test.go` (a
-    daemon that accepts and says nothing), `internal/store/corrupt_test.go` (a blob
-    written directly), `frontend/test/mount-pull.test.js` (mount with no push at
-    all). Each was verified by neutering its fix.
+4. [tools/wiki/DRAW.md](tools/wiki/DRAW.md) - how the frames are drawn, what each
+   part of the drawing exists to prevent, and which frames must stay photographs.
+5. [docs/wiki/DESIGN.md](docs/wiki/DESIGN.md) - section 5 is the shot list, now
+   carrying four corrections the drawing forced.
+6. [docs/backlog/ux.md](docs/backlog/ux.md) - U-16 is the open band-A item; U-17
+   and U-18 are new and both about artifacts.
+7. [docs/backlog/robustness.md](docs/backlog/robustness.md) - 45 items in six
+   bands; seven band-A left.
+8. [docs/07-field-requests.md](docs/07-field-requests.md) - FR99 is closed and
+   its entry is the short version of this work.
+9. [docs/wiki/FACTS.md](docs/wiki/FACTS.md) - **read before quoting any number
+   about the product.**
+10. [docs/history.md](docs/history.md) - session 60 is at the top.

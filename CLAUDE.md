@@ -94,6 +94,12 @@ touching anything.
   tracks FR numbers used in commits and handoffs.
 - `docs/agent-manual.md` - the MCP tool reference (`agentbox docs agent` prints it).
 - `docs/history.md` - per-session log; `docs/STATUS.md` - current state.
+- `tools/wiki/` - the wiki's own tooling, and the part a session will not guess:
+  `draw.py` draws the pages' frames from fixtures (`frontend/draw/`), with
+  `drawhtml` rendering their documents through the product's own markdown and
+  artifact renderers and `shoot.mjs` capturing over CDP because a virtual clock
+  photographs unfinished pages. `DRAW.md` is the runbook; `publish.sh` is the
+  only path to the live wikis.
 - `docs/wiki/` - the public wiki, live at
   https://gitlab.com/fu-bar/agentbox/-/wikis/home and mirrored to
   https://github.com/borismilner/agentbox/wiki. Read it when you need what a
