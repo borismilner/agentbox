@@ -52,7 +52,7 @@ The design has one number in mind: how long it takes you to answer.
 
 ## A question, answered in two seconds
 
-![a choice card from release-bot](docs/img/card.png)
+![a choice card from release-bot asking which region release 2026.7.30 should go to first, with three numbered options and a countdown](docs/wiki/img/card.png)
 
 Every option has a number, so the whole exchange is one keystroke.\
 Esc defers the card to the inbox instead of answering it.\
@@ -103,7 +103,7 @@ agentbox notify --level success --title "release 2026.7.30 is live" --speak "The
 
 ## A patch, approved before it lands
 
-![a diff review card](docs/img/review.png)
+![a diff review card: the patch itself in the card, additions and removals coloured, a note box under it, and Request changes beside Approve](docs/wiki/img/review.png)
 
 `request_review` puts the patch itself in front of you: coloured, scrollable,
 with Approve and Request changes.\
@@ -111,7 +111,7 @@ A note typed into the card comes back to the agent as the review comment.
 
 ## A long job, without a notification per step
 
-![a live progress window](docs/img/progress.png)
+![the progress window in the bottom-right corner of the screen, three thin bars with no answer zone and no countdown](docs/wiki/img/progress.png)
 
 `report_progress` is a live bar in its own small window, deliberately outside
 the card queue.\
@@ -121,7 +121,7 @@ When the job ends, one toast says how it went.
 
 ## Documents, not scrollback
 
-![the reading window](docs/img/viewer.png)
+![the reading window: a table, a flowchart drawn as a diagram, and highlighted code, all on one fixed reading measure](docs/wiki/img/viewer.png)
 
 `show_document` renders markdown properly: headings, tables, highlighted
 code, GitHub-style alerts, mermaid diagrams, charts from a fenced block of
@@ -133,7 +133,7 @@ That makes it a live preview of whatever an agent is writing.
 
 ## An interface the agent wrote
 
-![an artifact, running](docs/img/artifact.png)
+![an artifact running in its own window: a canary console with a slider at 50% of live traffic and two buttons](docs/wiki/img/artifact.png)
 
 Some answers are a number, a range or a shape, and nine numbered options
 cannot carry them.\
@@ -146,7 +146,7 @@ the only way out.
 
 ## An hour away, and nothing lost
 
-![the app window, open on the inbox](docs/img/app.png)
+![the app window open on the inbox: two pending questions on top with their answer keys, and under them the hour that resolved itself](docs/wiki/img/inbox.png)
 
 Whatever arrived while you were gone is in the inbox: pending questions
 first, answerable right there with the same keys a card takes, then the

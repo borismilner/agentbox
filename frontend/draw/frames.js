@@ -325,7 +325,11 @@ export const FRAMES = {
     surface: "card",
     width: 470,
     height: "fit",
-    ground: 24,
+    // On the desktop rather than on a rectangle of ground. A card is a
+    // TRANSPARENT frameless window (webui.go), so what puts a shadow under it on
+    // a real screen is the desktop, and a frame cropped flush to the card has
+    // neither the shadow nor anything for it to fall on.
+    desk: { width: 860, height: 560, place: "centre" },
     // Keyed by the Go method name, which is what bridge.js builds its FQN from.
     // An empty theme is deliberate and is the whole of FR99's honesty rule in one
     // field: app.css's own defaults then decide every colour, so the frame wears
@@ -383,8 +387,7 @@ export const FRAMES = {
     // window height a human could drag to, not a crop that hides anything: the
     // footer strip is still pinned under the last row, where it lives.
     height: 720,
-    // "Crop to the window ... exclude the desktop behind it", so no ground.
-    ground: 0,
+    desk: { width: 1360, height: 880, place: "centre" },
     calls: {
       Theme: {},
       Ready: "",
@@ -411,7 +414,7 @@ export const FRAMES = {
     query: "tab=inbox",
     width: 1180,
     height: 700,
-    ground: 0,
+    desk: { width: 1360, height: 860, place: "centre" },
     calls: {
       Theme: {},
       Ready: "",
@@ -525,10 +528,10 @@ export const FRAMES = {
     // Shorter than the 780 Go opens, and a judgement like s2's: the stage flexes,
     // so a taller window is not more artifact, it is more empty stage under one.
     height: 470,
-    ground: 0,
     // The one frame that needs telling when it is done. The stage's iframe is in
     // the DOM long before the program inside it has mounted, so "the page has
     // painted" is not the question - a frame with a box is.
+    desk: { width: 1120, height: 640, place: "centre" },
     ready: ".k-artifact-frame",
     calls: {
       // artifactsEnabled is the trust switch, and it rides the theme. The
@@ -557,7 +560,7 @@ export const FRAMES = {
     surface: "viewer",
     width: 900,
     height: 780, // window.viewer_height
-    ground: 0,
+    desk: { width: 1120, height: 940, place: "centre" },
     calls: {
       Theme: {},
       Ready: "",
@@ -591,6 +594,53 @@ export const FRAMES = {
     events: { "agentbox:sessions": sessions() },
   },
 
+  // S14. The diff review card. README.md.
+  //
+  // The one kind that is read before it is answered, so it renders the diff
+  // rather than dumping it, and the keys are its own: a approves, r asks for
+  // changes, and the reply box is the comment that travels back with either.
+  // The change is the one the console frame is arguing about, so the two frames
+  // are the same afternoon.
+  s14: {
+    out: "review.png",
+    surface: "card",
+    width: 470,
+    height: "fit",
+    desk: { width: 900, height: 700, place: "centre" },
+    calls: { Theme: {}, Ready: "" },
+    events: {
+      "agentbox:view": card(
+        {
+          id: "itm-diff",
+          kind: "diff",
+          title: "Swap the router entry before draining",
+          body: "Four lines, no behaviour change on the happy path.",
+          identity: { agent: "release-bot", project: "checkout-api" },
+          // Kept narrow on purpose. The card is 470px and scrolls a long line
+          // rather than wrapping it, which is right on a desktop and reads as a
+          // clipped picture on a page.
+          diff: `--- a/internal/rollout/withdraw.go
++++ b/internal/rollout/withdraw.go
+@@ -18,8 +18,9 @@ func (r *Rollout) withdraw(
+-\tif err := r.drain(ctx, build); err != nil {
++\t// Swap first, or the drain feeds the
++\t// build being withdrawn.
++\tif err := r.point(ctx, r.previous); err != nil {
+ \t\treturn err
+ \t}
+-\treturn r.point(ctx, r.previous)
++\treturn r.drain(ctx, build)
+ }
+`,
+        },
+        {
+          bodyHtml: "<p>Four lines, no behaviour change on the happy path.</p>",
+          expiresAtMs: NOW + 271_000,
+        },
+      ),
+    },
+  },
+
   // S13. The secret card. is-it-safe.md, where the page has been carrying a
   // SHOT: placeholder since the wiki was written.
   //
@@ -603,7 +653,7 @@ export const FRAMES = {
     surface: "card",
     width: 470,
     height: "fit",
-    ground: 24,
+    desk: { width: 860, height: 570, place: "centre" },
     calls: { Theme: {}, Ready: "" },
     events: {
       "agentbox:view": card(

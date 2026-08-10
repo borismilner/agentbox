@@ -220,6 +220,19 @@
         left: 50%;
         transform: translateX(-50%);
       }
+      /* An ordinary window, where the WM would put one it just opened. Every
+         frame sits on this desktop rather than on a flat rectangle of ground:
+         a window with somewhere to cast a shadow reads as a window, and a black
+         band around a screenshot reads as a screenshot. */
+      html[data-place="centre"] #surface {
+        top: calc(50% + 16px);
+        left: 50%;
+        transform: translate(-50%, -50%);
+        /* Mutter rounds the corners of a mapped window; the app's own surface is
+           square because it never has to draw them. Same argument as the shadow:
+           this is the compositor's, not the product's. */
+        border-radius: 10px;
+      }
       html[data-place="corner"] #surface {
         right: 28px;
         bottom: 52px;
