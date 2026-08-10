@@ -23,9 +23,10 @@ binary except `tools/wiki/drawhtml`, which is a command nobody runs at runtime.
 `make deployed` still reports `c306e5e5a972`; that is session 59's note and still
 correct.
 
-**Budget.** This session ran to roughly 78% of the week. The week resets Aug 12,
-4:59am (Asia/Jerusalem). Check `claude -p /usage | grep -E '^Current '` before
-starting anything large.
+**Budget.** The week stood at 76% (all models) when this was written, and the
+session itself at 19%. The week resets Aug 12, 4:59am (Asia/Jerusalem). Check
+`claude -p /usage | grep -E '^Current '` before starting anything large - there
+is room for one more substantial piece of work before the reset, not several.
 
 1. **Robustness band A, seven left**: R-06, R-07, R-09, R-10, R-12, R-13, R-15,
    in `docs/backlog/robustness.md`'s own order. **R-12 and R-13 are the
