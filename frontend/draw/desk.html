@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>agentbox · drawn frame on a desktop</title>
+    <script>
+      // The wrapper for the three frames that are ABOUT where they sit: the two
+      // hands-off strips, pinned to the top edge of the screen, and the progress
+      // window in the corner the middle of the screen is not. Cropping those to
+      // the window destroys the thing the frame is evidence for, which is why
+      // DESIGN.md asks for desktop context in exactly these and nowhere else.
+      //
+      // The surface goes in an IFRAME rather than a div, and that is not a
+      // detail: the strip is `height: 100vh`, the card is `min-height: 100%`,
+      // and a viewport unit inside a div means the picture rather than the
+      // window. An iframe sized to what Go opens gives every such rule the same
+      // answer it gets on a desktop.
+      //
+      // Nothing here imitates an application. The window behind is a shape with
+      // text-coloured bars in it, blurred and dimmed: the reader's own work is
+      // whatever it is, and drawing a particular editor would be inventing a
+      // desktop rather than implying one.
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var d = document.documentElement;
+        var set = function (name, px) {
+          if (px) d.style.setProperty(name, px + "px");
+        };
+        set("--box-w", q.get("boxw"));
+        set("--box-h", q.get("boxh"));
+        d.dataset.place = q.get("place") || "top";
+        // Everything the surface page needs, forwarded verbatim. fill=1 makes
+        // the surface own the whole iframe, which is what a window is.
+        var inner = new URLSearchParams();
+        ["surface", "frame", "tab"].forEach(function (k) {
+          if (q.get(k)) inner.set(k, q.get(k));
+        });
+        inner.set("ground", "0");
+        inner.set("fill", "1");
+        addEventListener("DOMContentLoaded", function () {
+          var frame = document.getElementById("surface");
+          frame.src = "index.html?" + inner.toString();
+          // The capture waits for data-drawn, and on this page the surface is a
+          // document down. Both are served from the same origin, so the wrapper
+          // can simply ask the surface whether it has finished and then say so
+          // for itself - without it, shoot.mjs waits out its whole timeout on
+          // every desk frame.
+          var poll = setInterval(function () {
+            var doc = frame.contentDocument;
+            if (doc && doc.documentElement.dataset.drawn === "1") {
+              clearInterval(poll);
+              requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                  document.documentElement.dataset.drawn = "1";
+                });
+              });
+            }
+          }, 60);
+        });
+      })();
+    </script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      body {
+        position: relative;
+        overflow: hidden;
+        /* Two flat fields rather than three overlaid gradients. A wallpaper is
+           the largest thing in these three pictures and chrome dithers a smooth
+           ramp, so every extra stop costs tens of kilobytes on a wiki page for
+           something the reader is not meant to look at. */
+        background: linear-gradient(165deg, #1a2032 0%, #12161f 62%, #0e1116 100%);
+      }
+
+      /* Somebody's work, out of focus, because the strip only means anything
+         over it. Blurred hard on purpose: at three pixels it reads as text you
+         are not meant to read, and at one it reads as a loading skeleton, which
+         is a broken app rather than a busy desktop. */
+      .win {
+        position: absolute;
+        left: 5%;
+        top: 74px;
+        width: 63%;
+        height: 74%;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #191d26;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+        filter: blur(3px);
+        opacity: 0.5;
+      }
+      .win .hdr {
+        height: 32px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        background: #212734;
+        border-bottom: 1px solid #2a3140;
+      }
+      .win .hdr i {
+        display: block;
+        width: 82px;
+        height: 6px;
+        border-radius: 3px;
+        background: #4a5468;
+      }
+      .win .hdr i + i {
+        width: 46px;
+        opacity: 0.5;
+      }
+      /* A gutter and indented runs, so it reads as code rather than as a page of
+         paragraphs - which is what an agent is usually driving over. */
+      .win .pad {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        padding: 14px 18px 0 0;
+        column-gap: 14px;
+      }
+      .win .gutter,
+      .win .code {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .win .gutter i {
+        height: 7px;
+        width: 12px;
+        margin-left: auto;
+        border-radius: 3px;
+        background: #333b48;
+      }
+      .win .ln {
+        height: 7px;
+        border-radius: 3px;
+        background: #39424f;
+      }
+      .win .ln.a {
+        width: 62%;
+      }
+      .win .ln.b {
+        width: 38%;
+        margin-left: 24px;
+        background: #55618a;
+      }
+      .win .ln.c {
+        width: 71%;
+        margin-left: 24px;
+      }
+      .win .ln.d {
+        width: 46%;
+        margin-left: 48px;
+        background: #4a6a64;
+      }
+      .win .ln.e {
+        width: 55%;
+        margin-left: 48px;
+      }
+      .win .ln.f {
+        width: 22%;
+        margin-left: 24px;
+        background: #6a5a48;
+      }
+      .win .ln.g {
+        width: 14%;
+      }
+
+      /* The GNOME bar. Without it "pinned to the top edge of the screen" is a
+         claim about where the picture was cropped rather than about the screen,
+         and the 48px inset the product uses to clear this bar means nothing. */
+      .bar {
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.5);
+        color: #c9cede;
+        font: 500 12px/1 system-ui, sans-serif;
+      }
+      .bar .right {
+        position: absolute;
+        right: 14px;
+        display: flex;
+        gap: 7px;
+      }
+      .bar .pip {
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+        background: #c9cede;
+        opacity: 0.45;
+      }
+
+      /* Where the product actually puts the window, read off the code rather
+         than chosen: the top-centre column sits at window.toast_top_inset (48),
+         and x11.corner insets 28 from the right and 52 from the bottom. */
+      #surface {
+        position: absolute;
+        width: var(--box-w);
+        height: var(--box-h);
+        border: 0;
+        color-scheme: dark;
+        background: transparent;
+        /* The compositor's shadow, not the surface's. A card and a toast are
+           TRANSPARENT frameless windows sized to their own content (webui.go),
+           so the CSS shadow they carry is clipped by the window edge and what
+           puts one on screen is the desktop underneath. Drawing it here rather
+           than padding the iframe keeps the window exactly the size Go opens. */
+        filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.55));
+      }
+      html[data-place="top"] #surface {
+        top: 48px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      html[data-place="corner"] #surface {
+        right: 28px;
+        bottom: 52px;
+      }
+      /* The console rolls down from the top edge itself, centred on the monitor
+         (panel.resolve), so it covers the middle of the bar rather than clearing
+         it - unlike everything in the top-centre column. */
+      html[data-place="drop"] #surface {
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        border-radius: 0 0 12px 12px;
+        box-shadow: 0 26px 60px rgba(0, 0, 0, 0.6);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="win" aria-hidden="true">
+      <div class="hdr"><i></i><i></i></div>
+      <div class="pad">
+        <div class="gutter">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <div class="code">
+          <div class="ln a"></div>
+          <div class="ln b"></div>
+          <div class="ln c"></div>
+          <div class="ln d"></div>
+          <div class="ln e"></div>
+          <div class="ln f"></div>
+          <div class="ln c"></div>
+          <div class="ln g"></div>
+          <div class="ln a"></div>
+          <div class="ln b"></div>
+          <div class="ln e"></div>
+          <div class="ln g"></div>
+        </div>
+      </div>
+    </div>
+    <div class="bar" aria-hidden="true">
+      <span>Wed 10:12</span>
+      <span class="right"><i class="pip"></i><i class="pip"></i><i class="pip"></i></span>
+    </div>
+    <iframe id="surface" title="the surface, in a viewport the size of the window Go opens"></iframe>
+  </body>
+</html>

@@ -71,7 +71,8 @@ def frame_specs() -> dict:
     const out = {{}};
     for (const [k, v] of Object.entries(FRAMES)) {{
       out[k] = {{ out: v.out ?? (k + ".png"), surface: v.surface, width: v.width,
-                  height: v.height, ground: v.ground ?? 24, query: v.query ?? "" }};
+                  height: v.height, ground: v.ground ?? 24, query: v.query ?? "",
+                  desk: v.desk ?? null, ready: v.ready ?? "" }};
     }}
     process.stdout.write(JSON.stringify(out));
     """
@@ -141,83 +142,209 @@ class Server:
                 continue
 
 
-def chrome(url: str, width: int, height: int, *extra: str) -> subprocess.CompletedProcess:
-    with tempfile.TemporaryDirectory() as profile:
-        return subprocess.run(
+class Browser:
+    """One headless chrome, driven over the DevTools protocol.
+
+    It used to be one `chrome --headless --screenshot` per frame, with
+    `--virtual-time-budget` standing in for "wait until it has settled". That
+    flag fast-forwards the page's CLOCK, not its CPU, so the budget is spent in a
+    few real milliseconds and anything still working when it runs out is
+    photographed unfinished. Every surface survived that; the artifact did not -
+    a sandboxed iframe holding half a megabyte of inline React came out an empty
+    stage in one run and a working canary console in the next, from the same
+    fixture. tools/wiki/shoot.mjs waits for the page to say it is ready instead.
+    """
+
+    def __init__(self):
+        self.proc = None
+        self.profile = None
+        self.endpoint = None
+
+    def __enter__(self):
+        self.profile = tempfile.mkdtemp(prefix="agentbox-draw-")
+        self.proc = subprocess.Popen(
             [
                 CHROME,
                 "--headless",
-                f"--user-data-dir={profile}",
+                f"--user-data-dir={self.profile}",
                 "--no-sandbox",
                 "--disable-gpu",
                 "--hide-scrollbars",
-                # The frames are for a wiki read on ordinary displays; 2x keeps
-                # text crisp when the page scales the image down, which is what
-                # the published pages do.
-                "--force-device-scale-factor=2",
-                f"--window-size={width},{height}",
-                # The surfaces measure themselves and a ResizeObserver settles a
-                # frame or two after mount; runtime.js sets data-drawn when it
-                # has. This is the ceiling on that wait, not the wait itself.
-                "--virtual-time-budget=8000",
-                *extra,
-                url,
+                # Port 0 means "pick one", which is what keeps two drawings on
+                # one machine from fighting over 9222.
+                "--remote-debugging-port=0",
+                "about:blank",
             ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        # Chrome writes the port it chose, and the browser's own websocket path,
+        # into the profile as soon as it is listening.
+        port_file = Path(self.profile) / "DevToolsActivePort"
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if port_file.exists():
+                parts = port_file.read_text().split("\n")
+                if len(parts) >= 2 and parts[0].strip():
+                    self.endpoint = f"ws://127.0.0.1:{parts[0].strip()}{parts[1].strip()}"
+                    return self
+            time.sleep(0.1)
+        raise SystemExit("chrome did not report a debugging port within 30s")
+
+    def __exit__(self, *exc):
+        if self.proc:
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                try:
+                    os.killpg(self.proc.pid, sig)
+                except (ProcessLookupError, PermissionError):
+                    break
+                try:
+                    self.proc.wait(timeout=10)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+        if self.profile:
+            shutil.rmtree(self.profile, ignore_errors=True)
+
+    def shoot(self, url: str, width: int, height: int, out: str, ready: str = "") -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["node", str(REPO / "tools" / "wiki" / "shoot.mjs"), url, str(width), str(height), out, ready],
             capture_output=True,
             text=True,
+            env={**os.environ, "AGENTBOX_CDP": self.endpoint},
         )
 
+    def measure(self, url: str, width: int, ready: str = "") -> int | None:
+        """The height the surface asked Go for, or None if it never asked.
 
-def measure(url: str, width: int) -> int | None:
-    """The height the surface asked Go for, or None if it never asked.
+        A frameless surface measures its own laid-out height and hands it to
+        bridge.fit(); runtime.js writes that number onto <html data-h>. Reading
+        it back is what makes a drawn frame exactly as tall as the window a real
+        run would have opened - the alternative is a guessed viewport, and a card
+        in a 2000px one stretches to fill it rather than reporting it is short.
 
-    A frameless surface measures its own laid-out height and hands it to
-    bridge.fit(); runtime.js writes that number onto <html data-h>. Reading it
-    back is what makes a drawn frame exactly as tall as the window a real run
-    would have opened - the alternative is a guessed viewport, and a card in a
-    2000px one stretches to fill it rather than reporting that it is short.
+        Measured at the real width, because height depends on it: the title and
+        the option chips wrap, and a card measured at the wrong width is the
+        wrong height for the right reason.
+        """
+        r = self.shoot(url, width, 2000, "-", ready)
+        if r.returncode != 0:
+            # Not the same failure as "the surface never measured itself", and
+            # saying so matters: one is a fixture to fix, the other a browser.
+            sys.exit(f"measuring failed ({r.returncode})\n{r.stderr[-2000:]}")
+        return int(r.stdout.strip()) if r.stdout.strip().isdigit() else None
 
-    Measured at the real width, because height depends on it: the title and the
-    option chips wrap, and a card measured at the wrong width is the wrong height
-    for the right reason.
+
+def render_documents() -> None:
+    """Re-render the frames' documents with the product's own renderer.
+
+    Three frames show rendered markdown rather than a surface full of fields, and
+    in the product that HTML is Go's (internal/webui/mdhtml.go, artifact.go). The
+    fixtures hold the markdown; tools/wiki/drawhtml turns it into the HTML a real
+    document would carry, so a change to the renderer shows up in the next
+    drawing instead of quietly making the frames wrong.
+
+    Its output is committed, so a machine with no Go toolchain still draws - it
+    just draws what the last person with one generated.
     """
-    r = chrome(url, width, 2000, "--dump-dom")
+    if not shutil.which("go"):
+        print("no go toolchain; drawing with the committed frontend/draw/rendered.js", file=sys.stderr)
+        return
+    r = subprocess.run(
+        ["go", "run", "./tools/wiki/drawhtml"], cwd=REPO, capture_output=True, text=True
+    )
     if r.returncode != 0:
-        # Not the same failure as "the surface never measured itself", and saying
-        # so matters: one is a fixture to fix and the other is a browser to fix.
-        sys.exit(f"chrome failed while measuring ({r.returncode})\n{r.stderr[-2000:]}")
-    m = re.search(r'data-h="(\d+)"', r.stdout)
-    return int(m.group(1)) if m else None
+        sys.exit(f"rendering the frames' documents failed ({r.returncode})\n{r.stdout}{r.stderr}")
 
 
-def draw(server_url: str, name: str, spec: dict, out_dir: Path) -> tuple[Path, str]:
-    """Photograph one frame; return where it landed and how its height was decided."""
-    ground = int(spec["ground"])
-    width = int(spec["width"]) + 2 * ground
-    # A surface can need more of the query string than its own name: the app
-    # shell reads ?tab= to decide which of its nine surfaces is in front, and a
-    # frame of the agents board is the app window with tab=agents.
-    url = f"{server_url}/draw/index.html?surface={spec['surface']}&frame={name}"
+def surface_url(server_url: str, name: str, spec: dict, *, ground: int, fill: bool, measure: bool = False) -> str:
+    """The surface on its own, which is every frame that is cropped to a window.
+
+    A surface can need more of the query string than its own name: the app shell
+    reads ?tab= to decide which of its nine surfaces is in front, so a frame of
+    the agents board is the app window with tab=agents.
+    """
+    url = f"{server_url}/draw/index.html?surface={spec['surface']}&frame={name}&ground={ground}"
+    if fill:
+        url += "&fill=1"
+    if measure:
+        url += "&measure=1"
     if spec["query"]:
         url += "&" + spec["query"].lstrip("&")
+    return url
 
-    if spec["height"] == "fit":
-        asked = measure(url, width)
+
+def desk_url(server_url: str, name: str, spec: dict, box_h: int) -> str:
+    """The surface on a desktop, for the frames whose subject is where they sit."""
+    desk = spec["desk"]
+    url = (
+        f"{server_url}/draw/desk.html?surface={spec['surface']}&frame={name}"
+        f"&boxw={int(spec['width'])}&boxh={box_h}&place={desk.get('place', 'top')}"
+    )
+    if spec["query"]:
+        url += "&" + spec["query"].lstrip("&")
+    return url
+
+
+def draw(browser: "Browser", server_url: str, name: str, spec: dict, out_dir: Path) -> tuple[Path, str]:
+    """Photograph one frame; return where it landed and how its height was decided."""
+    fit = spec["height"] == "fit"
+    ready = spec["ready"]
+    if fit:
+        # Measured with no ground, no fill and the page's height constraint
+        # lifted, because all three change the answer: a surface free to fill a
+        # 2000px measuring viewport reports 2000 rather than what it needs.
+        asked = browser.measure(
+            surface_url(server_url, name, spec, ground=0, fill=False, measure=True),
+            int(spec["width"]),
+            ready,
+        )
         if asked is None:
             sys.exit(
                 f"{name}: surface {spec['surface']!r} never called fit(), so its height "
                 f"cannot be taken from the product. Give the frame an explicit height."
             )
-        viewport_h, how = asked + 2 * ground, f"fit({asked})"
+        box_h, how = asked, f"fit({asked})"
     else:
-        viewport_h, how = int(spec["height"]) + 2 * ground, "declared"
+        box_h, how = int(spec["height"]), "declared"
+
+    if spec["desk"]:
+        # The picture is the piece of screen, and the surface inside it is the
+        # window Go opens - so the viewport is the desk, not the surface.
+        width = int(spec["desk"]["width"])
+        viewport_h = int(spec["desk"]["height"])
+        url = desk_url(server_url, name, spec, box_h)
+        how += f", on {width}x{viewport_h} of desktop"
+    else:
+        ground = int(spec["ground"])
+        width = int(spec["width"]) + 2 * ground
+        viewport_h = box_h + 2 * ground
+        url = surface_url(server_url, name, spec, ground=ground, fill=not fit)
 
     out = out_dir / spec["out"]
     out.parent.mkdir(parents=True, exist_ok=True)
-    r = chrome(url, width, viewport_h, f"--screenshot={out}")
+    # A desk frame's readiness lives in the iframe, which this cannot see from
+    # the wrapper page, so the wrapper only ever waits for its own paint.
+    r = browser.shoot(url, width, viewport_h, str(out), "" if spec["desk"] else ready)
     if r.returncode != 0 or not out.exists():
-        sys.exit(f"{name}: chrome failed ({r.returncode})\n{r.stderr[-2000:]}")
+        sys.exit(f"{name}: capture failed ({r.returncode})\n{r.stderr[-2000:]}")
+    squeeze(out)
     return out, how
+
+
+def squeeze(path: Path) -> None:
+    """Losslessly re-compress a frame, if the machine can.
+
+    The three desk frames are mostly wallpaper, and chrome dithers a gradient, so
+    they land two to five times the size of a frame cropped to a window. These
+    are read over a wiki, and optipng takes about a third off without touching a
+    pixel - it is a re-encode, so a redraw is still byte-identical to itself.
+    Skipped silently when it is not installed: a slightly heavier frame is not
+    worth failing a drawing over.
+    """
+    if shutil.which("optipng"):
+        subprocess.run(["optipng", "-o2", "-quiet", str(path)], capture_output=True)
 
 
 def main() -> None:
@@ -231,6 +358,7 @@ def main() -> None:
         sys.exit("no chrome found; draw.py needs google-chrome or chromium on PATH")
     if not (FRONTEND / "node_modules").is_dir():
         sys.exit("frontend/node_modules is missing; run `npm install` in frontend/ first")
+    render_documents()
 
     specs = frame_specs()
     wanted = args.frames or list(specs)
@@ -241,8 +369,12 @@ def main() -> None:
     with Server() as server:
         if args.keep_serving:
             for name, spec in specs.items():
-                q = ("&" + spec["query"].lstrip("&")) if spec["query"] else ""
-                print(f"{name}: {server.url}/draw/index.html?surface={spec['surface']}&frame={name}{q}")
+                if spec["desk"]:
+                    h = spec["height"] if spec["height"] != "fit" else 200
+                    print(f"{name}: {desk_url(server.url, name, spec, int(h))}")
+                else:
+                    fill = spec["height"] != "fit"
+                    print(f"{name}: {surface_url(server.url, name, spec, ground=int(spec['ground']), fill=fill)}")
             print("\nserving; Ctrl-C to stop")
             try:
                 server.proc.wait()
@@ -250,10 +382,11 @@ def main() -> None:
                 pass
             return
 
-        for name in wanted:
-            out, how = draw(server.url, name, specs[name], args.out)
-            size = out.stat().st_size
-            print(f"{name:12} {out}  ({size // 1024} kB, height {how})")
+        with Browser() as browser:
+            for name in wanted:
+                out, how = draw(browser, server.url, name, specs[name], args.out)
+                size = out.stat().st_size
+                print(f"{name:12} {out}  ({size // 1024} kB, height {how})")
 
     print("\nRead every frame before publishing. A drawn frame cannot be wrong about")
     print("the desktop, but it can be wrong about the product, and only a person")

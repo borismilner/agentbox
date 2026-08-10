@@ -24,6 +24,21 @@
         FrozenDate.UTC = RealDate.UTC;
         window.Date = FrozenDate;
       })();
+
+      // The ground, and whether the surface fills the box. draw.py owns both
+      // numbers - it has to, because the viewport it opens chrome at is the same
+      // arithmetic, and computing it in two places is how the agents board came
+      // out sitting in a 24px black band its own spec said to crop away.
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var d = document.documentElement;
+        var g = q.get("ground");
+        if (g !== null && g !== "") d.style.setProperty("--ground", g + "px");
+        // Only frames with a DECLARED height fill: a frameless surface measures
+        // itself, and one stretched to a 2000px measuring viewport reports 2000.
+        if (q.get("fill") === "1") d.dataset.fill = "1";
+        if (q.get("measure") === "1") d.dataset.measure = "1";
+      })();
     </script>
     <style>
       /* The desktop the surface sits on. A frameless card's shadow is part of how
@@ -37,22 +52,48 @@
       body {
         margin: 0;
         padding: 0;
-        background: transparent;
       }
       body {
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
+        box-sizing: border-box;
         padding: var(--ground, 24px);
         /* A near-black desktop rather than pure black: pure black hides the
            shadow it exists to show. */
         background: #16181d;
       }
+      /* The surface fills the width draw.py sized the viewport for. It was
+         flex: 0 0 auto, which let a framed window shrink to its own content and
+         left ground showing down both sides of the agents board. */
       #root {
-        /* The surfaces set their own width; this keeps the flex parent from
-           stretching them past what Go would have opened. */
-        flex: 0 0 auto;
-        max-width: 100%;
+        width: 100%;
+      }
+      /* A definite height ONLY when the frame declared one. Several surfaces are
+         min-height: 100%, so a page with a definite height during the measuring
+         pass makes them as tall as the 2000px probe viewport and they report
+         that back as the window they need - which is how the progress window
+         first measured itself at 1857px. */
+      html[data-fill="1"],
+      html[data-fill="1"] body,
+      html[data-fill="1"] #root {
+        height: 100%;
+      }
+      /* Inside the desk's iframe the page IS the window, so what shows behind a
+         rounded corner is what Go opens the window with: BackgroundColour is
+         rgba(themeGround), i.e. this token. Wallpaper through the corners would
+         be the prettier lie. */
+      html[data-fill="1"] body {
+        background: var(--k-ground, #16181d);
+      }
+      /* The measuring pass, and the reason it needs !important: app.css itself
+         sets html, body and #root to height 100%, which is right for a window
+         and wrong for a probe. A surface that is min-height: 100% then fills the
+         2000px measuring viewport and hands Go 2000 as the height it needs - the
+         progress window measured itself at 1857px that way. fit() means "how
+         tall are you given room", so the probe has to give it room. */
+      html[data-measure="1"],
+      html[data-measure="1"] body,
+      html[data-measure="1"] #root {
+        height: auto !important;
+        overflow: visible !important;
       }
     </style>
   </head>
