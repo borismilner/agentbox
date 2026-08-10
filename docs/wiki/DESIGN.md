@@ -612,8 +612,12 @@ consistently rather than devices applied everywhere.
 - **One image per page.** Directly under the hurry block when the image is what
   the page is about, or directly under the H2 whose claim it proves. Never two
   images adjacent: with no CSS they stack full-width and the page becomes a
-  slideshow. One page breaks this rule on purpose, `hands-off.md`, because
-  presence is the feature and one frame cannot show a state change.
+  slideshow. Three pages break this rule on purpose. `hands-off.md`, because
+  presence is the feature and one frame cannot show a state change; and, since
+  2026-08-10, `notifications.md` and `documents-and-artifacts.md`, each of which
+  argues two separate things this section already specifies a frame for (S9 with
+  S10, S7 with S8). In both the images sit seventy lines apart under different
+  H2s, so nothing stacks.
 - **Every image gets a `<sub>` caption naming the one thing to notice.** The alt
   text does the image's job for a reader who cannot see it; the caption tells a
   reader who can see it where to look. They are different sentences.
@@ -647,6 +651,19 @@ the product.
 The mascot and the logo appear on `home.md` and nowhere else.
 
 ### The screenshots
+
+> **Corrected 2026-08-10, by drawing them.** Twelve of the fourteen frames are
+> now DRAWN from fixtures rather than photographed (`tools/wiki/DRAW.md`), and
+> the drawing corrected four things this section got wrong about the product.
+> Each is marked at the shot it belongs to. Three stay photographs because their
+> whole argument is that they are real: `install-doctor` (a terminal
+> transcript), S12 (unpruned history) and S4 (a real diff from this repo).
+>
+> One rule below is superseded outright. "Crop to the card plus about 24px of
+> dark desktop" was written for a photograph; every drawn frame now sits on a
+> drawn desktop instead, because a card is a transparent frameless window whose
+> shadow is clipped by its own edge, and because a frame cropped flush reads on
+> a page as a flat rectangle beside one that is not.
 
 Twelve shots. Each is **staged**, not captured: the copy on screen is written
 before the shot is taken, because a card reading "Test question 1" from agent
@@ -748,7 +765,10 @@ caption about a footer the shot does not have.
 
 - *Copy:* two pending rows on top, the selected one showing its key hints
   (`y yes · n no · d dismiss · c copy`), then recent history with outcomes in the
-  right-hand column: `eu-west`, `approved`, `proceeded`, one `unanswered`.
+  right-hand column: `eu-west`, `approved`, `proceeded`, one `expired`.
+  *Corrected 2026-08-10:* this said `unanswered`, which is not a word the outcome
+  column can contain - `outcomeOf` (`inbox.go:418-449`) returns `expired`,
+  `cancelled` or `missed while away` for the ones nobody answered.
   Footer: `N interruptions today`. Search box empty.
 - *The need:* you were in a meeting. Two things still want you, everything else
   resolved itself, and none of it is lost.
@@ -809,10 +829,15 @@ allowed two images.
   cannot carry them. So the agent writes an interface and blocks until you use it.
 - *Eye lands first:* the slider mid-track, because it says this is a thing you
   operate rather than read.
-- *Caption:* "The code toggle shows exactly what is running. Reading what an
-  agent wants to run is part of trusting it."
-- *Out of frame:* window only. The toggle must be visible; it is the trust half
-  of the shot.
+- *Caption:* "The slider mid-track is the whole point: this is a thing you
+  operate, not a thing you read. What you settle on leaves as one event."
+- *Out of frame:* window only.
+- *Corrected 2026-08-10, by drawing it.* This asked for the preview/code toggle
+  and said it "must be visible; it is the trust half of the shot". The product
+  hides it in exactly this shape: `app.css:960-963` drops the toggle and the
+  reload button whenever the document IS the artifact, which is what
+  `show_artifact` and `agentbox show --artifact` open. The frame therefore cannot
+  have one, the caption is no longer about it, and the gap is filed as U-17.
 
 **S8. The reading window.** For `documents-and-artifacts.md` if S7 moves to
 `is-it-safe.md`, otherwise cut.
@@ -857,6 +882,12 @@ allowed two images.
 - *Copy:* the console rolled down over an editor, one session chip selected, a
   turn mid-stream with a 24-hour timestamp and how long it worked, and the inline
   ask panel sitting above the composer with a two-option question in it.
+  *Corrected 2026-08-10, by drawing it:* the timestamp is not obtainable in this
+  frame. The console is 1420x600 on a 1920x1200 monitor (`panel.sizeOn`), and an
+  ask panel and a composer take 310 of those 600 - so about 200px of conversation
+  is on screen and a turn long enough to be worth showing has its header above
+  the fold. The frame shows the end of the turn, which is what a reader of a real
+  console sees.
 - *The need:* the agent asking is the one inside this window, and the context the
   question is about is exactly what a card would cover.
 - *Eye lands first:* the inline question above the composer.

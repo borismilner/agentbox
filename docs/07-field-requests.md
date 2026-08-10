@@ -2986,6 +2986,38 @@ the concurrency story is there - what is missing is the operations themselves.
 
 ## FR99 [field] The wiki's pictures should be drawn, not photographed
 
+> **Done on 2026-08-10.** Twelve frames are drawn and published; three stay
+> photographs because their whole argument is that they are real (the install
+> doctor's terminal transcript, the unpruned history table, and the review board's
+> diff of this repo). `README.md` uses the drawn set too, and the pre-rename
+> `docs/img` screenshots are deleted.
+>
+> Four defects in the harness had to go first, and three are the same shape -
+> something stood in for waiting and was not waiting. The ground draw.py computed
+> never reached the page, so the agents board sat in a black band its own spec
+> said to crop. The measuring pass inherited `app.css`'s definite height, so a
+> `min-height: 100%` surface reported the probe's 2000px as the height it needed.
+> `--virtual-time-budget` fast-forwards a page's timers rather than its CPU, so
+> the artifact - half a megabyte of inline React in a sandboxed iframe - was an
+> empty stage in one run and a working console in the next; `tools/wiki/shoot.mjs`
+> drives the browser over CDP and waits for the page to say it is ready. And the
+> entry animations then had to be settled explicitly, or two draws of one fixture
+> were two different files.
+>
+> Two things the request did not anticipate. **Go has to render the documents.**
+> Three frames show rendered markdown, and hand-writing that HTML would be drawing
+> a renderer nobody ships, so `tools/wiki/drawhtml` calls the product's own
+> `RenderMarkdown` and `RenderArtifact` before every drawing. **The frames need a
+> desktop.** A card is a transparent frameless window sized to its own content, so
+> its CSS shadow is clipped by its own edge; cropped flush it is a flat rectangle
+> on the page, and what draws a shadow under a window on a real screen is the
+> desktop under it.
+>
+> It found four errors in the specification and the pages, which is the return the
+> request hoped for: DESIGN.md's S3 outcome word, S7's toggle, S11's timestamp,
+> and `documents-and-artifacts.md` claiming a control the product hides. Two of
+> those became `U-17` and `U-18`.
+
 > **Harness built and the first frame drawn on 2026-08-09.**
 > `tools/wiki/draw.py` plus `frontend/draw/` render the shipped surfaces with the
 > daemon door aliased to a fixture; `docs/wiki/img/card.png` is now a drawing and

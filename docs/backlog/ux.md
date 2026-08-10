@@ -342,6 +342,83 @@ grepped for.
 
 ---
 
+### U-17. An artifact opened on its own gives you no way to read what is running
+
+**Found on 2026-08-10, by drawing it.** Not by reading: the frame for
+`documents-and-artifacts.md` came out with no toggle in it, against a page that
+says every artifact has one.
+
+**How it fails.** `artifactBlock` emits a preview/code toggle and a reload button
+for every artifact (`internal/webui/artifact.go:190-197`), and `app.css:960-963`
+hides both whenever the document IS the artifact - `Viewer.svelte:268` sets
+`k-md-artifact` from `doc.artifact`, which `viewer.go:123` sets for
+`show_artifact` and `agentbox show --artifact`. So the toggle is present in a
+conversation and in a document that contains an artifact, and absent in the one
+shape where the artifact has the whole window.
+
+**Consequence.** The code tab is the trust half of the feature: the wiki's own
+argument is that "reading what an agent wants to run before you run it is not a
+power-user feature here, it is the point". An agent that calls `show_artifact`
+hands you a running program you cannot read without going and finding its source
+yourself, which is the thing the toggle exists to make unnecessary. The hidden
+reload matters less but is the same shape: an artifact that threw has no way back
+except closing the window.
+
+**Where.** `frontend/src/app.css:960-963`, `frontend/src/surfaces/Viewer.svelte:268`,
+`internal/webui/artifact.go:190-197`.
+
+**Fix.** Two candidates and the choice is a design call. Either stop hiding them
+and let the bar carry both in every shape - the bar has the room, it is one line
+and the toggle sits at its right end - or keep the stage full-bleed and move the
+two controls into the viewer's own title bar beside `find`, `A-`, `A+`. The first
+is smaller; the second keeps the promise that the window belongs to the artifact.
+
+**Test that would have caught it.** A mount test asserting the toggle is reachable
+in both shapes. Cheaper: the drawn frame, which is now the standing check - a
+redraw shows the bar and a person reads it.
+
+**On screen.** `agentbox show --artifact` any file, and look for the code tab.
+**Size.** hours.
+**Confidence.** Confirmed. The drawn frame has no toggle, and the rule that hides
+it is a single selector.
+
+---
+
+### U-18. An artifact that does not run looks exactly like one that has not finished
+
+**Found on 2026-08-10**, while drawing U-17's frame: a fixture that failed to
+mount rendered the bar, the `interactive` badge, the runtime label and an empty
+stage, with the bar's error slot blank.
+
+**How it fails.** The bar carries a `k-artifact-note` span "where a blocked CDN, a
+compile error or a thrown exception lands" (`app.css:859-862`), and in this case
+nothing landed in it. The failure was inside the sandbox - an opaque origin the
+parent cannot read a console from - so whatever went wrong never crossed back.
+
+**Consequence.** A reader cannot tell a program that is still starting from one
+that will never start. For a feature whose whole shape is "the agent blocks until
+you use this", an artifact that silently shows nothing leaves both sides waiting:
+the human for a control, the agent for an event.
+
+**Where.** `frontend/src/lib/artifact.svelte.js` (the error path and the note),
+`frontend/src/lib/artifact-runtime.js:55-75` (the bootstrap that reports a failure
+back out).
+
+**Fix.** Not yet diagnosed, and that is the first task: the runtime does post a
+failure out on `window.onerror`, so either that path did not fire for this class
+of failure or the note was written and cleared. Once it is understood, an empty
+stage that has been empty past a short deadline should say so - "this artifact did
+not start" beats a blank rectangle even when the reason is unavailable.
+
+**Test that would have caught it.** A mount test with a deliberately broken source
+asserting the note is non-empty. R-40's harness covers the mount half of this.
+
+**On screen.** `agentbox show --artifact` a file that throws at module scope.
+**Size.** hours to diagnose, unknown to fix.
+**Confidence.** The symptom is confirmed and reproduced. The cause is not.
+
+---
+
 ## Band C
 
 *The window is the wrong shape for what is in it. The frameless surfaces size

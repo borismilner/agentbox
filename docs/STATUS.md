@@ -1,7 +1,7 @@
 # STATUS
 
-Updated: 2026-08-09, fifty-ninth session (band A down to seven, and the wiki's
-frames are drawn rather than photographed).
+Updated: 2026-08-10, sixtieth session (the wiki's pictures are all drawings now,
+and they sit on a desktop).
 
 **This file is the current state, and only that.** What each session shipped,
 broke, learned and verified is in [history.md](history.md), which is the log; the
@@ -18,6 +18,17 @@ verification and refinement queue. The showcase re-record was dropped for good o
 config keys nothing reads, three wrong verb lists, two wrong defaults and a tool
 count that had been wrong in three places; [wiki/FACTS.md](wiki/FACTS.md) is the
 audited base, and it is what to quote from now on.
+
+**The wiki's pictures (2026-08-10).** Twelve of the fourteen frames are drawn
+from fixtures rather than photographed, published to both wiki hosts, and used by
+`README.md` as well - the pre-rename `docs/img` screenshots are deleted. Three
+stay photographs on purpose, each because the frame's whole argument is that it
+is real: `install-doctor.png` (a terminal transcript), `history-stats.png`
+(unpruned rows from this machine) and `review-board.png` (a real diff of this
+repo). `settings.md` keeps its `SHOT:` placeholder for the same class of reason.
+The runbook, the parts and what each one is for are in `tools/wiki/DRAW.md`;
+`tools/wiki/drawhtml` and `tools/wiki/shoot.mjs` are the two pieces a fresh
+session is most likely to need and least likely to guess.
 
 **Where the backlog stands (2026-08-09).** `docs/backlog/README.md` is the one
 order across the three audits and is current. Tier 1 is down to **seven robustness

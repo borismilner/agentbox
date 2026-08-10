@@ -9,6 +9,84 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Sixtieth session (2026-08-10): the wiki's pictures, all of them, on a desktop
+
+Boris asked for the wiki's examples to be created rather than captured, and for
+the pages to be fixed and pushed. Twelve of the fourteen frames are now drawings
+and both wiki hosts have them, along with `README.md`, which had been showing
+screenshots taken before the rename.
+
+**Four defects in the harness came first, and three are one shape: something
+stood in for waiting and was not waiting.**
+
+The ground `draw.py` computed never reached the page. It sized the viewport for a
+24px margin and the page padded 24px unconditionally, so a frame that asked for
+none got one anyway - the agents board sat in a black band its own spec says to
+crop away, and the app window shrank to its content instead of filling the frame.
+Both numbers now come from one place.
+
+The measuring pass inherited a definite height. `app.css` sets `height: 100%` on
+`html`, `body` and `#root`, which is right for a window and wrong for a probe, so
+a surface that is `min-height: 100%` filled the 2000px measuring viewport and
+handed back 2000 as the height it needed. The progress window did exactly that.
+The subtler version of the same failure had been shipping since the harness was
+built: the toast was measured out of a DOM dump taken before its last resize
+landed, and under-reported by 22px.
+
+The capture waited on the wrong clock. `--virtual-time-budget` fast-forwards a
+page's timers rather than its CPU, so it expires in a few real milliseconds and
+photographs whatever happens to be finished. Every surface survived that. The
+artifact did not: half a megabyte of inline React in a sandboxed iframe came out
+an empty stage in one run and a working canary console in the next, from one
+fixture. An hour went into believing it was the content - the stat row I had just
+added, then the opacity syntax, then the grid - before the two-runs-differ shape
+of it pointed at timing rather than at markup. `tools/wiki/shoot.mjs` now drives
+the browser over the DevTools protocol and waits for the page to say it is ready,
+including a per-frame selector for the ones with an iframe in them.
+
+And then the animations had to be settled explicitly, because with a real clock a
+card is caught mid-drop: two draws of one fixture produced two different files.
+Things that end are finished, things that loop are frozen 40% in - at zero the
+progress window's indeterminate sweep sits off the left of its own track, which
+reads as a bar that is not working.
+
+**Two things the request did not anticipate.**
+
+Go has to render the documents. The viewer, the artifact and the console show
+*rendered* markdown, and in the product that HTML is `mdhtml.go`'s and
+`artifact.go`'s. A fixture that hand-wrote it would be drawing a renderer nobody
+ships, so `tools/wiki/drawhtml` calls `RenderMarkdown` and `RenderArtifact` and
+`draw.py` runs it before every drawing.
+
+The frames need a desktop, and not only for the three whose subject is where they
+sit. Boris looked at the published secret card and called it ugly beside the
+toast, which was right and had a mechanical reason under it: a card is a
+transparent frameless window sized to its own content, so the CSS shadow it
+carries is clipped by its own edge. What draws a shadow under a window on a real
+screen is the desktop under it, and a frame cropped flush has neither. Every
+frame now sits on the same drawn desktop, in an iframe sized to exactly the
+window Go opens - which is also what lets `height: 100vh` on the hands-off strip
+mean the window rather than the picture.
+
+**What the drawing found, which is the return FR99 hoped for.** Four claims in
+the docs that the code contradicts. `DESIGN.md` specified an inbox outcome column
+reading `unanswered`, a word `outcomeOf` cannot produce. It specified the
+artifact's preview/code toggle as "the trust half of the shot", and `app.css:960`
+hides that toggle in exactly the shape `agentbox show --artifact` opens - so
+`documents-and-artifacts.md`, which claimed the toggle sits above *every*
+artifact directly over that command, was wrong in its own strongest paragraph.
+It asked the console frame for a turn's 24-hour timestamp, which a 600px console
+with an ask panel up cannot show. And an artifact that fails to run says nothing
+at all: bar, badge, runtime label, empty stage, and an empty error slot. The last
+two are filed as U-17 and U-18; the rest are corrected in place.
+
+**What is still photographed, on purpose.** Three frames, and each for the same
+reason: the whole argument of the frame is that it is real. The install doctor is
+a terminal transcript. The history table's point is that the rows are this
+machine's unpruned own. The review board's spec asks for a real change from this
+repo. Drawing any of them would replace evidence with fiction, which is the line
+`DRAW.md` now draws.
+
 ## Fifty-ninth session (2026-08-09): the owed look at a screen, and four band-A fixes
 
 Session 58 left one thing owed - nobody had looked at U-01 or U-02 on a desktop -
