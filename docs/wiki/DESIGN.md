@@ -652,7 +652,7 @@ The mascot and the logo appear on `home.md` and nowhere else.
 
 ### The screenshots
 
-> **Corrected 2026-08-10, by drawing them.** Twelve of the fourteen frames are
+> **Corrected 2026-08-10, by drawing them.** Twelve of the fifteen frames are
 > now DRAWN from fixtures rather than photographed (`tools/wiki/DRAW.md`), and
 > the drawing corrected four things this section got wrong about the product.
 > Each is marked at the shot it belongs to. Three stay photographs because their

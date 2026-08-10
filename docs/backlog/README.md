@@ -93,6 +93,15 @@ plus U-16, and U-16 wants one more repro before its fix is chosen: it
 was seen once each way, minutes apart, and "always" and "sometimes" argue for
 different answers.
 
+**Two ux items arrived on 2026-08-10 and neither is band A.** Drawing the wiki's
+frames put the artifact surface on screen and turned up U-17 (an artifact opened
+on its own hides the preview/code toggle, so the one shape where it fills the
+window is the one where you cannot read what is running) and U-18 (an artifact
+that fails to run shows an empty stage and an empty error slot, so a broken one
+and a slow one look identical). Both are band B - a control states something
+nothing checks - and both are hours. Take them together: the reproduction is the
+same window.
+
 **Tier 2 - the hub stops serving.** Robustness band B, eleven items, R-16 to R-26.
 Loud failures, mostly hours each. R-26 (no bound on anything an agent puts in a
 card) is the one to take first: it is the only band-B item an agent can trigger by

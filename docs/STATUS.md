@@ -19,7 +19,7 @@ config keys nothing reads, three wrong verb lists, two wrong defaults and a tool
 count that had been wrong in three places; [wiki/FACTS.md](wiki/FACTS.md) is the
 audited base, and it is what to quote from now on.
 
-**The wiki's pictures (2026-08-10).** Twelve of the fourteen frames are drawn
+**The wiki's pictures (2026-08-10).** Twelve of the fifteen frames are drawn
 from fixtures rather than photographed, published to both wiki hosts, and used by
 `README.md` as well - the pre-rename `docs/img` screenshots are deleted. Three
 stay photographs on purpose, each because the frame's whole argument is that it

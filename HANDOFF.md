@@ -2,7 +2,7 @@
 
 *Written by session 60, which took one assignment from Boris - create the wiki's
 examples instead of capturing them, fix the pages, push them - and finished it.
-Twelve of the fourteen frames are drawn, every one sits on a desktop, both wiki
+Twelve of the fifteen frames are drawn, every one sits on a desktop, both wiki
 hosts have them, and `README.md` uses them too. Four defects in the drawing had
 to be fixed first and four wrong claims in the docs came out of it.*
 
@@ -13,7 +13,7 @@ to be fixed first and four wrong claims in the docs came out of it.*
 ```bash
 cd ~/me/projects/agentbox
 git status -sb                          # expect clean, in sync with origin/main
-python3 tools/wiki/draw.py --out /tmp/x # expect 14 frames, no error, ~4 minutes
+python3 tools/wiki/draw.py --out /tmp/x # expect 12 frames, no error, ~4 minutes
 bash tools/wiki/publish.sh --dry-run    # expect "already up to date" on both
 agentbox pending                        # expect nothing pending
 ```
@@ -53,10 +53,10 @@ see it, which is what turns a wrong document into a visible error.
   while debugging and killed with `pkill -f draw.config.js`; check with
   `pgrep -af "draw.config"` if a port seems taken.
 - **PRs:** none, ever. Boris pushes `main` directly.
-- **Git:** `main` clean and **pushed to `origin` (gitlab)** through `af73111`,
-  plus one commit for CLAUDE.md if it is not in yet. The `github` remote is a
-  mirror of the *code* repo and was **not** pushed this session; the permission
-  classifier blocked it in session 59 and nothing has changed there.
+- **Git:** `main` clean and **pushed to `origin` (gitlab)** through `98740c1`,
+  plus a docs commit from `/handoff` after it. The `github` remote is a mirror of
+  the *code* repo and was **not** pushed this session; the permission classifier
+  blocked it in session 59 and nothing has changed there.
 - **Wiki:** both hosts current (`publish.sh --dry-run` says so). The GitHub wiki
   is a separate repo from the code mirror and pushes fine.
 - **Deployed daemon:** untouched, `c306e5e5a972`.
@@ -99,10 +99,9 @@ see it, which is what turns a wrong document into a visible error.
 
 ## Facts - verified vs assumed
 
-- [verified] **All fourteen frames drawn or accounted for, and every one read on
-  screen before publishing.** Twelve drawn, three deliberately photographed
-  (`install-doctor`, `history-stats`, `review-board`); `review-board` is in both
-  counts because it is a photograph that stays.
+- [verified] **All fifteen images accounted for, and every drawn one read on
+  screen before publishing.** Twelve drawn; three deliberately photographed and
+  left alone (`install-doctor`, `history-stats`, `review-board`).
 - [verified] **A redraw is byte-identical.** Checked by drawing four frames twice
   into different directories and comparing md5s, after the animation-settling fix
   and again after the desktop change.

@@ -12,7 +12,7 @@ throughout, including in entries dated before a rename.
 ## Sixtieth session (2026-08-10): the wiki's pictures, all of them, on a desktop
 
 Boris asked for the wiki's examples to be created rather than captured, and for
-the pages to be fixed and pushed. Twelve of the fourteen frames are now drawings
+the pages to be fixed and pushed. Twelve of the fifteen frames are now drawings
 and both wiki hosts have them, along with `README.md`, which had been showing
 screenshots taken before the rename.
 
