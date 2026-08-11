@@ -74,11 +74,14 @@ The distance turned out to be six syscalls, two `/proc` reads, and that one tag.
   moves it - check with `git rev-parse --short HEAD` against
   `git ls-remote origin main` and `git ls-remote github main`, and expect all
   three to agree.
-  **The github code mirror needs no separate push**, which is new: gitlab mirrors
-  to it within about twenty seconds. Sessions 59 and 60 recorded the push as
-  blocked by the permission classifier; a direct `git push github main` worked
-  once here and was then rejected as stale because the mirror had already
-  delivered it. So if github looks behind, wait rather than force anything.
+  **Push both explicitly: `git push origin main && git push github main`.** The
+  news here is that the direct github push WORKS now - sessions 59 and 60 recorded
+  it as blocked by the permission classifier, and it went through twice this
+  session. A gitlab-to-github mirror also exists but its timing is not dependable:
+  it delivered one commit inside twenty seconds and had not delivered the next
+  after forty, so waiting on it is not a plan. If a direct push is rejected as
+  stale, the mirror simply won the race and the ref is already correct - check with
+  `ls-remote` and never force.
 - **Wiki:** both hosts current (`publish.sh --dry-run` says so), four pages
   changed - home, install, is-it-safe, limits. Read back the published `limits.md`
   over HTTP to confirm the new first section is live.
