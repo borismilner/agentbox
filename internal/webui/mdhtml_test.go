@@ -3,6 +3,7 @@ package webui
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // The renderer feeds every surface, so these tests are the closest thing the port
@@ -152,5 +153,65 @@ func TestRenderEscapesHTML(t *testing.T) {
 	got := RenderMarkdown("a body from an agent: <script>alert(1)</script>\n")
 	if strings.Contains(got, "<script>") {
 		t.Fatalf("raw HTML from an agent must not reach the surface:\n%s", got)
+	}
+}
+
+// R-17: a fence past the ceiling is emitted plain, and the ceiling is what keeps
+// the render bounded. Measured through this function on go1.26.1: chroma's output
+// is about nine times its input at every size and costs a microsecond per byte (two
+// with no language, because Analyse runs), so 1 MB in one fence was a second of CPU
+// and 9.4 MB of HTML, once per open window - and the session transcript re-renders
+// on a 60ms cadence.
+func TestBigFenceIsPlainRatherThanHighlighted(t *testing.T) {
+	small := strings.Repeat("x := 1\n", 10)
+	if got := codeBlockHTML(small, "go"); !strings.Contains(got, "chroma") {
+		t.Errorf("an ordinary fence lost its highlighting: %q", got[:min(200, len(got))])
+	}
+
+	// Past the byte ceiling.
+	big := strings.Repeat("x := 1 // padding to make this line long enough to count\n", 1200)
+	if len(big) <= highlightMaxBytes {
+		t.Fatalf("fixture is %d bytes, which is under the ceiling this test is about", len(big))
+	}
+	got := codeBlockHTML(big, "go")
+	if strings.Contains(got, "chroma") {
+		t.Error("a fence past the byte ceiling was still highlighted")
+	}
+	if !strings.Contains(got, "not highlighted") {
+		t.Errorf("the block does not say why it is plain: %q", got[:min(300, len(got))])
+	}
+	// Nothing is truncated: the ceiling is on the amplification, not the content.
+	if n := strings.Count(got, "x := 1"); n != 1200 {
+		t.Errorf("plain block carries %d of 1200 lines", n)
+	}
+	if float64(len(got)) > 1.5*float64(len(big)) {
+		t.Errorf("plain block is %d bytes for %d in, which is not a bound", len(got), len(big))
+	}
+
+	// Past the line ceiling with few bytes, which is the shape a byte count misses.
+	lines := strings.Repeat("x\n", highlightMaxLines+1)
+	if got := codeBlockHTML(lines, "go"); strings.Contains(got, "chroma") {
+		t.Errorf("%d one-character lines were highlighted", highlightMaxLines+1)
+	}
+}
+
+// The bound the entry asked for, stated as a test rather than as a measurement in
+// a document: a megabyte in one fence renders inside a deadline and under a
+// multiple of its own size.
+func TestFenceRenderStaysBounded(t *testing.T) {
+	src := strings.Repeat("func f() { return 1 } // and a comment to widen the line\n", 20000)
+	if len(src) < 1<<20 {
+		t.Fatalf("fixture is %d bytes, want at least a megabyte", len(src))
+	}
+
+	start := time.Now()
+	got := codeBlockHTML(src, "go")
+	took := time.Since(start)
+
+	if took > 2*time.Second {
+		t.Errorf("one fence took %s; before the ceiling a megabyte cost about a second and there was no ceiling", took)
+	}
+	if float64(len(got)) > 2*float64(len(src)) {
+		t.Errorf("one fence produced %d bytes from %d, a %.1fx amplification", len(got), len(src), float64(len(got))/float64(len(src)))
 	}
 }

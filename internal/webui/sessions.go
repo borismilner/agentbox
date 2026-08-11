@@ -728,16 +728,18 @@ func encodeSegments(t session.Turn) []wireSeg {
 		}
 		switch seg.Kind {
 		case session.SegText:
-			ws.Kind, ws.HTML = "text", RenderMarkdown(seg.Text)
+			// Cached (R-17): this runs for every segment of the selected conversation
+			// on every push, and a push is up to fifteen a second while a reply streams.
+			ws.Kind, ws.HTML = "text", renderMarkdownCached(seg.Text)
 			if t.Role == session.RoleUser {
 				ws.Text = seg.Text // rendered for nobody; shown as typed
 			}
 		case session.SegThinking:
-			ws.Kind, ws.HTML = "thinking", RenderMarkdown(seg.Text)
+			ws.Kind, ws.HTML = "thinking", renderMarkdownCached(seg.Text)
 		case session.SegToolUse:
 			ws.Kind = "tool"
 			if lang := toolLang(seg.ToolName); lang != "" {
-				ws.ToolHTML = HighlightInline(seg.ToolInput, lang)
+				ws.ToolHTML = highlightInlineCached(seg.ToolInput, lang)
 			}
 		default:
 			ws.Kind = "result"

@@ -229,8 +229,32 @@ func HighlightInline(src, lang string) string {
 	return b.String()
 }
 
+// A fence past this is emitted as plain escaped text, with the block's corner
+// label saying so (R-17).
+//
+// Measured on this tree's own Go source, through this very function, on go1.26.1:
+// the HTML comes out about NINE times the input at every size, and the time is
+// about a microsecond per byte with a language named and two without, because an
+// unlabelled fence pays `lexers.Analyse` as well. So 64 kB costs 69ms and 620 kB
+// of HTML, 1 MB costs a second and 9.4 MB, and nothing stopped the second case.
+// (R-17's entry says the amplification is 16x. On this build it is 9x, which
+// changes the arithmetic and not the defect.)
+//
+// 64 kB is about 2000 lines of Go: past what an agent means by "show me this
+// file", and the point where colour is worth less than the window it costs. The
+// line ceiling is there for the shape bytes miss - 30,000 one-character lines is a
+// span and a table cell each, and cheap to write.
+const (
+	highlightMaxBytes = 64 << 10
+	highlightMaxLines = 2000
+)
+
 func codeBlockHTML(src, lang string) string {
 	engine() // the formatters are built with the parser; an artifact can arrive first
+	// Before the lexer is chosen, because choosing it is half the cost.
+	if len(src) > highlightMaxBytes || countRealLines(src) > highlightMaxLines {
+		return plainBlockHTML(src, lang)
+	}
 	lexer := lexers.Get(lang)
 	if lexer == nil {
 		lexer = lexers.Analyse(src)
@@ -258,6 +282,23 @@ func codeBlockHTML(src, lang string) string {
 	}
 	b.WriteString(`</div>`)
 	return b.String()
+}
+
+// plainBlockHTML is the same block with no chroma in it: the code is whole, the
+// colours are missing, and the corner label says which. It reuses `data-lang`
+// because that attribute IS the block's caption already (`.k-code::before` in
+// app.css), so being honest about it costs no stylesheet change and no rebuild -
+// and a silent fallback would read as "this language has no highlighter", which is
+// a different and wrong explanation.
+func plainBlockHTML(src, lang string) string {
+	label := "not highlighted, " + kb(len(src))
+	if lang != "" {
+		label = lang + " · " + label
+	}
+	return `<div class="k-code" data-lang="` + template(label) + `">` +
+		`<button class="k-copy" type="button" data-copy title="copy this block">copy</button>` +
+		"<pre><code>" + template(src) + "</code></pre>" +
+		`</div>`
 }
 
 // linesText is the text of a raw block - a fence, an equation - joined back
