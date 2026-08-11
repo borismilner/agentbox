@@ -216,6 +216,7 @@ func Serve(ctx context.Context, runtimeDir, version string, id proto.Identity) e
 // may take the human minutes (the item's own timeout_s bounds it).
 func (s *server) call(ctx context.Context, method string, it *proto.Item) (proto.Result, error) {
 	it.Identity = s.id
+	capWaitWithoutKeepalive(ctx, it)
 	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	conn, err := client.Dial(dialCtx, s.runtimeDir, nil)
 	cancel()

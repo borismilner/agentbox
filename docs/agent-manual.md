@@ -448,6 +448,10 @@ mean anything.
 Ask a question. Give 2-9 `options` for a single choice, or omit them for free
 text.
 - Args: `title` (req), `body`, `options` (2-9 strings), `timeout_s` (int; 0 = wait forever), `default` (applied on timeout).
+- `timeout_s: 0` waits as long as your host keeps the call open. Claude Code does, because AgentBox sends it a
+  progress notification every minute; a host that asks for no progress cannot be held open past its own idle limit,
+  so a wait-forever question from one of those is bounded at 25 minutes and comes back `outcome: expired` rather
+  than being abandoned while the human is still reading it.
 - Returns: `{answered, answer, reply, default_applied, outcome}`. `answer` is the chosen option; `reply` is set instead when the human typed free text (the "/" reply hatch); `default_applied=true` if the timeout default was used. `outcome` says HOW it ended - `answered`, `expired` (the window lapsed), `dismissed` (closed unanswered) or `cancelled` - so retry on `expired` and do not re-ask on `dismissed`.
 
 ### confirm_action  (blocking)
