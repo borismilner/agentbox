@@ -1295,6 +1295,81 @@ func TestAToastWhoseWindowNeverReportsStillDrains(t *testing.T) {
 	}
 }
 
+func TestAToastThatNeverAppearedSaysSoInHistory(t *testing.T) {
+	// R-06's second half. The fallback above retires the toast, which is right -
+	// but a row saying "dismissed" for a window that never existed reads as seen
+	// and closed, and that is the lie. The stored row has to carry the marker.
+	d, ui, _, st := newBlindTestDaemon(t, Config{
+		ToastDuration: 50 * time.Millisecond,
+		SurfaceGrace:  120 * time.Millisecond,
+	})
+	callNotify(t, d, notifyItem(proto.LevelInfo))
+	waitForItem(t, ui)
+	waitFor(t, "the toast to be retired", func() bool {
+		recent, _ := st.Recent(1)
+		return len(recent) == 1 && recent[0].State == store.StateDismissed
+	})
+	recent, _ := st.Recent(1)
+	if !recent[0].NeverShown {
+		t.Fatal("a toast whose window never reported reads as dismissed, which is R-06")
+	}
+	// Not the away marker: he was at the machine, there was nothing to look at.
+	if recent[0].MissedWhileAway {
+		t.Fatalf("never-shown row also claims missed while away: %+v", recent[0])
+	}
+}
+
+func TestALateWindowIsNotRecordedAsNeverShown(t *testing.T) {
+	// The grace is a bound on waiting, not a verdict on the window: five seconds
+	// against a worst case of 405ms is comfortable, but a loaded machine can beat
+	// it. A window that reports late is on screen, so the row must not go on
+	// claiming it never appeared - while its countdown, which the human is already
+	// watching, stays where the fallback put it.
+	d, ui, _, st := newBlindTestDaemon(t, Config{
+		ToastDuration: 400 * time.Millisecond,
+		SurfaceGrace:  50 * time.Millisecond,
+	})
+	callNotify(t, d, notifyItem(proto.LevelInfo))
+	it := waitForItem(t, ui)
+	waitFor(t, "the fallback to give up on the window", func() bool {
+		return !ui.last().DismissAt.IsZero()
+	})
+	deadline := ui.last().DismissAt
+
+	d.SurfaceShown(it.ID) // the window, arriving after the grace lapsed
+	if got := ui.last().DismissAt; !got.Equal(deadline) {
+		t.Fatalf("a late report moved the deadline from %v to %v", deadline, got)
+	}
+	waitFor(t, "the toast to be retired", func() bool {
+		recent, _ := st.Recent(1)
+		return len(recent) == 1 && recent[0].State == store.StateDismissed
+	})
+	recent, _ := st.Recent(1)
+	if recent[0].NeverShown {
+		t.Fatalf("a window that appeared late is recorded as never having appeared: %+v", recent[0])
+	}
+}
+
+func TestAToastThatAppearedIsNotMarkedNeverShown(t *testing.T) {
+	// The other half of the claim above: the marker follows the surface's report,
+	// so a healthy window must clear it. Without this the test above passes on a
+	// daemon that marks every toast.
+	d, ui, _, st := newTestDaemon(t, Config{
+		ToastDuration: 50 * time.Millisecond,
+		SurfaceGrace:  10 * time.Second,
+	})
+	callNotify(t, d, notifyItem(proto.LevelInfo))
+	waitForToastClock(t, ui)
+	waitFor(t, "the toast to be retired", func() bool {
+		recent, _ := st.Recent(1)
+		return len(recent) == 1 && recent[0].State == store.StateDismissed
+	})
+	recent, _ := st.Recent(1)
+	if recent[0].NeverShown {
+		t.Fatalf("a toast that reported itself was marked never shown: %+v", recent[0])
+	}
+}
+
 func TestASecondReportDoesNotExtendACountdown(t *testing.T) {
 	// The toast window is reused between items, so the same item can be reported
 	// twice. A second report must not restart the countdown the human is already

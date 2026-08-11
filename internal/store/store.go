@@ -66,6 +66,7 @@ type StoredItem struct {
 	Reply           string
 	Values          map[string]string
 	MissedWhileAway bool // FR44: a toast that auto-expired while the user was idle
+	NeverShown      bool // R-06: a toast retired without its window ever reporting itself
 	CreatedAt       time.Time
 	ResolvedAt      time.Time
 }
@@ -90,6 +91,11 @@ type Outcome struct {
 	// Unlike the fields above this one is persisted: it is a history marker the
 	// return-from-idle review reads, not a value handed back to the caller.
 	MissedAway bool
+	// NeverShown flags a toast retired without its window ever reporting itself
+	// (R-06). Persisted for the same reason as MissedAway and a stronger claim
+	// than it: away means the item was on screen and nobody was, this one means
+	// there was nothing on screen to miss.
+	NeverShown bool
 }
 
 // Open creates the directory and database if missing and applies pending
@@ -266,9 +272,9 @@ func (s *Store) Resolve(id, toState string, out Outcome) error {
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`UPDATE items SET state = ?, answer = ?, reply = ?, form_values = ?, missed_while_away = ?, resolved_at = ?
+	res, err := tx.Exec(`UPDATE items SET state = ?, answer = ?, reply = ?, form_values = ?, missed_while_away = ?, never_shown = ?, resolved_at = ?
 		WHERE id = ? AND state = ?`,
-		toState, nullable(out.Answer), nullable(out.Reply), valuesJSON, boolInt(out.MissedAway), now, id, StatePending)
+		toState, nullable(out.Answer), nullable(out.Reply), valuesJSON, boolInt(out.MissedAway), boolInt(out.NeverShown), now, id, StatePending)
 	if err != nil {
 		return fmt.Errorf("resolve %s: %w", id, err)
 	}
@@ -305,7 +311,7 @@ func boolInt(b bool) int {
 func (s *Store) Pending() ([]StoredItem, error) {
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
 		agent, project, session, session_key, speak, diff, stack,
-		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
+		state, answer, reply, form_values, missed_while_away, never_shown, created_at, resolved_at
 		FROM items WHERE state = ? ORDER BY created_at ASC`, StatePending)
 }
 
@@ -315,7 +321,7 @@ func (s *Store) Pending() ([]StoredItem, error) {
 func (s *Store) Item(id string) (*StoredItem, error) {
 	items, err := s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
 		agent, project, session, session_key, speak, diff, stack,
-		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
+		state, answer, reply, form_values, missed_while_away, never_shown, created_at, resolved_at
 		FROM items WHERE id = ?`, id)
 	if err != nil || len(items) == 0 {
 		return nil, err
@@ -346,7 +352,7 @@ func (s *Store) UpdateStack(id, title string, entries []proto.StackEntry) error 
 func (s *Store) Recent(limit int) ([]StoredItem, error) {
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
 		agent, project, session, session_key, speak, diff, stack,
-		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
+		state, answer, reply, form_values, missed_while_away, never_shown, created_at, resolved_at
 		FROM items ORDER BY created_at DESC LIMIT ?`, limit)
 }
 
@@ -364,7 +370,7 @@ func (s *Store) RecentBySession(key string, limit int) ([]StoredItem, error) {
 	}
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
 		agent, project, session, session_key, speak, diff, stack,
-		state, answer, reply, form_values, missed_while_away, created_at, resolved_at
+		state, answer, reply, form_values, missed_while_away, never_shown, created_at, resolved_at
 		FROM items WHERE session_key = ? ORDER BY created_at DESC LIMIT ?`, key, limit)
 }
 
@@ -381,15 +387,16 @@ func (s *Store) query(q string, args ...any) ([]StoredItem, error) {
 		var answer, reply, values sql.NullString
 		var created int64
 		var resolved sql.NullInt64
-		var missed int
+		var missed, never int
 		var kind, level string
 		if err := rows.Scan(&it.ID, &kind, &level, &it.Title, &it.Body, &opts, &fields, &actions, &it.Cwd, &it.TimeoutS,
 			&it.Default, &it.Identity.Agent, &it.Identity.Project, &it.Identity.Session,
 			&it.Identity.Key, &it.Speak, &it.Diff, &stack,
-			&it.State, &answer, &reply, &values, &missed, &created, &resolved); err != nil {
+			&it.State, &answer, &reply, &values, &missed, &never, &created, &resolved); err != nil {
 			return nil, err
 		}
 		it.MissedWhileAway = missed != 0
+		it.NeverShown = never != 0
 		it.Kind = proto.Kind(kind)
 		it.Level = proto.Level(level)
 

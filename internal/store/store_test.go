@@ -251,6 +251,41 @@ func TestMissedWhileAwayRoundTrip(t *testing.T) {
 	}
 }
 
+func TestNeverShownRoundTrip(t *testing.T) {
+	s := openTemp(t)
+	if err := s.CreateItem(testItem("k1")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := s.Resolve("k1", StateDismissed, Outcome{NeverShown: true}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	recent, err := s.Recent(1)
+	if err != nil {
+		t.Fatalf("recent: %v", err)
+	}
+	if !recent[0].NeverShown {
+		t.Fatal("never_shown did not persist")
+	}
+	// Two markers, two columns: R-06's row must not read as FR44's.
+	if recent[0].MissedWhileAway {
+		t.Fatalf("never-shown row also claims missed-while-away: %+v", recent[0])
+	}
+	// And a toast that was on screen and lapsed keeps the column off.
+	if err := s.CreateItem(testItem("k2")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := s.Resolve("k2", StateDismissed, Outcome{MissedAway: true}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	recent, err = s.Recent(1)
+	if err != nil {
+		t.Fatalf("recent: %v", err)
+	}
+	if recent[0].ID != "k2" || recent[0].NeverShown {
+		t.Fatalf("a toast that appeared should not be never-shown: %+v", recent[0])
+	}
+}
+
 func TestCreateWithoutIDFails(t *testing.T) {
 	s := openTemp(t)
 	it := testItem("")

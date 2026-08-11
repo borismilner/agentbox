@@ -416,6 +416,12 @@ func pendingFirst(items []store.StoredItem) []store.StoredItem {
 // vocabulary. A veto that expired *proceeded* - saying "expired" there would be
 // technically true and completely misleading.
 func outcomeOf(it store.StoredItem) (text, tone string) {
+	// R-06, and it comes before "missed while away" because it is the stronger
+	// claim of the two: away says the item was on screen and he was not, this says
+	// there was never anything on screen. The daemon does not set both.
+	if it.NeverShown {
+		return "never appeared", "warning"
+	}
 	if it.MissedWhileAway {
 		return "missed while away", "warning"
 	}

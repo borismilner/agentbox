@@ -104,6 +104,11 @@ func TestOutcomeOf(t *testing.T) {
 	secret := item("s", proto.KindSecret, store.StateAnswered) // no answer, no reply
 	missed := item("m", proto.KindNotify, store.StateExpired)
 	missed.MissedWhileAway = true
+	never := item("n", proto.KindNotify, store.StateDismissed)
+	never.NeverShown = true
+	both := item("nm", proto.KindNotify, store.StateDismissed)
+	both.NeverShown = true
+	both.MissedWhileAway = true
 
 	tests := []struct {
 		name string
@@ -123,6 +128,12 @@ func TestOutcomeOf(t *testing.T) {
 		{"veto answered was stopped", item("v", proto.KindVeto, store.StateAnswered), "vetoed", "error"},
 		{"veto expired went ahead", item("v", proto.KindVeto, store.StateExpired), "proceeded", "success"},
 		{"missed while away wins (FR44)", missed, "missed while away", "warning"},
+		// R-06: the state is dismissed either way, and a dismissed row's chip was
+		// blank - so this is the only place the row can say the window never existed.
+		{"never appeared wins over dismissed (R-06)", never, "never appeared", "warning"},
+		// The daemon does not set both, but if a row ever carries both the stronger
+		// claim is the honest one - there was nothing on screen to be away from.
+		{"never appeared outranks missed", both, "never appeared", "warning"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

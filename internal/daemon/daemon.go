@@ -348,6 +348,11 @@ type Daemon struct {
 	// Both are nil/empty whenever no toast is waiting.
 	surfaceWait    *time.Timer
 	surfaceWaitFor string
+	// neverShown holds the ids surfaceMissing gave up on, so the clock it then
+	// arms retires them with a row that says the window never appeared rather
+	// than one that reads as an ordinary dismissal. Keyed like gone above and
+	// cleared in the same place: an id that has ended carries no marker.
+	neverShown map[string]bool
 
 	// FR29 presence state, refreshed from the monitor (never queried under
 	// d.mu). idle gates chimes/escalation; autoDnd (a focused fullscreen app
@@ -569,18 +574,19 @@ func (d *Daemon) PresencePoll() {
 func New(cfg Config, log *slog.Logger, st *store.Store, snd Sounder, ui Presenter) (*Daemon, error) {
 	cfg.fill()
 	d := &Daemon{
-		cfg:      cfg,
-		log:      log,
-		st:       st,
-		snd:      snd,
-		ui:       ui,
-		dnd:      cfg.StartInDnd,
-		waiters:  make(map[string]chan proto.Result),
-		timers:   make(map[string]*time.Timer),
-		expiries: make(map[string]time.Time),
-		muted:    make(map[string]bool),
-		gone:     make(map[string]bool),
-		progress: make(map[string]*progressEntry),
+		cfg:        cfg,
+		log:        log,
+		st:         st,
+		snd:        snd,
+		ui:         ui,
+		dnd:        cfg.StartInDnd,
+		waiters:    make(map[string]chan proto.Result),
+		timers:     make(map[string]*time.Timer),
+		expiries:   make(map[string]time.Time),
+		muted:      make(map[string]bool),
+		gone:       make(map[string]bool),
+		progress:   make(map[string]*progressEntry),
+		neverShown: make(map[string]bool),
 	}
 	d.aloud = newAloud(snd, log)
 	d.control = newControl(log)
@@ -1816,7 +1822,18 @@ func (d *Daemon) callerStateLocked(it *proto.Item) CallerState {
 func (d *Daemon) SurfaceShown(id string) {
 	d.mu.Lock()
 	if d.surfaceWaitFor != id || d.current == nil || d.current.ID != id {
+		// A report can also arrive after the fallback stopped waiting - a loaded
+		// machine, a grace of five seconds, a window that took six. It is late, not
+		// wrong, and it is on screen: the countdown it missed is already running and
+		// must not be restarted, but "never appeared" has just become false and the
+		// history row is written from this marker (R-06).
+		late := d.neverShown[id]
+		delete(d.neverShown, id)
 		d.mu.Unlock()
+		if late {
+			d.log.Warn("item.surface_late", "component", "daemon", "item_id", id,
+				"consequence", "the window appeared after the grace lapsed; its clock keeps the earlier start")
+		}
 		return
 	}
 	d.clearSurfaceWaitLocked()
@@ -1832,11 +1849,14 @@ func (d *Daemon) SurfaceShown(id string) {
 
 // surfaceMissing gives up waiting for a window that never reported itself. The
 // item is not abandoned silently, which is the whole of R-06: the warning names
-// it, and the clock then runs as it always did so the queue behind it still
-// drains. What this build does NOT yet do is mark the history row, so a toast
-// retired down this path still reads as dismissed rather than as never seen -
-// see R-06 for why that half needs a store migration and what it costs to leave
-// undone.
+// it, the history row it eventually gets says it was never seen rather than
+// dismissed, and the clock then runs as it always did so the queue behind it
+// still drains.
+//
+// It retires the toast as well as warning, which is not what R-06 asked for and
+// is argued in the entry: a notify has no expiry row and no do-not-redisplay
+// flag, so an un-retired toast would hold the current slot along with everything
+// queued behind it.
 func (d *Daemon) surfaceMissing(id string) {
 	d.mu.Lock()
 	if d.surfaceWaitFor != id || d.current == nil || d.current.ID != id {
@@ -1844,6 +1864,9 @@ func (d *Daemon) surfaceMissing(id string) {
 		return
 	}
 	d.clearSurfaceWaitLocked()
+	// Read by toastExpired below, which is the only thing that ends this item and
+	// runs a whole ToastDuration after this line.
+	d.neverShown[id] = true
 	d.startToastClockLocked(id)
 	view := d.viewLocked()
 	waited := d.cfg.SurfaceGrace
@@ -1874,16 +1897,24 @@ func (d *Daemon) clearSurfaceWaitLocked() {
 // return-from-idle inbox review separates toasts that flashed unseen from
 // ones actually read. The idle check is read off the lock (it round-trips to
 // the display server); the flag is a history marker, not a fresh interruption.
+//
+// A toast whose window never reported itself carries the stronger marker instead
+// (R-06): there was nothing on screen to be away from, and a row that reads as an
+// ordinary dismissal for a thing that never appeared is the lie this half fixes.
 func (d *Daemon) toastExpired(id string) {
 	d.mu.Lock()
 	prs := d.prs
 	idleAfter := d.cfg.IdleAfter
+	never := d.neverShown[id]
 	d.mu.Unlock()
-	missed := idleAfter > 0 && prs != nil && prs.IdleFor(idleAfter)
+	missed := !never && idleAfter > 0 && prs != nil && prs.IdleFor(idleAfter)
 	if missed {
 		d.log.Info("item.missed_while_away", "component", "daemon", "item_id", id)
 	}
-	d.resolve(id, store.StateDismissed, store.Outcome{MissedAway: missed})
+	if never {
+		d.log.Warn("item.never_shown", "component", "daemon", "item_id", id)
+	}
+	d.resolve(id, store.StateDismissed, store.Outcome{MissedAway: missed, NeverShown: never})
 }
 
 // callerGone marks a blocking item whose caller socket dropped (FR45). The
@@ -1999,6 +2030,7 @@ func (d *Daemon) resolve(id, toState string, out store.Outcome) bool {
 	d.mu.Lock()
 	d.stopTimerLocked(id)
 	delete(d.gone, id)
+	delete(d.neverShown, id)
 	// FR30: if this item is a row in a stack card that is still open, the row goes
 	// quiet. Every way an item can end comes through here, which is why the mark
 	// lives at this one point rather than beside each of them.
