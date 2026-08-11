@@ -273,7 +273,9 @@ func (c *Config) fill() {
 	if c.CallerGone == 0 {
 		c.CallerGone = 4 * time.Second
 	}
-	if c.ActionTimeout == 0 {
+	// A negative reads as zero here rather than as an instant deadline: a number
+	// somebody typed wrong must not turn every action button into a failure card.
+	if c.ActionTimeout <= 0 {
 		// Five minutes is long enough for the action buttons people actually write
 		// (a build, a test run, a deploy script) and short enough that a wedged one
 		// is reported while the human is still near the card that raised it.
@@ -2669,7 +2671,7 @@ func (d *Daemon) execAction(itemID, agent, cwd string, act proto.Action) {
 	if err != nil {
 		// The context is asked rather than the error, because a killed command
 		// reports the signal that killed it and not why it was sent.
-		timedOut := ctx.Err() == context.DeadlineExceeded
+		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded)
 		d.log.Error("action.failed", "component", "daemon", "item_id", itemID,
 			"label", act.Label, "command", act.Exec, "err", err.Error(),
 			"timed_out", timedOut, "dropped_bytes", out.dropped, "output", trimmed)
