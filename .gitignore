@@ -16,3 +16,14 @@
 __pycache__/
 *.pyc
 .wiki-build/
+
+# Working notes live in ../logbook (see that repo's CONVENTION.md). CLAUDE.md and
+# .claude/settings.json are symlinks into it, because the tooling reads them from
+# here; the rest is read from there directly and has no copy in this tree.
+/CLAUDE.md
+/.claude
+/HANDOFF.md
+/docs/STATUS.md
+/docs/history.md
+/docs/07-field-requests.md
+/docs/backlog
