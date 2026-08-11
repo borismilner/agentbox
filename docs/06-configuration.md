@@ -149,6 +149,11 @@ window_s = 10              # ...within this many seconds; the rest collapse into
 [actions]
 enabled = true             # caller-supplied action buttons (FR32);
                            # false hides them everywhere
+timeout_s = 300            # how long one command may run before it is killed,
+                           # with everything it started, and says so on a failure
+                           # card. 0 means this default, not "no limit": a command
+                           # with no bound parks a process for as long as the
+                           # daemon lives and the click looks like it worked
 
 [artifact]                 # agent-authored interactive HTML (M10, ADR-0010)
 enabled = true             # the trust switch, live and retroactive: false removes

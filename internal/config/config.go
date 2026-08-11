@@ -41,8 +41,14 @@ type Config struct {
 		FullscreenAutoDnd bool `toml:"fullscreen_auto_dnd"`
 		RespectDesktopDnd bool `toml:"respect_desktop_dnd"`
 	} `toml:"presence"`
+	// Actions is FR32's caller-supplied buttons. TimeoutS bounds one command and
+	// has no "off" switch: 0 means the documented default, because a command with
+	// no bound at all is a process parked for the daemon's lifetime and nothing on
+	// screen saying the click never finished. Somebody who wants a longer run
+	// writes a longer number.
 	Actions struct {
-		Enabled bool `toml:"enabled"`
+		Enabled  bool `toml:"enabled"`
+		TimeoutS int  `toml:"timeout_s"`
 	} `toml:"actions"`
 	// Flood is FR30's rate limit, per agent identity. Burst cards inside WindowS
 	// seconds are what an agent may put on screen back to back; past that its
@@ -263,6 +269,7 @@ func Default() Config {
 	c.Presence.FullscreenAutoDnd = true
 	c.Presence.RespectDesktopDnd = true
 	c.Actions.Enabled = true
+	c.Actions.TimeoutS = 300
 	// Three cards in ten seconds, chosen by Boris on 2026-08-06 over a looser
 	// five-in-thirty. A retry loop trips it almost at once, which is the case
 	// FR30 exists for; two unrelated notices seconds apart do not.

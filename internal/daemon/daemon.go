@@ -199,6 +199,14 @@ type Config struct {
 	DndBlocksUrgent    bool          // FR11 inverted so the zero value (urgent breaks through) is the default
 	ActionsDisabled    bool          // FR32 kill switch, inverted so the zero value (action buttons on) is the default
 	StartInDnd         bool
+	// ActionTimeout bounds one action command (FR32, R-22). A command still
+	// running when it expires is killed with everything it started and raises the
+	// same failure card a non-zero exit does. There is no "off": a command with no
+	// bound at all parks a process for the daemon's lifetime with nothing on
+	// screen saying the click never finished, which is what this replaced. The
+	// default is generous, because an action button is a human clicking "run the
+	// tests" as often as it is a one-liner, and actions.timeout_s moves it.
+	ActionTimeout time.Duration
 
 	// Flood control (FR30), per agent identity: FloodBurst items inside
 	// FloodWindow arrive as their own cards, and everything past that collapses
@@ -264,6 +272,12 @@ func (c *Config) fill() {
 	}
 	if c.CallerGone == 0 {
 		c.CallerGone = 4 * time.Second
+	}
+	if c.ActionTimeout == 0 {
+		// Five minutes is long enough for the action buttons people actually write
+		// (a build, a test run, a deploy script) and short enough that a wedged one
+		// is reported while the human is still near the card that raised it.
+		c.ActionTimeout = 5 * time.Minute
 	}
 	if c.SyncWaitMax == 0 {
 		// Under the client's measured 1800s idle cap with room to spare, so a
@@ -423,6 +437,7 @@ func (d *Daemon) SetPolicy(cfg Config) {
 	d.cfg.UrgentInterval = cfg.UrgentInterval
 	d.cfg.DndBlocksUrgent = cfg.DndBlocksUrgent
 	d.cfg.ActionsDisabled = cfg.ActionsDisabled
+	d.cfg.ActionTimeout = cfg.ActionTimeout
 	d.cfg.IdleAfter = cfg.IdleAfter
 	d.cfg.HoldWhenIdle = cfg.HoldWhenIdle
 	d.cfg.FullscreenAutoDnd = cfg.FullscreenAutoDnd
@@ -2580,8 +2595,15 @@ func (d *Daemon) Defer(id string) string {
 }
 
 // actionOutputCap bounds how much exec output a failure toast quotes; the
-// full output is in the log regardless.
+// rest is in the log, up to actionOutputKeep.
 const actionOutputCap = 400
+
+// actionOutputKeep is how much of one action command's output the daemon holds
+// in memory. It used to be all of it, which made a command that writes without
+// stopping a way to take the daemon out by memory and drop every parked agent
+// with it (R-22). 64 kB is far more than a card quotes and still enough of a
+// stack trace to work from in the log.
+const actionOutputKeep = 64 << 10
 
 // RunAction runs the action button at index on the displayed notify item
 // (FR32). Only the on-screen item's buttons are live, so a queued card cannot
@@ -2612,18 +2634,50 @@ func (d *Daemon) RunAction(id string, index int) string {
 
 // execAction runs one action command via sh -c, in the item's cwd, as the
 // current user (no privilege boundary, 02-architecture.md). Output lands in
-// the log; a non-zero exit or spawn failure raises an error card.
+// the log; a non-zero exit, a spawn failure or a command that outlives its
+// timeout raises an error card.
+//
+// Everything here is a bound on something an agent wrote and a human clicked
+// once (R-22). The deadline is the important one: before it, a command that
+// never exits held its goroutine and its process for the daemon's lifetime and
+// nothing on screen ever said the click had not finished. ownGroup and the
+// cancel below are what make the deadline true rather than nominal - killing
+// `sh` alone leaves whatever it spawned running, so the group is what gets the
+// signal. WaitDelay covers the last way this used to park: a grandchild holding
+// the output pipe open keeps Wait blocked long after the process it was started
+// from is dead.
 func (d *Daemon) execAction(itemID, agent, cwd string, act proto.Action) {
+	d.mu.Lock()
+	limit := d.cfg.ActionTimeout
+	d.mu.Unlock()
+
 	d.log.Info("action.started", "component", "daemon", "item_id", itemID,
-		"label", act.Label, "command", act.Exec, "cwd", cwd)
-	cmd := exec.Command("sh", "-c", act.Exec)
+		"label", act.Label, "command", act.Exec, "cwd", cwd, "timeout_s", limit.Seconds())
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", act.Exec)
 	cmd.Dir = cwd // empty means the daemon's own working directory
-	out, err := cmd.CombinedOutput()
-	trimmed := strings.TrimSpace(string(out))
+	ownGroup(cmd)
+	cmd.Cancel = func() error { return killGroup(cmd.Process) }
+	cmd.WaitDelay = 2 * time.Second
+	var out cappedBuffer
+	out.limit = actionOutputKeep
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := cmd.Run()
+	trimmed := strings.TrimSpace(out.String())
 	if err != nil {
+		// The context is asked rather than the error, because a killed command
+		// reports the signal that killed it and not why it was sent.
+		timedOut := ctx.Err() == context.DeadlineExceeded
 		d.log.Error("action.failed", "component", "daemon", "item_id", itemID,
-			"label", act.Label, "command", act.Exec, "err", err.Error(), "output", trimmed)
+			"label", act.Label, "command", act.Exec, "err", err.Error(),
+			"timed_out", timedOut, "dropped_bytes", out.dropped, "output", trimmed)
 		body := fmt.Sprintf("`%s` exited with an error.", act.Exec)
+		if timedOut {
+			body = fmt.Sprintf("`%s` was still running after %s, so it was stopped along with anything it started.",
+				act.Exec, limit)
+		}
 		if trimmed != "" {
 			if len(trimmed) > actionOutputCap {
 				trimmed = trimmed[:actionOutputCap] + "…"
@@ -2634,8 +2688,29 @@ func (d *Daemon) execAction(itemID, agent, cwd string, act proto.Action) {
 		return
 	}
 	d.log.Info("action.finished", "component", "daemon", "item_id", itemID,
-		"label", act.Label, "output", trimmed)
+		"label", act.Label, "dropped_bytes", out.dropped, "output", trimmed)
 }
+
+// cappedBuffer keeps the first limit bytes written to it and counts the rest.
+// The first bytes rather than the last on purpose: a command that fails says why
+// at the top, and a tail buffer would spend the whole budget on whatever a
+// runaway loop printed most recently. It never errors, so a command whose output
+// has gone past the cap keeps running and keeps being drained - the alternative,
+// refusing the write, stalls the command on a full pipe instead of bounding it.
+type cappedBuffer struct {
+	buf     []byte
+	limit   int
+	dropped int
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	room := max(0, min(c.limit-len(c.buf), len(p)))
+	c.buf = append(c.buf, p[:room]...)
+	c.dropped += len(p) - room
+	return len(p), nil
+}
+
+func (c *cappedBuffer) String() string { return string(c.buf) }
 
 // surfaceError injects a daemon-originated error card (FR32 action failure).
 // It is attributed to the original agent so the identity pill stays

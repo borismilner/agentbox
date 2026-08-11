@@ -173,6 +173,7 @@ func daemonConfig(cfg config.Config) daemon.Config {
 		UrgentInterval:     time.Duration(cfg.Escalation.UrgentIntervalS) * time.Second,
 		DndBlocksUrgent:    !cfg.Dnd.UrgentBreaksThrough,
 		ActionsDisabled:    !cfg.Actions.Enabled,
+		ActionTimeout:      time.Duration(cfg.Actions.TimeoutS) * time.Second,
 		StartInDnd:         cfg.Dnd.StartInDnd,
 		// Flood control (FR30). Passed through as written: burst = 0 is the human
 		// saying "never collapse", and defaulting it here would make that
