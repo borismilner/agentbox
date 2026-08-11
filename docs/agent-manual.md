@@ -448,12 +448,12 @@ mean anything.
 Ask a question. Give 2-9 `options` for a single choice, or omit them for free
 text.
 - Args: `title` (req), `body`, `options` (2-9 strings), `timeout_s` (int; 0 = wait forever), `default` (applied on timeout).
-- Returns: `{answered, answer, reply, default_applied}`. `answer` is the chosen option; `reply` is set instead when the human typed free text (the "/" reply hatch); `default_applied=true` if the timeout default was used.
+- Returns: `{answered, answer, reply, default_applied, outcome}`. `answer` is the chosen option; `reply` is set instead when the human typed free text (the "/" reply hatch); `default_applied=true` if the timeout default was used. `outcome` says HOW it ended - `answered`, `expired` (the window lapsed), `dismissed` (closed unanswered) or `cancelled` - so retry on `expired` and do not re-ask on `dismissed`.
 
 ### confirm_action  (blocking)
 Yes/no.
 - Args: `title` (req), `body`.
-- Returns: `{answered, confirmed, reply}`. `confirmed` is the boolean.
+- Returns: `{answered, confirmed, reply, outcome}`. `confirmed` is the boolean. `outcome` is as in `ask_user`.
 
 ### act_unless_stopped  (blocking)
 Announce an action with a live countdown; it proceeds when the window elapses
@@ -465,13 +465,13 @@ unless the human stops it.
 A small form, up to 6 typed fields, answered in one card.
 - Args: `title` (req), `body`, `fields` (req array), `timeout_s`.
 - Each field: `{key (req), label, type ("choice"|"text"|"bool") (req), options (2-9, for choice), default}`.
-- Returns: `{answered, values}` where `values` is a `{key: value}` map.
+- Returns: `{answered, values, outcome}` where `values` is a `{key: value}` map. `outcome` is as in `ask_user`.
 
 ### request_secret  (blocking)
 Masked credential entry. The value is written to a 0600 file and is NEVER
 returned over the wire.
 - Args: `title` (req), `body`, `timeout_s`.
-- Returns: `{provided, path}`. Read the file at `path` when you need the value; never print or echo it; delete it when done.
+- Returns: `{provided, path, outcome}`. Read the file at `path` when you need the value; never print or echo it; delete it when done. `outcome` is as in `ask_user`.
 
 ### show_document  (non-blocking)
 Open markdown in AgentBox's reading window (rich headings, code, tables, alerts,
@@ -613,7 +613,7 @@ Take everything they have done since you last looked.
 Show a unified diff to approve or request changes. Use before applying a patch
 the human should see.
 - Args: `title` (req), `diff` (unified diff text) or `path` (a diff file), `body`.
-- Returns: `{answered, approved, comment}`.
+- Returns: `{answered, approved, comment, outcome}`. `outcome` is as in `ask_user`.
 
 ### report_progress  (non-blocking)
 A live progress bar that never steals focus.

@@ -1394,7 +1394,7 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 			if it.Kind == proto.KindVeto {
 				// The window elapsed unstopped: the action proceeds (FR22).
 				if d.resolve(it.ID, store.StateExpired, store.Outcome{}) {
-					return proto.Result{ID: it.ID, Vetoed: false}, nil
+					return proto.Result{ID: it.ID, Vetoed: false, Outcome: proto.OutcomeExpired}, nil
 				}
 				timeout = d.rearmExpiry(it.ID, timer, window)
 				continue
@@ -1404,7 +1404,8 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 				dflt = "" // forms have per-field defaults, no whole-form default
 			}
 			if d.resolve(it.ID, store.StateExpired, store.Outcome{Answer: dflt}) {
-				return proto.Result{ID: it.ID, Answered: false, Answer: dflt, DefaultApplied: dflt != ""}, nil
+				return proto.Result{ID: it.ID, Answered: false, Answer: dflt, DefaultApplied: dflt != "",
+					Outcome: proto.OutcomeExpired}, nil
 			}
 			// The human answered inside the undo grace. Either that answer lands
 			// when the window closes and `wait` returns it, or they press undo and
@@ -1428,7 +1429,9 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 			// mark the card disconnected, let it auto-dismiss, and stop waiting on
 			// a peer that is gone. Any answer now reaches history only (FR6).
 			d.callerGone(it.ID)
-			return proto.Result{ID: it.ID}, nil
+			// The outcome is set for the record rather than for a reader: the socket it
+			// would travel on is the one that just went (R-09).
+			return proto.Result{ID: it.ID, Outcome: proto.OutcomeCallerGone}, nil
 		}
 	}
 }
@@ -2044,6 +2047,25 @@ func (d *Daemon) finalizeGraceNow() {
 // arbiter, delivery and display advance follow. Reports whether this call
 // won the resolution. While an item sits in its undo grace, only the grace
 // finalizer may resolve it; expiry and cancel bounce off (FR28).
+// outcomeOfState translates a store transition into the word the agent reads
+// (R-09). Written out rather than passed through, even though three of the four
+// strings match: the store's vocabulary is an audit trail and the Result's is an
+// API, and letting them be the same variable would mean renaming a state renames a
+// field agents branch on.
+func outcomeOfState(toState string) string {
+	switch toState {
+	case store.StateAnswered:
+		return proto.OutcomeAnswered
+	case store.StateExpired:
+		return proto.OutcomeExpired
+	case store.StateDismissed:
+		return proto.OutcomeDismissed
+	case store.StateCancelled:
+		return proto.OutcomeCancelled
+	}
+	return ""
+}
+
 func (d *Daemon) resolve(id, toState string, out store.Outcome) bool {
 	d.mu.Lock()
 	if d.graced != nil && d.graced.id == id && toState != store.StateAnswered {
@@ -2103,6 +2125,7 @@ func (d *Daemon) resolve(id, toState string, out store.Outcome) bool {
 			ID: id, Answered: toState == store.StateAnswered,
 			Answer: out.Answer, Reply: out.Reply, Values: out.Values,
 			Vetoed: out.Vetoed, Secret: out.Secret, Approved: out.Approved,
+			Outcome: outcomeOfState(toState),
 		}
 	}
 	if d.current != nil && d.current.ID == id {

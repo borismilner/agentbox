@@ -2208,6 +2208,92 @@ func TestShutdownDisconnectIsNotCallerGone(t *testing.T) {
 	}
 }
 
+func TestResultSaysHowTheQuestionEnded(t *testing.T) {
+	// R-09. `answered: false` was returned for a lapsed window, a human pressing Esc
+	// and a retract alike, so an agent working unattended could not tell "he declined"
+	// from "nobody was there" - and those two call for opposite behaviour. One case per
+	// ending, each through the path that really produces it.
+	cases := []struct {
+		name    string
+		item    proto.Item
+		end     func(t *testing.T, d *Daemon, id string)
+		outcome string
+	}{
+		{
+			name: "answered", item: askItem(),
+			end:     func(t *testing.T, d *Daemon, id string) { d.Answer(id, "One") },
+			outcome: proto.OutcomeAnswered,
+		},
+		{
+			name: "dismissed", item: askItem(),
+			end:     func(t *testing.T, d *Daemon, id string) { d.Dismiss(id) },
+			outcome: proto.OutcomeDismissed,
+		},
+		{
+			name: "cancelled by the agent that asked", item: askItem(),
+			end: func(t *testing.T, d *Daemon, id string) {
+				if _, rpcErr := d.Handle(context.Background(), proto.MethodCancel,
+					mustJSON(t, map[string]string{"id": id})); rpcErr != nil {
+					t.Fatalf("cancel: %v", rpcErr)
+				}
+			},
+			outcome: proto.OutcomeCancelled,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, ui, _, _ := newTestDaemon(t, Config{UndoGrace: time.Millisecond})
+			ch := askAsync(t, d, tc.item)
+			shown := waitForItem(t, ui)
+			tc.end(t, d, shown.ID)
+			select {
+			case res := <-ch:
+				if res.Outcome != tc.outcome {
+					t.Fatalf("outcome = %q, want %q (answered=%v)", res.Outcome, tc.outcome, res.Answered)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("the caller never heard back")
+			}
+		})
+	}
+}
+
+func TestAnExpiredQuestionSaysExpiredRatherThanUnanswered(t *testing.T) {
+	// The ending an agent most needs to tell apart, and the only one it can retry on.
+	d, _, _, _ := newTestDaemon(t, Config{})
+	it := askItem()
+	it.TimeoutS = 1
+	res, rpcErr := d.Handle(context.Background(), proto.MethodAsk, mustJSON(t, it))
+	if rpcErr != nil {
+		t.Fatalf("ask: %v", rpcErr)
+	}
+	got := res.(proto.Result)
+	if got.Answered {
+		t.Fatal("nobody answered it")
+	}
+	if got.Outcome != proto.OutcomeExpired {
+		t.Fatalf("outcome = %q, want expired", got.Outcome)
+	}
+}
+
+func TestAVetoThatProceededSaysExpired(t *testing.T) {
+	// A veto's window lapsing means the action goes ahead, which Vetoed already says.
+	// The outcome still has to be the honest one: nobody answered, the window ended.
+	d, _, _, _ := newTestDaemon(t, Config{})
+	res, rpcErr := d.Handle(context.Background(), proto.MethodAsk, mustJSON(t, vetoItem(1)))
+	if rpcErr != nil {
+		t.Fatalf("veto: %v", rpcErr)
+	}
+	got := res.(proto.Result)
+	if got.Vetoed {
+		t.Fatal("the window elapsed unstopped, so it proceeded")
+	}
+	if got.Outcome != proto.OutcomeExpired {
+		t.Fatalf("outcome = %q, want expired", got.Outcome)
+	}
+}
+
 func TestDrainWaitsForAHandlerTheShutdownWoke(t *testing.T) {
 	// R-07's other half. The store closes immediately after the shutdown cancel, so
 	// a handler still inside Handle has to be waited for. Nothing waited before: the

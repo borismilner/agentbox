@@ -216,7 +216,27 @@ type Result struct {
 	Secret         string            `json:"secret,omitempty"`      // secret items, only when --stdout: the value (never logged/stored)
 	SecretPath     string            `json:"secret_path,omitempty"` // secret items: file the value was written to (0600)
 	Approved       bool              `json:"approved,omitempty"`    // diff items (FR33): the reviewer approved; Reply carries any comment
+	// Outcome says HOW the question ended, which `answered: false` never did (R-09).
+	// A lapsed window, a human pressing Esc and a cancel were one answer, and an
+	// agent working unattended has to act on the difference: "he declined" and
+	// "nobody was there" call for opposite behaviour. One of the Outcome* constants
+	// below; empty for a non-blocking item, which never ends in any of these senses.
+	Outcome string `json:"outcome,omitempty"`
 }
+
+// How a blocking item ended, for Result.Outcome (R-09). The names are the store's
+// states in the three cases where they coincide, on purpose: the audit trail and the
+// answer an agent reads should not use two vocabularies for one event.
+const (
+	OutcomeAnswered  = "answered" // the human answered, including inside the undo grace
+	OutcomeExpired   = "expired"  // the window lapsed; a veto that proceeded reads as this too
+	OutcomeDismissed = "dismissed"
+	OutcomeCancelled = "cancelled"
+	// OutcomeCallerGone is recorded for the caller that dropped mid-question (FR45).
+	// Nothing reads it: the socket it would be written to is the one that went. It is
+	// here so the set is complete and so the daemon's own paths say what happened.
+	OutcomeCallerGone = "caller_gone"
+)
 
 // Stats summarizes interruption history over a window (FR35): how often
 // agents interrupted, how many were questions, and how fast they were

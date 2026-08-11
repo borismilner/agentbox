@@ -394,6 +394,7 @@ type askOut struct {
 	Answer         string `json:"answer,omitempty"`
 	Reply          string `json:"reply,omitempty" jsonschema:"set when the user typed free text instead of choosing an option"`
 	DefaultApplied bool   `json:"default_applied,omitempty"`
+	Outcome        string `json:"outcome,omitempty" jsonschema:"how it ended: answered, expired (the window lapsed), dismissed (closed unanswered) or cancelled. Retry on expired; do not re-ask on dismissed."`
 }
 
 func askToItem(in askIn) *proto.Item {
@@ -416,6 +417,7 @@ func (s *server) ask(ctx context.Context, _ *sdk.CallToolRequest, in askIn) (*sd
 	}
 	return &sdk.CallToolResult{}, askOut{
 		Answered: res.Answered, Answer: res.Answer, Reply: res.Reply, DefaultApplied: res.DefaultApplied,
+		Outcome: res.Outcome,
 	}, nil
 }
 
@@ -428,6 +430,7 @@ type confirmOut struct {
 	Answered  bool   `json:"answered"`
 	Confirmed bool   `json:"confirmed"`
 	Reply     string `json:"reply,omitempty" jsonschema:"set when the user replied with free text instead of yes/no"`
+	Outcome   string `json:"outcome,omitempty" jsonschema:"how it ended: answered, expired (the window lapsed), dismissed (closed unanswered) or cancelled. Retry on expired; do not re-ask on dismissed."`
 }
 
 func (s *server) confirm(ctx context.Context, _ *sdk.CallToolRequest, in confirmIn) (*sdk.CallToolResult, confirmOut, error) {
@@ -437,6 +440,7 @@ func (s *server) confirm(ctx context.Context, _ *sdk.CallToolRequest, in confirm
 	}
 	return &sdk.CallToolResult{}, confirmOut{
 		Answered: res.Answered, Confirmed: res.Answered && res.Answer == "yes", Reply: res.Reply,
+		Outcome: res.Outcome,
 	}, nil
 }
 
@@ -477,6 +481,7 @@ type formIn struct {
 type formOut struct {
 	Answered bool              `json:"answered"`
 	Values   map[string]string `json:"values,omitempty"`
+	Outcome  string            `json:"outcome,omitempty" jsonschema:"how it ended: answered, expired (the window lapsed), dismissed (closed unanswered) or cancelled. Retry on expired; do not re-ask on dismissed."`
 }
 
 func formToItem(in formIn) *proto.Item {
@@ -494,7 +499,7 @@ func (s *server) form(ctx context.Context, _ *sdk.CallToolRequest, in formIn) (*
 	if err != nil {
 		return errResult[formOut](err)
 	}
-	return &sdk.CallToolResult{}, formOut{Answered: res.Answered, Values: res.Values}, nil
+	return &sdk.CallToolResult{}, formOut{Answered: res.Answered, Values: res.Values, Outcome: res.Outcome}, nil
 }
 
 type secretIn struct {
@@ -506,6 +511,7 @@ type secretIn struct {
 type secretOut struct {
 	Provided bool   `json:"provided"`
 	Path     string `json:"path,omitempty" jsonschema:"file holding the value (mode 0600); read it when needed, never echo it"`
+	Outcome  string `json:"outcome,omitempty" jsonschema:"how it ended: answered, expired (the window lapsed), dismissed (closed unanswered) or cancelled. Retry on expired; do not re-ask on dismissed."`
 }
 
 func (s *server) requestSecret(ctx context.Context, _ *sdk.CallToolRequest, in secretIn) (*sdk.CallToolResult, secretOut, error) {
@@ -520,7 +526,7 @@ func (s *server) requestSecret(ctx context.Context, _ *sdk.CallToolRequest, in s
 	if err != nil {
 		return errResult[secretOut](err)
 	}
-	return &sdk.CallToolResult{}, secretOut{Provided: res.Answered, Path: res.SecretPath}, nil
+	return &sdk.CallToolResult{}, secretOut{Provided: res.Answered, Path: res.SecretPath, Outcome: res.Outcome}, nil
 }
 
 func newSecretPath(runtimeDir string) (string, error) {
@@ -898,6 +904,7 @@ type reviewOut struct {
 	Answered bool   `json:"answered"`
 	Approved bool   `json:"approved"`
 	Comment  string `json:"comment,omitempty"`
+	Outcome  string `json:"outcome,omitempty" jsonschema:"how it ended: answered, expired (the window lapsed), dismissed (closed unanswered) or cancelled. Retry on expired; do not re-ask on dismissed."`
 }
 
 type progressIn struct {
@@ -1106,5 +1113,6 @@ func (s *server) review(ctx context.Context, _ *sdk.CallToolRequest, in reviewIn
 	if err != nil {
 		return errResult[reviewOut](err)
 	}
-	return &sdk.CallToolResult{}, reviewOut{Answered: res.Answered, Approved: res.Approved, Comment: res.Reply}, nil
+	return &sdk.CallToolResult{}, reviewOut{Answered: res.Answered, Approved: res.Approved, Comment: res.Reply,
+		Outcome: res.Outcome}, nil
 }

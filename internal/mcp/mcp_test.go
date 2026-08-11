@@ -3,6 +3,7 @@ package mcp
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -21,6 +22,32 @@ func TestAskToItemChoiceVsText(t *testing.T) {
 	txt := askToItem(askIn{Title: "Tag?"})
 	if txt.Kind != proto.KindText {
 		t.Fatalf("no options should map to free text, got %q", txt.Kind)
+	}
+}
+
+// Every tool that BLOCKS has to tell the model how the question ended, not just
+// whether it was answered (R-09): "he declined" and "nobody was there" call for
+// opposite behaviour, and an agent that cannot tell them apart either re-asks a
+// human who said no or gives up on a human who was in a meeting. The field is
+// plumbed per tool, so this is what catches the sixth one added without it.
+func TestEveryBlockingToolReportsHowItEnded(t *testing.T) {
+	for _, out := range []any{askOut{}, confirmOut{}, formOut{}, secretOut{}, reviewOut{}} {
+		typ := reflect.TypeOf(out)
+		found := false
+		for field := range typ.Fields() {
+			if name, _, _ := strings.Cut(field.Tag.Get("json"), ","); name == "outcome" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s has no outcome field, so its caller cannot tell an expiry from a refusal", typ.Name())
+		}
+	}
+	// veto is the exception and needs no field: `vetoed` already says which of its two
+	// endings happened, and a window that lapsed IS the action proceeding.
+	if reflect.TypeFor[vetoOut]().NumField() != 1 {
+		t.Error("vetoOut grew a field; decide whether it now needs an outcome too")
 	}
 }
 

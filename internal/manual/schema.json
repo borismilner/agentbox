@@ -82,7 +82,8 @@
         "vetoed": {"type": "boolean", "description": "veto items: true if the user stopped the action"},
         "secret": {"type": "string", "description": "secret items with stdout opt-in: the value (never logged or stored)"},
         "secret_path": {"type": "string", "description": "secret items: file the value was written to (mode 0600)"},
-        "approved": {"type": "boolean", "description": "diff items (FR33): the reviewer approved; reply carries any comment"}
+        "approved": {"type": "boolean", "description": "diff items (FR33): the reviewer approved; reply carries any comment"},
+        "outcome": {"type": "string", "enum": ["answered", "expired", "dismissed", "cancelled", "caller_gone"], "description": "how the question ended (R-09). expired means the window lapsed with nobody there and is worth retrying; dismissed means he closed it and is not"}
       },
       "required": ["id", "answered"]
     }

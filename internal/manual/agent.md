@@ -81,9 +81,12 @@ the bare answer.
 
 ## Result shapes (--json)
 
-- ask / input: `{"id":"k..","answered":true,"answer":"Run now"}`
-- reply hatch: `{"id":"k..","answered":true,"reply":"free text"}`
-- timeout:     `{"id":"k..","answered":false,"default_applied":true,"answer":"Skip"}`
+- ask / input: `{"id":"k..","answered":true,"answer":"Run now","outcome":"answered"}`
+- reply hatch: `{"id":"k..","answered":true,"reply":"free text","outcome":"answered"}`
+- timeout:     `{"id":"k..","answered":false,"default_applied":true,"answer":"Skip","outcome":"expired"}`
+- dismissed:   `{"id":"k..","answered":false,"outcome":"dismissed"}` - he closed it. `outcome` is
+  the field to branch on: `expired` means nobody was there and is worth retrying,
+  `dismissed` means he decided and is not.
 - confirm:     `answer` is `"yes"` or `"no"`
 - veto:        `{"id":"k..","vetoed":true}` or `{"id":"k..","vetoed":false}`
 - form:        `{"id":"k..","answered":true,"values":{"env":"prod","tag":"v1.4.0"}}`
