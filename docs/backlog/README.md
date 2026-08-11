@@ -2,9 +2,9 @@
 
 Three audits produced three files, each ordered inside itself and none of them
 ordered against the others. This is the missing judgement: one sequence across all
-seventy-six items, and the rule that produced it.
+seventy-eight items, and the rule that produced it.
 
-> **In a hurry.** Finish robustness band A (seven items left, about a week),
+> **In a hurry.** Finish robustness band A (five items left, about a week),
 > taking the ux band-A items with it because they are the same failures seen from
 > the surface - U-01, U-02 and U-03 are done, and U-16 arrived in their place.
 > Then finish R-40, which is started but not done. Then F-01.
@@ -14,7 +14,7 @@ seventy-six items, and the rule that produced it.
 
 | File | What it audits | Items | Ordered by |
 |---|---|---|---|
-| [robustness.md](robustness.md) | the daemon, the store, the socket, the desktop layer | 45, in six bands | what the user loses |
+| [robustness.md](robustness.md) | the daemon, the store, the socket, the desktop layer | 47, in six bands | what the user loses |
 | [ux.md](ux.md) | the seventeen Svelte surfaces | 15, in six bands | what the user loses |
 | [features.md](features.md) | what AgentBox does not do yet | 11 extensions, 5 bets | value over cost |
 
@@ -66,8 +66,8 @@ on F-01 is two weeks and not two months.
 each with its reproduction kept as a test. Both entries stay in robustness.md with
 a fixed marker, because the reasoning is what stops them coming back.
 
-**Tier 1 - the claim is false while these stand.** Robustness band A, the seven
-remaining of fifteen, plus the ux band-A items. About three weeks together. Take
+**Tier 1 - the claim is false while these stand.** Robustness band A, the five
+remaining of fifteen, plus the ux band-A items. About two weeks together. Take
 them in robustness.md's own order, which is already consequence-ordered, with the
 ux items folded in:
 
@@ -87,11 +87,22 @@ them opened a fourth.** U-16: the card's advertised keyboard map does not reach 
 unless it happens to hold focus, so `1` can do nothing at all and the card cannot
 even say so - U-01's symptom by a route U-01's wrapper cannot see, because no bridge
 call is ever made. It goes in band A because that is what band A is. What is left of
-tier 1 is therefore robustness band A's seven (R-06, R-07, R-09, R-10, R-12,
-R-13, R-15; R-03, R-04, R-05, R-08, R-11 and R-14 were all fixed on 2026-08-09)
-plus U-16, and U-16 wants one more repro before its fix is chosen: it
+tier 1 is therefore robustness band A's five (R-06, R-07, R-09, R-10, R-15; R-03,
+R-04, R-05, R-08, R-11 and R-14 were fixed on 2026-08-09, and **R-12 and R-13 on
+2026-08-11**) plus U-16, and U-16 wants one more repro before its fix is chosen: it
 was seen once each way, minutes apart, and "always" and "sometimes" argue for
 different answers.
+
+**R-12 changed how this file thinks about tier 3.** It was fixed as an ordinary
+band-A item and then turned out to be the argument for the whole "ability to find
+out" tier, from a direction R-40 does not cover: the defect lived on the no-X11
+placement path, which was reachable from twenty call sites and had never been
+executed once. Nothing was going to catch it but somebody reading the file, which
+is R-40's complaint about Svelte word for word. `make check` now runs the suite
+through that layer and cross-compiles two other platforms (ADR-0013), so the two
+items R-12 and R-13 opened - **R-46** (Windows has no peer-credential check) and
+**R-47** (the rider's remaining client-side window) - are both band-B-shaped and
+neither is urgent.
 
 **Two ux items arrived on 2026-08-10 and neither is band A.** Drawing the wiki's
 frames put the artifact surface on screen and turned up U-17 (an artifact opened
@@ -162,8 +173,8 @@ argues the case at its "non-goal I would revisit". That is a decision, not a tas
 
 | Tier | Items | Rough cost |
 |---|---|---|
-| 1 | 13 robustness (the 3 ux are done) | under three weeks |
-| 2 | 11 robustness (+ R-30 pulled up) | two weeks |
+| 1 | 11 robustness (the 3 ux are done) | about two weeks |
+| 2 | 13 robustness (+ R-30 pulled up, + R-46 and R-47) | two and a half weeks |
 | 3 | R-40 and the three checks U-15 adds | two weeks, one spent |
 | 4 | F-01, F-09, F-02, F-11, F-05 | four weeks |
 | 5 | everything else | months, and re-rank before starting |

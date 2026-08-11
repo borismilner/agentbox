@@ -503,6 +503,29 @@ the lifecycle and never a malformed blob.
 
 ### R-12. The drop-down panel reports itself open when it never mapped, and that is a routing input
 
+> **Fixed on 2026-08-11** (`fd58e6f`, with the state half in `6052004`). `slide`
+> now sets `p.open = down && shown`, where `shown` is set only by a path that
+> really put a window on screen, and both silent returns say why -
+> `webui.panel_unwindowed` and `webui.panel_unprepared`.
+>
+> **The no-X11 return gained the fallback every sibling already had**, which is
+> the more interesting half. `showCard` warns `card_unprepared` and calls
+> `win.Show()` anyway; the panel was the one surface that returned without
+> showing anything, so its window stayed hidden AND its state said open. Now it
+> shows at full height with none of the placement, and `openWindow` retries a
+> lazy native window with `Run()` the way `showCard` does.
+>
+> **This item is why `make test-nox11` exists.** The branch was reachable from
+> twenty call sites and had never been executed once, so a defect on it could
+> only ever be found by reading. Seen live on 2026-08-11: a `-tags nox11` daemon
+> logged `panel_unprepared` once with `down=true x11=false`, put the panel on
+> screen, and answered `panel state` correctly through show, hide and two
+> toggles. See ADR-0013.
+>
+> `panel_test.go` pins it: a roll with no window leaves `Open()` and
+> `PanelOpen()` false and clears `animating`. Checked against the old code
+> first - it failed on exactly those two assertions.
+
 **How it fails.** The panel window is created hidden
 (`internal/webui/panel.go:278`) and the only `Show()` is inside `slide`, after two
 early returns for `x == nil || win == nil` and `xid == 0`
@@ -529,6 +552,31 @@ surface has that fallback and the panel is the one that does not.
 have failed, which is R-19.
 
 ### R-13. The one message with no retry: the rider's news is consumed before it is sent
+
+> **Fixed on 2026-08-11** (`61d4c09`). `proto.RiderFunc` now answers the line AND
+> a put-back, and `Serve` calls it when `send` returns an error. Both halves of
+> the rider go back: the roster cursor via a closure that restores the set the
+> call was told about, and the lock notices via `keepNotices`, which already
+> existed for the attach case - a caller with nowhere to show them is the same
+> situation reached differently.
+>
+> **Exactly-once stayed a promise about the cursor, not about the wire**, and
+> that is the decision worth keeping. A rolled-back cursor can repeat news that a
+> later call carried. A duplicate warning about company costs a line of output;
+> the silence it replaces costs the collision the whole rule exists to prevent.
+>
+> **The client-side half is NOT fixed and is not this item.** If the send
+> succeeds and the client then fails to unmarshal the result
+> (`rpc.go`), the rider is dropped by `CallRidden` and the daemon has already
+> spent it. Closing that needs an acknowledgement in the protocol, and the
+> deliberate decision above it - that a FAILED call carries no news, because an
+> agent being told why its call failed does not also need news about company -
+> would have to be revisited with it. Filed as R-47.
+>
+> Three tests in `sync_test.go`: an arrival, a departure (the harder half, since
+> the row it names is already gone and the name only exists in the restored
+> cursor), and a rider assembled from a broken lock plus a peer, where both
+> halves have to come back or the next call carries half a line.
 
 **How it fails.** FR83's discovery rider tells a session that a peer joined its
 area, riding on the next successful reply. The cursor moves at compute time:
@@ -1421,6 +1469,62 @@ which is the single most useful addition for a machine you cannot reach.
 first three. The heartbeat needs the live check.
 **Size.** hours for the log, a day for the heartbeat.
 **Confidence.** Confirmed by reading, with the counts verified against the live log.
+
+### R-46. On Windows the socket's peer check is the directory ACL and nothing else
+
+**How it fails.** NFR8 asks two independent questions: is the socket reachable only
+by its owner, and is the process that connected the owner. The first is a 0700
+directory and holds on every platform. The second is `SO_PEERCRED` on Linux and
+`LOCAL_PEERCRED` on macOS, and on Windows there is nothing to ask: AF_UNIX exists
+and Go speaks it, but the kernel records no credentials for it and
+`GetNamedPipeClientProcessId` answers only for a different transport. So
+`peer_windows.go` returns the daemon's own id, which lets Serve's comparison pass
+and is explicitly not a verification.
+**Consequence.** On Windows, anything that can reach the socket path is accepted.
+The 0700 ACL is what stops that, and it is one mechanism where every other platform
+has two. Not a defect in the port - the port is what made it visible - but the one
+security guarantee in the product that is weaker on one platform than the docs used
+to imply anywhere.
+**Where.** `internal/server/peer_windows.go`, `internal/server/server.go` (accept
+path), NFR8.
+**Fix.** A connect token. The daemon writes a random secret to a file the owner
+alone can read and every connection presents it in its first frame. That restores an
+independent check on all three platforms and would let the unix peer check become
+belt-and-braces rather than load-bearing. It is a protocol change touching every
+client, which is why it was not slipped into a portability pass.
+**Test that would have caught it.** Nothing could: it is a platform fact, not a
+regression. What a test CAN pin is the token, once it exists - a connection with no
+token or a wrong one refused, on every platform.
+**Size.** days. The protocol frame is small; every client and the MCP child have to
+learn it, and a stale token file has to be recoverable without a human.
+**Confidence.** Confirmed by reading the Windows API surface. Not observed live -
+nobody has run AgentBox on Windows yet (ADR-0013).
+
+### R-47. The rider can still be lost between a successful send and a failed unmarshal
+
+**How it fails.** R-13 fixed the daemon half: news computed and then not sent is
+put back. The remaining window is on the client. `CallRidden` reads the envelope,
+and if `json.Unmarshal` of the result fails it returns the error and drops
+`resp.Sync` (`internal/proto/rpc.go`). The daemon's cursor has already moved and
+nothing asks for it back, because from the daemon's side that send succeeded.
+**Consequence.** The same loss R-13 describes - a session never learns a peer
+joined its tree - through a narrower door. Narrower because it needs a result the
+client cannot parse, which in practice means a version skew between a daemon and an
+`agentbox mcp` child from a different build. That combination is not exotic: it is
+exactly what a `make deploy` produces for every session that was already running.
+**Where.** `internal/proto/rpc.go` (CallRidden's unmarshal branch), and
+`internal/mcp/rider.go` for the decision below.
+**Fix.** An acknowledgement: the rider is owed until a later call says it arrived,
+which is the `wthub.go` claim-once shape the rest of the product uses. It cannot be
+done alone - `riderMiddleware` deliberately drops the line when the tool handler
+errored, on the grounds that an agent being told why its call failed does not also
+need news about company, and that decision has to be revisited with this one.
+**Test that would have caught it.** A conn whose result is valid JSON the caller's
+type rejects, asserting the news is still owed on the next call.
+**Size.** days, mostly because the protocol grows a field and two decisions have to
+be re-argued rather than because the code is large.
+**Confidence.** Confirmed by reading, and the version-skew trigger is confirmed by
+how deploy works.
 
 ---
 

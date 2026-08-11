@@ -9,6 +9,71 @@ because each cost something to learn.
 The project has worn earlier names; prose here uses the current name
 throughout, including in entries dated before a rename.
 
+## Sixty-first session (2026-08-11): portable, and the branch nobody had run
+
+Two assignments, and the second grew out of the first. It started on the robustness
+backlog - R-12 and R-13, the two hours-sized band-A items left - and R-12 turned out
+to be a portability defect wearing a routing defect's clothes.
+
+**R-12.** The panel's roll set `p.open` from a `defer`, and that defer ran on both
+of its early-return paths. So a roll that never reached `win.Show()` left the state
+machine certain the panel was down, and `PanelOpen()` is one of the two inputs to
+ask routing - a question from an AgentBox-spawned session or an assignment run was
+routed to a surface nobody could see. Earcon played, switcher row marked, nothing on
+screen to answer. Now `open` comes from what actually got shown, both silent returns
+say why, and the no-X11 return gained the fallback every sibling surface already
+had: `showCard` warns `card_unprepared` and shows anyway, and the panel was the one
+that returned without showing anything at all.
+
+**R-13.** The discovery rider was spent by being COMPUTED. `riderFor` moved the
+cursor and `TakeNotices` deleted the lock notices, both immediately before
+`c.send`, whose error was discarded. So the one message in the product with neither
+a retry nor a store behind it was also the one a broken pipe ate in silence - and it
+is the warning the whole two-agents-in-one-checkout rule rests on. `RiderFunc` now
+answers the line plus a put-back and `Serve` calls it when the send fails.
+Exactly-once stayed a promise about the cursor rather than about the wire: a
+rolled-back cursor can repeat news, and a duplicate warning costs a line where the
+silence it replaces costs the collision.
+
+**Then Boris asked for portability**, as much as possible, without changing how it
+works or looks here, and with the docs presenting it as a feature. The audit
+answered in numbers rather than opinion: six syscalls, two `/proc` reads, and one
+build tag. Windows links a 41 MB binary; darwin's only remaining obstacle is a cross
+compiler for the two packages that link a native UI. ADR-0013 records it and amends
+the vision's fourth non-goal and NFR10.
+
+**The finding worth keeping is the tag.** `internal/webui/x11.go` carried
+`//go:build linux` and was the ONLY tagged file in the source tree, with nothing on
+the other side of it. Twenty call sites above it read `if u.x != nil { place } else
+{ let the desktop place }` - written, reachable, and never once executed. R-12 lived
+there. A gate with nothing behind it is not a gate, and the cost was not the failed
+build on another platform; it was that a whole branch of live code could only ever
+be checked by reading. `make check` runs it now.
+
+**Verified rather than reasoned.** After deploying `488754fe16d5`: a toast at
+`x=2505 y=48` (centred to the pixel on a 2560-wide monitor starting at 1440) and a
+card at `x=2485 y=599` (centred both ways), the panel rolling from the top edge and
+answering `panel state` correctly through show, hide and two toggles, and no file
+under `frontend/` touched at all - so nothing can look different. Then the other
+direction: a `-tags nox11` daemon run as the desktop's only daemon against a
+throwaway store, which put its windows up WM-placed (`y=695` instead of `y=48`),
+logged `webui.panel_unprepared` once with `down=true x11=false`, and served
+`agentbox status` normally. Boris's daemon was restored to the deployed build
+immediately after.
+
+**Three gaps written down instead of smoothed over.** Windows AF_UNIX carries no
+peer credentials and has no call that asks, so NFR8 there is the 0700 directory
+alone - `peer_windows.go` says so where the check would be, and R-46 is the connect
+token that would close it. Speech off Linux needs sox, because `afplay` cannot read
+raw PCM from a pipe. And nobody has run the macOS build; every document that
+mentions the port says so, because "compiles" and "works" are different claims.
+
+**Two traps.** A test caught `filepath.Base` failing to split a Windows path when
+compiled for Linux, which fell through to "play the file with no arguments" - the
+one branch that looks like it worked. And `make check`'s `cross` target was written
+with `-o /dev/null` only after an ad-hoc `GOOS=windows go build ./...` left a 41 MB
+`agentbox.exe` in the repo root, which a catch-all `git add` would have committed.
+
 ## Sixtieth session (2026-08-10): the wiki's pictures, all of them, on a desktop
 
 Boris asked for the wiki's examples to be created rather than captured, and for

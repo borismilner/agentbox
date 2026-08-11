@@ -2984,6 +2984,50 @@ the concurrency story is there - what is missing is the operations themselves.
 
 ---
 
+## FR100 [field] As portable as possible, without changing how it works or looks here
+
+> **Done on 2026-08-11** (`fd58e6f`..`488754f`, plus R-12 in `6052004` and R-13 in
+> `61d4c09`). Linux, macOS and Windows from one tree. `make check` compiles
+> windows/amd64 over the whole tree and both darwin arches over everything that
+> does not link a native UI, and runs the entire test suite a second time through
+> the no-X11 placement layer. ADR-0013 records the decision and amends the vision's
+> fourth non-goal and NFR10.
+>
+> **Nothing on this machine changed, and that was the constraint rather than the
+> hope.** Verified after deploying: a toast still lands at `x=2505 y=48` and a card
+> at `x=2485 y=599`, both centred to the pixel on the monitor the pointer is on; the
+> panel still rolls from the top edge and reports its state correctly through show,
+> hide and two toggles; no file under `frontend/` was touched, so nothing can look
+> different. `make check` reports the same 22 packages and the same 43 vitest passes
+> with 1 expected fail as before.
+>
+> **The audit found the distance much shorter than the docs claimed.** Six syscalls
+> (`peerUID`, `lockFile`, `pidAlive`, `detach`, `ownGroup`, `signalGroup`), two
+> process-tree reads out of `/proc`, and one build tag with nothing behind it. The
+> Windows binary links at 41 MB; darwin's only remaining obstacle is a cross
+> compiler for the two packages that link a native UI.
+>
+> **The tag with nothing behind it was the real finding.** `internal/webui/x11.go`
+> carried `//go:build linux` and was the only tagged file in the source tree, so the
+> gate read as portability while the build broke on the other side of it. Twenty call
+> sites above it are written `if u.x != nil { place } else { let the desktop place }`
+> - fully written, fully reachable, never once executed. **R-12 lived exactly
+> there**: the panel's roll took that branch, recorded itself open from a `defer`
+> that ran on the failure path too, and swallowed every question routed to it. Found
+> by reading, because nothing ran it. That is R-40's argument about Svelte, in Go,
+> and it is why `test-nox11` is in the gate rather than in a document.
+>
+> Three things came out honest rather than quiet. **Windows has no peer-credential
+> check** at all for unix sockets, so NFR8 there is the 0700 directory alone (R-46,
+> and `peer_windows.go` says so where the check would be). **Speech is thinner off
+> Linux** because `afplay` will not read raw PCM from a pipe, so it needs sox.
+> **Nobody has run the macOS build**, and every document that mentions the port says
+> so.
+>
+> One trap worth keeping: a test caught `filepath.Base` failing to split a Windows
+> path on Linux, which fell through to "play the file with no arguments" - the one
+> branch that looks like it worked.
+
 ## FR99 [field] The wiki's pictures should be drawn, not photographed
 
 > **Done on 2026-08-10.** Twelve frames are drawn and published; three stay

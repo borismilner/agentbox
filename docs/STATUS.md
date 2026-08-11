@@ -1,7 +1,7 @@
 # STATUS
 
-Updated: 2026-08-10, sixtieth session (the wiki's pictures are all drawings now,
-and they sit on a desktop).
+Updated: 2026-08-11, sixty-first session (AgentBox is portable, and the no-X11
+path is in the gate).
 
 **This file is the current state, and only that.** What each session shipped,
 broke, learned and verified is in [history.md](history.md), which is the log; the
@@ -18,6 +18,32 @@ verification and refinement queue. The showcase re-record was dropped for good o
 config keys nothing reads, three wrong verb lists, two wrong defaults and a tool
 count that had been wrong in three places; [wiki/FACTS.md](wiki/FACTS.md) is the
 audited base, and it is what to quote from now on.
+
+**Portable, and checked rather than claimed (2026-08-11, FR100, ADR-0013).**
+AgentBox builds and runs on Linux, macOS and Windows from one tree. `make check`
+gained two targets and runs both: `test-nox11` puts the entire suite through the
+no-X11 placement layer, and `cross` compiles windows/amd64 over the whole tree plus
+both darwin arches over everything that does not link a native UI. Six calls were
+Linux-only and now sit in files named for their platform with the contract stated in
+the portable caller (`peerUID`, `lockFile`, `pidAlive`, `detach`, `ownGroup` /
+`signalGroup`); `procParent` and `procStartTime` replaced two direct `/proc` reads;
+`internal/webui/x11_absent.go` is the placement layer's other half, which the only
+build tag in the tree had been missing all along.
+
+Nothing on this machine changed, and that was the constraint: verified after deploy
+that a toast lands at `x=2505 y=48` and a card at `x=2485 y=599`, both centred to
+the pixel, that the panel rolls and reports its state correctly, and that no file
+under `frontend/` was touched. Three honest gaps are written down where somebody
+will meet them: Windows has no peer-credential check for unix sockets (R-46), speech
+off Linux needs sox because `afplay` will not read raw PCM from a pipe, and **nobody
+has run the macOS build** - it is compiled on every check and started by no one.
+
+R-12 and R-13 are fixed and were the way in. R-12 lived on the no-X11 branch, which
+twenty call sites could reach and nothing had ever executed, so the panel recorded
+itself open on a roll that mapped nothing and swallowed every question routed to it.
+That is R-40's argument about Svelte, in Go, and it is why the gate now runs that
+layer instead of a document promising it does. R-46 and R-47 are the two items this
+work opened.
 
 **The wiki's pictures (2026-08-10).** Twelve of the fifteen frames are drawn
 from fixtures rather than photographed, published to both wiki hosts, and used by
