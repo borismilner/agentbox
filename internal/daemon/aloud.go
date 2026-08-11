@@ -82,8 +82,8 @@ func (a *aloud) start(region, text string) proto.AloudResult {
 	// after the reader goroutine is loose. A start reports what the start did; by
 	// the time it could ask again the reading may already be over, and it would
 	// then answer "not playing" about a reading the caller just began. That is not
-	// theoretical - it is what made this suite fail once under -race in session 25
-	// and again in session 34, and on a machine where the utterance is short or
+	// theoretical - it is what made this suite fail twice under -race, and on a
+	// machine where the utterance is short or
 	// the engine answers instantly it is what the surface would paint: a play
 	// control for a region that is being read out loud.
 	res := proto.AloudResult{OK: true, Playing: a.playing, Region: a.region}

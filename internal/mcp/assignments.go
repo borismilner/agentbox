@@ -15,8 +15,8 @@ import (
 // a schedule or on demand; these seven tools are how an agent reads, writes and
 // runs them.
 //
-// They exist as an MCP surface and not only as a panel because Boris asked for
-// exactly that: "upon creation, the AI agent itself should help with generating
+// They exist as an MCP surface and not only as a panel because that is exactly
+// the requirement: "upon creation, the AI agent itself should help with generating
 // the initial prompt and the configuration panel for it until the user is
 // satisfied. The AI agent should have full access to these so that it can help
 // adjusting and improving assignments as we go along." So this is the authoring

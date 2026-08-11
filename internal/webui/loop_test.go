@@ -130,7 +130,7 @@ func TestPresentBeforeTheLoopReplaysTheCurrentView(t *testing.T) {
 // items can reach showCard at once; the call-site read used to see a nil
 // prompt for both, each closure then opened a window, and the loser fell off
 // tracking - the card-shaped ghost that outlived every item's resolution
-// (session 25). Here the prompt appears between showCard's call and its
+// once shipped. Here the prompt appears between showCard's call and its
 // closure running, which is that race in miniature: the closure must hand the
 // view to the window it finds, not open a second one.
 func TestShowCardDecidesReuseOnTheUIThread(t *testing.T) {

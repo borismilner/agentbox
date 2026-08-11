@@ -1210,8 +1210,8 @@ func heldPhrase(n int) string {
 }
 
 // runControl is the desktop handover from a shell (FR74). It exists beside the MCP
-// tools because not every agent speaks MCP - Boris asked for this to work "while
-// they drive my debug chrome or other automations", and a shell script is the
+// tools because not every agent speaks MCP - it has to work "while they drive my
+// debug chrome or other automations", and a shell script is the
 // lowest common denominator those reach for.
 //
 //	agentbox control request "clicking through the review board" --window 20

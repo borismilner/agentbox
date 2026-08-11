@@ -440,7 +440,7 @@ func (c *control) Resume(how string) proto.ControlResult {
 // Quiet demotes the sign for a recording (FR95): the strip comes down and the 4px
 // marker takes over, mapped and then left alone so a window over the top edge
 // covers it. The guarantee is deliberately weaker in this mode, and it is weaker
-// because Boris asked for it to be - "generally it should live on top of any and
+// weaker by request - "generally it should live on top of any and
 // all surfaces; when demoted for purposes of recording or stuff like that it can be
 // overlapped".
 //

@@ -9,7 +9,7 @@ import (
 // FR89. agentbox had four ways to CREATE an item and none to retire one, so a
 // warning that turned out to be noise waited on the human's screen until he clicked
 // it - and came back after every daemon restart, because pending items are restored
-// by design. Boris asked about the same probe-generated toasts twice.
+// by design. The same probe-generated toasts drew the same question twice.
 
 func postWarning(t *testing.T, d *Daemon, agent, key, title string) string {
 	t.Helper()

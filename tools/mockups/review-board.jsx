@@ -66,7 +66,7 @@ const STEPS = [
     id: "xkb",
     kind: "code",
     title: "The per-stroke group lock",
-    purpose: "Serves: typed text must be the planned text (the release tag that reached a card in Hebrew). Decided by: docs/history.md session 25.",
+    purpose: "Serves: typed text must be the planned text (the release tag that reached a card in Hebrew). Decided by: docs/history.md.",
     prose: [
       { t: "The layout table is read from the first group, so every stroke is planned there. The fix is a guard that locks the " },
       { b: "planned", t: "planned group" },

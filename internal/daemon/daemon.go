@@ -2000,8 +2000,8 @@ func (d *Daemon) gracedFor(id string) bool {
 // a warning stays pending until it is clicked, pending items survive a daemon
 // restart by design, and so a toast an agent posted and immediately knew to be
 // noise - an acceptance probe's refused deadlock, say - sat on the human's screen
-// forever, coming back after every restart. Boris asked about the same four toasts
-// twice before this was built.
+// forever, coming back after every restart. The same four toasts drew the same
+// question twice before this was built.
 //
 // Who may retire what is the whole of the safety model, and it is not symmetrical:
 //

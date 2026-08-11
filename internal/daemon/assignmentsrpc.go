@@ -14,8 +14,8 @@ import (
 // The assignment RPC surface (M12/FR82). assignments.go owns WHEN a thing runs;
 // this file owns the six methods an agent or the panel reaches it through.
 //
-// It is a CRUD an agent uses as much as a human does - Boris asked for the
-// agent to author assignments with him - so every refusal here is written to
+// It is a CRUD an agent uses as much as a human does - the agent is meant to
+// author assignments with the user - so every refusal here is written to
 // teach: the whole list of spec faults at once rather than the first, and a
 // clear line between what was refused (a spec that would render wrong) and what
 // was merely reported (a prompt still half written).

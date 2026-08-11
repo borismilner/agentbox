@@ -38,7 +38,7 @@ import (
 //     Mutter layers above ordinary always-on-top windows, and a keeper that
 //     restacks it while a run is live (see keepOnTop).
 //
-// And one exception to top-most, which is the marker (FR74, session 34). A
+// And one exception to top-most, which is the marker (FR74). A
 // fullscreen window is the one case where staying in front is the wrong answer:
 // Boris watches a film, an agent takes the desktop, and a 620x62 strip pinned over
 // the top of the picture for the whole run is worse than the problem. But the

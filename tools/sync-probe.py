@@ -166,7 +166,7 @@ class OwnToasts:
     that constructs a lock cycle on purpose leaves a warning on his screen. A warning
     is pending until it is CLICKED and pending items survive a daemon restart, so
     before FR89 every run left one there forever and they came back after every
-    deploy. Boris asked about the same four twice.
+    deploy. The same four drew the same question twice.
 
     The diff is the whole point: `dismiss --all` would also clear a real item of his
     that happened to be waiting, and the warning is posted by agentbox rather than by

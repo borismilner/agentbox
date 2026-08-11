@@ -5,8 +5,8 @@ import "github.com/borismilner/agentbox/internal/assign"
 // The assignment wire types (M12 / FR82). An assignment is work agentbox gives an
 // agent on a schedule or on demand; docs/08-assignments.md is the design.
 //
-// The CRUD is an MCP surface before it is a UI, because Boris asked for the
-// agent to author assignments with him ("upon creation, the AI agent itself
+// The CRUD is an MCP surface before it is a UI, because the agent is meant to
+// author assignments with the user ("upon creation, the AI agent itself
 // should help with generating the initial prompt and the configuration panel
 // for it until the user is satisfied"). These types are therefore written for a
 // model as much as for the panel: the save reports every problem with a spec at

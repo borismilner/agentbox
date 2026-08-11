@@ -454,7 +454,7 @@ func (u *UI) showCard(v daemon.View) {
 		// the call site read u.prompt before an earlier closure had assigned
 		// it, so two near-simultaneous items could each create a window and
 		// the loser fell off tracking - the card-shaped ghost that outlived
-		// every item's resolution (session 25). Present runs outside the
+		// every item's resolution once shipped. Present runs outside the
 		// daemon lock, so that race needs no restart to happen.
 		u.mu.Lock()
 		existing, existingKind := u.prompt, u.promptKind

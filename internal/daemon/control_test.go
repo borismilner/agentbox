@@ -270,8 +270,8 @@ func TestControlAKeylessCallerStillOwnsItsRunByName(t *testing.T) {
 }
 
 func TestControlActivityResetsItsAgeSoStuckIsVisible(t *testing.T) {
-	// The age is the whole of "nothing is stuck": Boris asked to know "every moment
-	// where we are, that nothing is stuck and so on". A line that never changes has
+	// The age is the whole of "nothing is stuck": the requirement is to know "every
+	// moment where we are, that nothing is stuck and so on". A line that never changes has
 	// to look old.
 	c, spy := newTestControl()
 	c.Request(context.Background(), agentA, "driving", 30*time.Millisecond)

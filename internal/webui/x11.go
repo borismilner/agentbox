@@ -238,11 +238,11 @@ func (x *x11) prepare(id winID, notification bool) {
 // never given the keyboard.
 //
 // It exists for FR95's demoted marker, where being coverable IS the feature:
-// Boris asked for the sign to step out of a screen recording, and "generally it
-// should live on top of any and all surfaces; when demoted for purposes of
-// recording or stuff like that it can be overlapped". Session 49 proved a
-// notification-type window cannot be pushed under a fullscreen one however hard
-// you lower it, so giving up the type is the only route there.
+// the sign has to step out of a screen recording: "generally it should live on
+// top of any and all surfaces; when demoted for purposes of recording or stuff
+// like that it can be overlapped". A notification-type window cannot be pushed
+// under a fullscreen one however hard you lower it, tried and measured on the
+// real desktop, so giving up the type is the only route there.
 //
 // The undecorated half is not cosmetic either. Mutter frames a bare window, and a
 // 4px window then comes back about 30px tall wearing a title bar - measured, while

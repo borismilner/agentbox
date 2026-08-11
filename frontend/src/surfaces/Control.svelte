@@ -8,7 +8,7 @@
   // Two states. `asking` carries the reason, a countdown and Deny, so the decision
   // happens where the question is rather than in a card beside it. `driving`
   // carries the activity line the agent keeps updating and the age of that line,
-  // because Boris asked to know "every moment where we are, that nothing is stuck".
+  // because the point is to know "every moment where we are, that nothing is stuck".
   //
   // And one latch across both (FR94): paused, the desktop is the human's again
   // mid-run. It is the inverted strip he picked at the mock - the same window,
