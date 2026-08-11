@@ -62,5 +62,10 @@ behave identically; the first client call auto-spawns the daemon.
 - Not a terminal replacement and not a general notification center.
 - No remote or mobile delivery in v1 (a webhook relay is a later idea, see
   roadmap).
-- No Windows/macOS support in v1. Keep code portable where it costs nothing,
-  but never trade Linux quality for it.
+- ~~No Windows/macOS support in v1.~~ Amended 2026-08-11 (ADR-0013): AgentBox
+  builds and runs on Linux, macOS and Windows, and `make check` compiles the
+  other two from here on every run. The second half of this non-goal stands and
+  is the reason it could be done at all - Linux quality was never traded, so
+  this desktop keeps pop-above-without-focus, the top-centre column and the
+  rolled panel. What crosses is everything that carries a message; what stays
+  X11-only is the global hotkey and pointer driving, and each says so when asked.

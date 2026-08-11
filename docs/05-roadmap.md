@@ -127,6 +127,15 @@ plan and acceptance here; the shipping narratives live in history.md (the
   fractional scaling on GNOME Wayland, and add the Wayland fullscreen signal
   (the FR29 fullscreen read and card placement are X11-only and degrade to
   "present"/WM-default on Wayland today).
+- **The structural half landed early, on 2026-08-11 (FR100, ADR-0013), for a
+  different reason.** Making the tree portable to macOS and Windows required the
+  same seam Wayland needs - a placement layer that can be absent - so
+  `internal/webui/x11_absent.go` now exists and `make check` runs the whole suite
+  through it. A Wayland session takes exactly that path today: every surface
+  appears and is answerable, placed by Mutter instead of by us. What is left of
+  this milestone is the part that was always Wayland-specific rather than
+  absence-specific: an activation token for re-focus, the fullscreen signal, and
+  fractional scaling.
 - Accept: same M1/M2 checks pass on a Wayland session (pending the Wayland
   work above).
 

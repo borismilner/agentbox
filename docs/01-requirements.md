@@ -217,11 +217,32 @@ Calm and multi-agent refinements (each fills a gap in the features above):
 - NFR7 Crash safety: pending asks survive a daemon restart and are
   re-presented; callers see a reconnect, not a lost answer.
 - NFR8 Security: socket directory mode 0700 under `$XDG_RUNTIME_DIR`; peer
-  UID checked via SO_PEERCRED; no TCP listener anywhere.
+  UID checked at accept time; no TCP listener anywhere. The peer check is
+  SO_PEERCRED on Linux and LOCAL_PEERCRED on macOS - the same guarantee, asked
+  for differently. Windows AF_UNIX carries no credentials and has no call that
+  asks, so there the requirement rests on the 0700 directory alone; that is the
+  one place this NFR is weaker, it is stated in `peer_windows.go` at the point of
+  use, and R-46 is the connect-token that would restore it.
 - NFR9 Accessibility: labels for screen readers where the toolkit supports
   it; respect reduced-motion; all colors meet WCAG AA contrast.
-- NFR10 X11 today, Wayland-ready: no X11-only mechanism may be load-bearing
-  without a documented Wayland equivalent (see 04-platform.md).
+- NFR10 Portable, with X11 as an enhancement. Amended 2026-08-11 (ADR-0013),
+  replacing "X11 today, Wayland-ready". Three clauses, and the third is what
+  makes the first two true rather than aspirational:
+  - **No message may depend on a display server.** Everything that delivers,
+    asks or answers - the daemon, the store, the socket, the CLI, the MCP server
+    - is portable, and every platform-specific call lives in a file named for its
+    platform with the contract stated in the portable caller.
+  - **No X11-only mechanism may be load-bearing.** Unchanged in spirit from the
+    old NFR10, but now enforced: without X11 every surface still appears, still
+    carries its content and is still answerable. It is placed by the window
+    manager rather than by us. The two capabilities that genuinely cannot degrade
+    - the global hotkey and pointer driving - report that they are unavailable
+    instead of failing silently.
+  - **The claim is compiled, not written.** `make check` runs the whole suite
+    through the no-X11 placement layer and cross-compiles for macOS and Windows.
+    A documented equivalent was the old bar and it was not enough: the no-X11
+    path was fully written, reachable from twenty call sites, and never executed
+    once - which is exactly where R-12 lived. See 04-platform.md.
 - NFR11 Zero-config first run: an empty or absent config file gives the
   full intended experience; configuration tunes, never enables.
 - NFR12 Single instance by default: one daemon per user session, enforced
