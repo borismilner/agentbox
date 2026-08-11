@@ -12,6 +12,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
@@ -83,6 +84,7 @@ func engine() goldmark.Markdown {
 				parser.WithASTTransformers(
 					util.Prioritized(&alertTransformer{}, 100),
 					util.Prioritized(&imageBaseTransformer{}, 110),
+					util.Prioritized(&tableCapTransformer{}, 120),
 				),
 				parser.WithBlockParsers(util.Prioritized(&mathBlockParser{}, 100)),
 				parser.WithInlineParsers(util.Prioritized(&mathInlineParser{}, 150)),
@@ -329,6 +331,70 @@ func styles() *chroma.Style {
 		return chroma.MustNewStyle("agentbox-fallback", chroma.StyleEntries{})
 	}
 	return s
+}
+
+// --- tables -----------------------------------------------------------------
+
+// mdMaxTableRows is how many body rows of one table are rendered (R-26).
+//
+// Nothing counted them. Measured through this renderer: 10,000 rows is 0.6 MB of
+// HTML in 41ms and 170,000 rows - a 6.2 MB document, which readsource will hand
+// over because its ceiling is 4 MB of BYTES and says nothing about structure - is
+// 11 MB of HTML in 722ms, which is a million DOM nodes for a surface that renders
+// prose. The row is the unit that matters rather than the byte, the same way the
+// code fence needed a line ceiling next to its byte one.
+//
+// 2000 is deliberately the fence's line ceiling: past two thousand rows a table
+// has stopped being something anybody reads down and become a data file, and a
+// data file wants show_document on the file, not a card built out of it.
+const mdMaxTableRows = 2000
+
+// tableCapTransformer drops the rows past the ceiling and says so under the
+// table. It runs on the AST rather than in a renderer because GFM's table
+// renderer is the extension's, and taking it over to count rows would mean
+// owning its alignment and its cell markup as well.
+type tableCapTransformer struct{}
+
+func (tableCapTransformer) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering || n.Kind() != extast.KindTable {
+			return ast.WalkContinue, nil
+		}
+		// The cells hold nothing this cares about, and a 170,000-row table is
+		// half a million of them.
+		rows, extra := 0, []ast.Node(nil)
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			if c.Kind() != extast.KindTableRow {
+				continue // the header, which is not a row anybody counts
+			}
+			rows++
+			if rows > mdMaxTableRows {
+				extra = append(extra, c)
+			}
+		}
+		if len(extra) == 0 {
+			return ast.WalkSkipChildren, nil
+		}
+		for _, row := range extra {
+			n.RemoveChild(n, row)
+		}
+		if p := n.Parent(); p != nil {
+			p.InsertAfter(p, n, noteNode(
+				"first "+thousands(mdMaxTableRows)+" of "+thousands(rows)+" rows shown"))
+		}
+		return ast.WalkSkipChildren, nil
+	})
+}
+
+// noteNode is one line of agentbox's own prose inside somebody else's document.
+// It is emphasised rather than classed: a class needs a stylesheet rule to be
+// visible at all, and a note the reader cannot see is the silence this replaces.
+func noteNode(text string) ast.Node {
+	p := ast.NewParagraph()
+	em := ast.NewEmphasis(1)
+	em.AppendChild(em, ast.NewString([]byte(text)))
+	p.AppendChild(p, em)
+	return p
 }
 
 // --- GitHub alerts ----------------------------------------------------------

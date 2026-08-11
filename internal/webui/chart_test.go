@@ -149,3 +149,80 @@ func TestChartScales(t *testing.T) {
 		t.Errorf("x labels = %d, want at most %d", n, chMaxLabel)
 	}
 }
+
+// R-26, the chart shape. Nothing counted the values, so a spec an agent can fit
+// inside the body cap drew tens of megabytes of SVG into a surface that then died
+// with the item recorded as displayed. What these check is the bound AND that the
+// reader is told, because a chart silently drawing a fiftieth of its data is worse
+// than one that refuses.
+func TestAChartWithMorePointsThanItCanDrawIsCappedAndSaysSo(t *testing.T) {
+	const asked = 500000
+	vals := make([]string, asked)
+	for i := range vals {
+		vals[i] = "1"
+	}
+	svg := renderChartSVG(`{"type":"line","series":[{"values":[` + strings.Join(vals, ",") + `]}]}`)
+
+	if dots := strings.Count(svg, `<circle class="k-ch-dot"`); dots > chMaxPoints {
+		t.Errorf("drew %d points, want at most %d", dots, chMaxPoints)
+	}
+	// The polyline is one element but its points attribute is not: it must be
+	// clipped too, or the cap moves the cost rather than removing it.
+	if len(svg) > 1<<20 {
+		t.Errorf("SVG is %d bytes for a capped chart; the cap is not reaching the geometry", len(svg))
+	}
+	if !strings.Contains(svg, "first 2,000 of 500,000 points") {
+		t.Errorf("a truncated chart must say so on the chart:\n%s", svg[:min(len(svg), 400)])
+	}
+}
+
+func TestAChartInsideTheCapIsDrawnWholeAndSaysNothing(t *testing.T) {
+	vals := make([]string, chMaxPoints)
+	for i := range vals {
+		vals[i] = "2"
+	}
+	svg := renderChartSVG(`{"type":"scatter","series":[{"values":[` + strings.Join(vals, ",") + `]}]}`)
+	if dots := strings.Count(svg, `<circle class="k-ch-dot"`); dots != chMaxPoints {
+		t.Errorf("drew %d points, want all %d", dots, chMaxPoints)
+	}
+	if strings.Contains(svg, "points</text>") {
+		t.Error("a chart that lost nothing must not claim it did")
+	}
+}
+
+func TestEverySeriesSurvivesTheCap(t *testing.T) {
+	// A cap that spends its whole budget on the first series draws a legend with
+	// keys for series that are not on the chart, which reads as data that is
+	// missing rather than data that was never drawn.
+	var series []string
+	for s := range 8 {
+		vals := make([]string, 1000)
+		for i := range vals {
+			vals[i] = "1"
+		}
+		series = append(series, `{"name":"s`+string(rune('a'+s))+`","values":[`+strings.Join(vals, ",")+`]}`)
+	}
+	svg := renderChartSVG(`{"type":"line","series":[` + strings.Join(series, ",") + `]}`)
+	if n := strings.Count(svg, `<polyline class="k-ch-line"`); n != 8 {
+		t.Errorf("lines drawn = %d, want all 8 series represented", n)
+	}
+	if dots := strings.Count(svg, `<circle class="k-ch-dot"`); dots > chMaxPoints {
+		t.Errorf("drew %d points, want at most %d", dots, chMaxPoints)
+	}
+}
+
+func TestAPieWithMoreSlicesThanItCanDrawIsCappedToo(t *testing.T) {
+	// The pie takes its own path out of the renderer, which is exactly how a bound
+	// written on the axis path alone would be missed.
+	vals := make([]string, 200000)
+	for i := range vals {
+		vals[i] = "1"
+	}
+	svg := renderChartSVG(`{"type":"pie","series":[{"values":[` + strings.Join(vals, ",") + `]}]}`)
+	if n := strings.Count(svg, "k-ch-slice-shape"); n > chMaxPoints {
+		t.Errorf("drew %d slices, want at most %d", n, chMaxPoints)
+	}
+	if !strings.Contains(svg, "first 2,000 of 200,000 points") {
+		t.Error("a truncated pie must say so as well")
+	}
+}

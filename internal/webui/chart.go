@@ -52,6 +52,22 @@ const (
 	chMaxLabel = 14 // x labels beyond this many are thinned
 )
 
+// chMaxPoints bounds how many values are DRAWN, across every series (R-26).
+//
+// Every value is a <circle>, a <rect> or a slice with a <title> inside it, which
+// is about 120 bytes of SVG each and nothing was counting them. Measured through
+// this function: 10,000 points is 1.1 MB of SVG in 50ms, 100,000 is 11.4 MB in
+// 418ms, and 500,000 - a 1.9 MB spec, comfortably inside the 256 kB body cap once
+// it is a document rather than a card - is 56.8 MB in 2.5 seconds, which the
+// WebProcess does not survive. The x labels were already thinned past fourteen and
+// the pie legend already stops at the panel's edge, which is what made the missing
+// point cap look deliberate.
+//
+// 2000 across the plot's 652 units is about three points per unit: past that a
+// point is narrower than the line joining it to the next one, so the cap costs the
+// reader nothing that drawing the rest would have given them.
+const chMaxPoints = 2000
+
 // renderChartSVG draws the spec. An unparseable or empty spec returns "", and the
 // caller falls back to showing the source - the same rule the Gio renderer used,
 // because a chart that cannot be drawn is still information the reader may need.
@@ -73,9 +89,15 @@ func renderChartSVG(spec string) string {
 		return ""
 	}
 
+	// Before anything is drawn, and before the pie takes its own path: everything
+	// downstream - the bounds, the x labels, the legend - then works on what is
+	// actually on screen rather than on what the spec asked for.
+	c, total := clipPoints(c)
+	n = min(n, chMaxPoints)
+
 	// A pie has no axes to share with the others, so it takes its own path.
 	if t := strings.ToLower(c.Type); t == "pie" || t == "doughnut" || t == "donut" {
-		return renderPieSVG(c, t != "pie")
+		return renderPieSVG(c, t != "pie", total)
 	}
 
 	lo, hi := bounds(c.Series)
@@ -133,8 +155,65 @@ func renderChartSVG(spec string) string {
 
 	drawXLabels(&b, c, n, plotW, strings.EqualFold(c.Type, "bar"))
 	drawLegend(&b, c)
+	chartNote(&b, total, chW-chR, "end")
 
 	b.WriteString(`</svg></div>`)
+	return b.String()
+}
+
+// clipPoints trims the series to chMaxPoints values in total and reports how many
+// the spec asked for. Each series keeps its FIRST values and every series keeps at
+// least one, so the categories still line up with the x labels and no series
+// disappears from the legend while its key is still drawn.
+//
+// It returns a copy: the caller's spec is what a fallback would print as source.
+func clipPoints(c chartSpec) (chartSpec, int) {
+	total := 0
+	for _, s := range c.Series {
+		total += len(s.Values)
+	}
+	if total <= chMaxPoints {
+		return c, total
+	}
+	per := max(chMaxPoints/len(c.Series), 1)
+	clipped := make([]chartSeries, len(c.Series))
+	for i, s := range c.Series {
+		clipped[i] = chartSeries{Name: s.Name, Values: s.Values[:min(len(s.Values), per)]}
+	}
+	c.Series = clipped
+	return c, total
+}
+
+// chartNote says what was left out, in the same muted ink as an axis tick and on
+// the bottom line, under everything else. Silence here is the defect: a chart that
+// quietly draws a fiftieth of its data is a chart that lies. It reuses
+// `k-ch-tick` rather than asking for a class of its own, for R-17's reason - the
+// styling exists, and a rule nobody has written yet renders as nothing at all.
+//
+// The corner is the caller's because the pie fills the right edge with its keys
+// and the axis chart fills the left with its scale.
+func chartNote(b *strings.Builder, total int, x float64, anchor string) {
+	if total <= chMaxPoints {
+		return
+	}
+	fmt.Fprintf(b, `<text class="k-ch-tick" x="%g" y="%g" text-anchor="%s">first %s of %s points</text>`,
+		x, chH-6, anchor, thousands(chMaxPoints), thousands(total))
+}
+
+// thousands groups digits so a reader can tell 20,000 from 200,000 at a glance,
+// which is the whole point of printing the number they did not get.
+func thousands(n int) string {
+	s := strconv.Itoa(n)
+	if n < 0 {
+		return s
+	}
+	var b strings.Builder
+	for i, r := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
 	return b.String()
 }
 
@@ -275,7 +354,7 @@ func drawArea(b *strings.Builder, c chartSpec, n int, plotW float64, yOf func(fl
 
 // renderPieSVG draws the first series as slices, labelled with their share. The
 // second series of a pie is meaningless, so it is ignored rather than guessed at.
-func renderPieSVG(c chartSpec, doughnut bool) string {
+func renderPieSVG(c chartSpec, doughnut bool, points int) string {
 	vals := c.Series[0].Values
 	total := 0.0
 	for _, v := range vals {
@@ -352,6 +431,8 @@ func renderPieSVG(c chartSpec, doughnut bool) string {
 			break
 		}
 	}
+	// Bottom left: the keys down the right have already reached this line.
+	chartNote(&b, points, chL, "start")
 
 	b.WriteString(`</svg></div>`)
 	return b.String()

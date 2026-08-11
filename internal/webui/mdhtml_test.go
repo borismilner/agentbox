@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -213,5 +214,69 @@ func TestFenceRenderStaysBounded(t *testing.T) {
 	}
 	if float64(len(got)) > 2*float64(len(src)) {
 		t.Errorf("one fence produced %d bytes from %d, a %.1fx amplification", len(got), len(src), float64(len(got))/float64(len(src)))
+	}
+}
+
+// R-26, the table shape. A markdown table had no row bound anywhere: not in the
+// item path, where a body is capped in bytes, and not in readsource, whose
+// ceiling is 4 MB of bytes and says nothing about how many rows they are.
+func TestATableLongerThanItsCeilingIsCutAndSaysSo(t *testing.T) {
+	const rows = 12000
+	var b strings.Builder
+	b.WriteString("| n | text |\n|---|---|\n")
+	for i := range rows {
+		fmt.Fprintf(&b, "| %d | row %d |\n", i, i)
+	}
+	out := RenderMarkdown(b.String())
+
+	if got := strings.Count(out, "<tr>"); got > mdMaxTableRows+1 { // +1 for the header row
+		t.Errorf("rendered %d rows, want at most %d", got, mdMaxTableRows+1)
+	}
+	if !strings.Contains(out, "first 2,000 of 12,000 rows shown") {
+		t.Error("a cut table must say what was cut")
+	}
+	// The rows that ARE there are the first ones, so the reader's place in the
+	// data is the top of it rather than an arbitrary window.
+	if !strings.Contains(out, "row 0<") || !strings.Contains(out, "row 1999<") {
+		t.Error("the kept rows should be the first ones")
+	}
+	if strings.Contains(out, "row 2000<") {
+		t.Error("row 2000 is past the ceiling and should be gone")
+	}
+}
+
+func TestATableInsideItsCeilingIsWholeAndSilent(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("| a | b |\n|---|---|\n")
+	for i := range 50 {
+		fmt.Fprintf(&b, "| %d | %d |\n", i, i*2)
+	}
+	out := RenderMarkdown(b.String())
+	if got := strings.Count(out, "<tr>"); got != 51 {
+		t.Errorf("rendered %d rows, want all 51", got)
+	}
+	if strings.Contains(out, "rows shown") {
+		t.Error("a table that lost nothing must not claim it did")
+	}
+}
+
+func TestEachTableGetsItsOwnCeiling(t *testing.T) {
+	// The bound is per table, not per document: two tables inside the ceiling are
+	// two whole tables, and a walk that carried a running total would eat the
+	// second one for the first one's size.
+	var b strings.Builder
+	for range 2 {
+		b.WriteString("| a | b |\n|---|---|\n")
+		for i := range 1500 {
+			fmt.Fprintf(&b, "| %d | %d |\n", i, i)
+		}
+		b.WriteString("\n")
+	}
+	out := RenderMarkdown(b.String())
+	if got := strings.Count(out, "<tr>"); got != 3002 {
+		t.Errorf("rendered %d rows, want 3002 (two whole tables)", got)
+	}
+	if strings.Contains(out, "rows shown") {
+		t.Error("neither table was over its own ceiling")
 	}
 }
