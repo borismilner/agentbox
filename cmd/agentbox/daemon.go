@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -351,6 +352,31 @@ func applySpeech(say *speech.Speaker, cfg config.Config) {
 	}, cfg.InQuietHours)
 }
 
+// exitProcess is os.Exit behind a seam, so the death of the daemon can be
+// exercised by a test that has to survive it.
+var exitProcess = os.Exit
+
+// fatal ends a daemon that cannot run, and writes down why in the file an
+// engineer reads (R-24). A daemon that died on startup used to leave a
+// daemon.start line with nothing after it: the reason went to stderr, which is
+// the journal, and the JSONL showed a crash loop as a run of starts and no
+// explanation at all. Every death now closes the log the way a graceful shutdown
+// does, with a daemon.stop row saying what happened.
+//
+// It is only for the startup paths. Once the daemon is up, shutdown() owns the
+// exit and writes its own stop row.
+func fatal(log *slog.Logger, closer io.Closer, reason string, err error) {
+	args := []any{"component", "daemon", "graceful", false, "reason", reason}
+	if err != nil {
+		args = append(args, "err", err.Error())
+	}
+	log.Error(logging.EvDaemonStop, args...)
+	if closer != nil {
+		closer.Close()
+	}
+	exitProcess(exitError)
+}
+
 func runDaemon() {
 	cfg, cfgWarns, cfgErr := config.Load(config.Path())
 
@@ -377,9 +403,9 @@ func runDaemon() {
 		os.Exit(exitOK)
 	}
 	if err != nil {
-		log.Error(logging.EvDaemonStart, "component", "daemon", "err", err.Error())
 		fmt.Fprintf(os.Stderr, "agentbox daemon: %v\n", err)
-		os.Exit(exitError)
+		fatal(log, logCloser, "the socket could not be bound", err)
+		return
 	}
 
 	vi := version.Get()
@@ -392,7 +418,12 @@ func runDaemon() {
 	if err != nil {
 		log.Error("store.open_failed", "component", "daemon", "err", err.Error())
 		fmt.Fprintf(os.Stderr, "agentbox daemon: %v\n", err)
-		os.Exit(exitError)
+		// The one an operator meets after a rollback across a migration: the store
+		// is newer than this build and it refuses (ADR-0005, R-23). The reason has
+		// to be in the log, because the thing that reads stderr here is a journal
+		// nobody thinks to open.
+		fatal(log, logCloser, "the store could not be opened", err)
+		return
 	}
 	if v, err := st.SchemaVersion(); err == nil {
 		log.Info(logging.EvStoreMigrated, "component", "daemon", "schema_version", v)
@@ -415,7 +446,8 @@ func runDaemon() {
 	d, err := daemon.New(daemonConfig(cfg), log, st, audio{Player: snd, say: say}, u)
 	if err != nil {
 		log.Error("daemon.init_failed", "component", "daemon", "err", err.Error())
-		os.Exit(exitError)
+		fatal(log, logCloser, "the daemon could not be built", err)
+		return
 	}
 	res.set(d)
 	u.SetSource(d)
@@ -633,7 +665,7 @@ func runDaemon() {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Error(logging.EvPanic, "component", "server", "panic", fmt.Sprint(r))
-				os.Exit(exitError)
+				fatal(log, logCloser, "the socket server panicked", nil)
 			}
 		}()
 		if err := lst.Serve(ctx, d.Handle); err != nil {
@@ -645,6 +677,6 @@ func runDaemon() {
 	if err := u.Run(); err != nil {
 		log.Error("ui.run_failed", "component", "daemon", "err", err.Error())
 		fmt.Fprintf(os.Stderr, "agentbox daemon: %v\n", err)
-		os.Exit(exitError)
+		fatal(log, logCloser, "the ui could not run", err)
 	}
 }

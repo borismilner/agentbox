@@ -6,6 +6,25 @@ Documentation=https://gitlab.com/fu-bar/agentbox
 PartOf=graphical-session.target
 After=graphical-session.target
 
+# The restart budget, written down rather than inherited (R-24). The defaults are
+# five starts in ten seconds, and with RestartSec=2 below that is five restarts
+# and then the unit is `failed` forever - eight seconds after a crash loop began,
+# with nothing on screen saying so. What made it invisible is that agentbox is
+# auto-spawned by the first MCP call, so a daemon comes back anyway and serves
+# unmanaged while the unit sits inactive.
+#
+# Ten in five minutes instead. It is more forgiving of a fast transient (ten
+# tries rather than five) and it catches the slow loop the default cannot see at
+# all: a daemon dying every thirty seconds passes a ten-second window forever.
+# The limit is still real, because a daemon that cannot start must eventually
+# stop trying - `agentbox status` reports the unit state so that is a sentence
+# somebody reads rather than a silence.
+#
+# These two belong in [Unit] and not in [Service]: they moved in systemd 229, and
+# in the wrong section they are accepted and ignored.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
 [Service]
 Type=simple
 ExecStart=%h/.local/bin/agentbox daemon

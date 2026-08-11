@@ -603,6 +603,12 @@ func runStatus(args []string) int {
 	conn, err := client.Dial(dialCtx, runtimeDir(), nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "agentbox: daemon unreachable: %v\n", err)
+		// The most useful sentence there is on a desktop with no hub, and it used
+		// to be nowhere: systemd may have given up restarting the daemon, which is
+		// silent and permanent (R-24).
+		if note := unitAdvice(false); note != "" {
+			fmt.Fprintln(os.Stderr, note)
+		}
 		return exitError
 	}
 	defer conn.Close()
@@ -618,7 +624,13 @@ func runStatus(args []string) int {
 	daemonVer := daemonVersion(res)
 	res["version"] = daemonVer
 	res["client_version"] = version.Get().String()
+	// A daemon answering says nothing about whether anything would restart it
+	// (R-24): the unit can be failed while an auto-spawned daemon serves.
+	note := unitAdvice(true)
 	if *asJSON {
+		if note != "" {
+			res["unit_note"] = note
+		}
 		out, _ := json.Marshal(res)
 		fmt.Println(string(out))
 		return exitOK
@@ -633,6 +645,9 @@ func runStatus(args []string) int {
 	}
 	if mine := version.Get().String(); daemonVer != mine && daemonVer != "" {
 		fmt.Printf("this client is %s - restart the daemon to run the new build\n", mine)
+	}
+	if note != "" {
+		fmt.Println(note)
 	}
 	return exitOK
 }
