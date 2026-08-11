@@ -180,8 +180,7 @@ func TestShutdownShipsAnAnswerSittingInItsUndoWindow(t *testing.T) {
 // answer for a question nobody has answered.
 func TestShutdownWithNothingGracedIsQuiet(t *testing.T) {
 	d, ui, _, st := newTestDaemon(t, Config{UndoGrace: 30 * time.Second})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	askAsyncCtx(t, d, askItem(), ctx)
 	shown := waitForItem(t, ui)
 
