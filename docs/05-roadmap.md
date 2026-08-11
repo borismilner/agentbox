@@ -1,18 +1,18 @@
 # Roadmap
 
-Each milestone ends with acceptance checks that a fresh session can run.
+Each milestone ends with acceptance checks anyone can run.
 
-Progress: M0 through M12 are DONE (M7's Wayland half stays deferred by the
-owner). STATUS.md has the precise delta between this plan and what shipped;
-new work comes from [07-field-requests.md](07-field-requests.md), which
-outranks the "Later / parked" bucket below. The DONE milestones keep their
-plan and acceptance here; the shipping narratives live in history.md (the
-"What M9/M10/M11 shipped" sections and the session entries).
+Progress: M0 through M12 are DONE (M7's Wayland half stays deferred). STATUS.md
+has the precise delta between this plan and what shipped; new work comes from
+[07-field-requests.md](07-field-requests.md), which outranks the "Later /
+parked" bucket below. The DONE milestones keep their plan and acceptance here;
+the shipping narratives live in history.md (the "What M9/M10/M11 shipped"
+sections and the dated entries).
 
 ## M0 - decisions closed [DONE 2026-06-12]
 
 - ADR-0002 (toolkit) and the working-name decision (its ADR has since been
-  retired) accepted by Boris; ADR-0006 (sound) at least proposed with a winner.
+  retired) accepted; ADR-0006 (sound) at least proposed with a winner.
 - Accept: every ADR in docs/decisions is `accepted` or explicitly parked.
 
 ## M1 - first card (spike + core) [DONE 2026-06-12]
@@ -143,8 +143,8 @@ plan and acceptance here; the shipping narratives live in history.md (the
 
 A user-facing surface that starts and drives a Claude Code session in
 AgentBox's own window, good enough to replace the terminal for a working
-session - and, per the owner direction of 2026-06-13, the point where
-AgentBox becomes a real desktop application: one window separating the
+session - and, from 2026-06-13, the point where AgentBox becomes a real
+desktop application: one window separating the
 surfaces into clean tabs, with the session as one of them. The card/toast/
 veto model and the daemon stay as they are; this is the housing around
 them. It deliberately revisits two v1 non-goals (00-vision.md: "not a
@@ -178,11 +178,10 @@ survived the port.
 
 ## M9 - web UI port (Wails v3) [DONE 2026-07-25, started 2026-07-24]
 
-Owner direction (2026-07-24): move the UI to a webview so the agent-facing
-surfaces can be genuinely beautiful, and make every element markedly more
-polished than its Gio original. ADR-0009 records the decision and
-supersedes ADR-0002; 00-vision.md principle 6 is amended, not silently
-broken.
+The UI moved to a webview on 2026-07-24, so the agent-facing surfaces could
+be genuinely beautiful and every element markedly more polished than its Gio
+original. ADR-0009 records the decision and supersedes ADR-0002;
+00-vision.md principle 6 is amended, not silently broken.
 
 Architecture unchanged: `internal/webui` satisfies `daemon.Presenter` and
 calls the same `Resolver` the Gio UI did, so daemon, queue, store,
@@ -208,15 +207,15 @@ port), in detail"; what each surface does today is STATUS.md "What works".
 
 ## M10 - the drop-down panel and live artifacts [DONE 2026-07-25]
 
-Owner direction (2026-07-25): a hotkey should roll a session panel down
-from the top of the screen, quake-style, over everything; AgentBox should
-render everything the official client renders and more - including
-interactive HTML the agent can watch you use, with clicks and inputs
-reaching it in real time - and every aspect of the application should be
-configurable, live. Decided with Boris before code: the daemon grabs the
-hotkey itself (no desktop configuration), the panel shows the same sessions
-the app window shows, and artifacts get a sandboxed runtime with React and
-Tailwind bundled, so a claude.ai-style artifact runs as written.
+Set 2026-07-25: a hotkey rolls a session panel down from the top of the
+screen, quake-style, over everything; AgentBox renders everything the
+official client renders and more - including interactive HTML the agent can
+watch you use, with clicks and inputs reaching it in real time - and every
+aspect of the application is configurable, live. Settled before code: the
+daemon grabs the hotkey itself (no desktop configuration), the panel shows
+the same sessions the app window shows, and artifacts get a sandboxed
+runtime with React and Tailwind bundled, so a claude.ai-style artifact runs
+as written.
 
 Four slices, all DONE 2026-07-25: the panel (and with it every window
 shape, the reading measure and the session defaults becoming live config,
@@ -237,12 +236,11 @@ is STATUS.md "What works".
 
 ## M11 - the voice [DONE 2026-07-25]
 
-Owner direction (2026-07-25): AgentBox should speak, through the piper
-setup already on the machine, so a notification carries its meaning to
-somebody who is not looking at the screen. Decided with Boris before code:
-the agent writes the spoken line (AgentBox never reads a title aloud), and
-the earcon still plays first - the level rides the chime, the meaning rides
-the sentence.
+From 2026-07-25, AgentBox speaks, through the piper setup already on the
+machine, so a notification carries its meaning to somebody who is not
+looking at the screen. Settled before code: the agent writes the spoken
+line (AgentBox never reads a title aloud), and the earcon still plays
+first - the level rides the chime, the meaning rides the sentence.
 
 Shipped as `internal/speech` - one synthesiser held open behind a
 deliberately narrow engine contract (a line of text on stdin, raw s16le PCM

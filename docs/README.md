@@ -16,15 +16,17 @@ template and the voice, and [wiki/FACTS.md](wiki/FACTS.md) is the audited fact
 base every claim in the wiki is written against.
 
 The split, so nothing gets written twice: the wiki answers what a feature does
-and why. The docs below carry the working record, the requirements and the state.
+and why. The docs below carry the design, the requirements and the decisions.
+
+Two files the docs below cite are not in this repo: `STATUS.md`, the running
+state, and `history.md`, the dated log of decisions, defects and verifications.
+Those are the maintainer's working notes and they live in a private tree, linked
+into `docs/` on his own machine. Nothing in the product depends on them.
 
 Reading order:
 
 | Doc | Contents |
 |-----|----------|
-| [../HANDOFF.md](../HANDOFF.md) | Resume brief: do-this-next, live state, verified vs assumed |
-| [STATUS.md](STATUS.md) | Where the project stands, what to do next |
-| [history.md](history.md) | The session-by-session record: decisions, defects, verifications |
 | [00-vision.md](00-vision.md) | Problem, principles, non-goals |
 | [01-requirements.md](01-requirements.md) | Functional and non-functional requirements |
 | [02-architecture.md](02-architecture.md) | Binary layout, daemon, IPC protocol, MCP bridge |
@@ -34,7 +36,7 @@ Reading order:
 | [06-configuration.md](06-configuration.md) | Every knob, its default, and why |
 | [07-field-requests.md](07-field-requests.md) | Use cases found while using AgentBox on real work; picked up before "Later / parked" |
 | [08-assignments.md](08-assignments.md) | Recurring AI work AgentBox runs on its own (M12/FR82); read before touching assignments |
-| [09-sync.md](09-sync.md) | Multi-agent coordination and the Agents surface (FR83): roster, discovery, locks, signals, shared values. **All five slices are built, deployed and verified live** (sessions 40 to 45), including the hooks that put every session on the board without being asked |
+| [09-sync.md](09-sync.md) | Multi-agent coordination and the Agents surface (FR83): roster, discovery, locks, signals, shared values. **All five slices are built, deployed and verified live**, including the hooks that put every session on the board without being asked |
 | [agent-manual.md](agent-manual.md) | Complete reference for an AI agent driving AgentBox (MCP + CLI) |
 | [recipes.md](recipes.md) | Copy-paste integration snippets |
 | [sample.md](sample.md) | The renderer's fixture: every block the viewer draws (`agentbox show docs/sample.md`) |

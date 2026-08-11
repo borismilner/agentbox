@@ -6,9 +6,9 @@ each other, wake each other, message each other - through the daemon they
 already share. And the human sees all of it live: every agent's purpose, what
 it is doing right now, what it holds and what it waits on, in one surface.
 
-Requested by Boris 2026-08-04 (session 39). FR83. This document is the design, and
-**all five slices are complete, deployed and verified live** (2026-08-04,
-sessions 40 to 45: the roster and the surface, then the discovery rider and the
+Requested 2026-08-04. FR83. This document is the design, and
+**all five slices are complete, deployed and verified live** (all on
+2026-08-04: the roster and the surface, then the discovery rider and the
 four defects a real screen turned up, then locks, then signals, then shared
 values, then the teaching). All four primitives exist, the human's board shows all
 four, and every session on this machine now announces itself without being asked.
@@ -21,7 +21,7 @@ was found by running the thing rather than by reading the diff.
 
 ## Why
 
-Boris, 2026-08-04, five statements in one session:
+Boris, 2026-08-04:
 
 - *"Multiple concurrent agents can use it in AgentBox to synchronize among
   themselves with maximal efficiency."*
@@ -39,14 +39,15 @@ Boris, 2026-08-04, five statements in one session:
   other using this platform to achieve maximal cooperation and optimal
   synchronization."*
 
-The repo already carries the scars this feature exists to prevent. CLAUDE.md's
-"Traps that have cost sessions" are social locks - rules written down because
-nothing enforces them: never `pkill agentbox` (every session holds an mcp
-child), `make run` displaces the deployed daemon that other live sessions
-reach Boris through. HANDOFF.md records the GitLab-to-GitHub mirror race.
-The VM cost rule shares one expensive machine between sessions with no
-arbitration but Boris's attention. And FR74 shipped a lock for one resource,
-the desktop, with "two real agents racing" still on its not-verified list.
+The repo already carries the scars this feature exists to prevent. Its own
+list of traps that have cost sessions is a set of social locks - rules
+written down because nothing enforces them: never `pkill agentbox` (every
+session holds an mcp child), `make run` displaces the deployed daemon that
+other live sessions reach Boris through, and a GitLab-to-GitHub mirror race
+nobody arbitrated. The VM cost rule shares one expensive machine between
+sessions with no arbitration but Boris's attention. And FR74 shipped a lock
+for one resource, the desktop, with "two real agents racing" still on its
+not-verified list.
 Every one of these is the same missing thing: the agents share a machine, a
 repo, a daemon and a human, and they cannot see or wait for each other.
 
@@ -128,7 +129,7 @@ Two rules keep the attach from creating new traps:
 - **The attach never spawns the daemon.** The client's default dial
   auto-spawns; the attach dials with spawn disabled. Otherwise every live
   session's redial loop would resurrect the daemon that `make stop` just
-  stopped, and the working-copy workflow in CLAUDE.md would lose the flock
+  stopped, and the documented working-copy workflow would lose the flock
   race to a background reconnect. Acceptance for slice 1 checks this
   directly.
 - **The attach is lazy.** The child connects on its first tool call, not at
@@ -242,7 +243,7 @@ does. One row per roster entry:
 |---|---|
 | asking you | a blocking item of theirs is pending (the waiters map) |
 | driving desktop | they hold the control run |
-| blocked (CLI: blocked: lock NAME) | they are parked in `acquire_lock`; the daemon always sends the lock, the holder and the queue place, and the surface drops them from the chip because its wait line below already carries all three (session 46). `sync agents` has no second line, so the CLI keeps them |
+| blocked (CLI: blocked: lock NAME) | they are parked in `acquire_lock`; the daemon always sends the lock, the holder and the queue place, and the surface drops them from the chip because its wait line below already carries all three. `sync agents` has no second line, so the CLI keeps them |
 | listening: TOPIC | they are parked in `await_signal` |
 | reporting: task 64% | they own a live FR21 progress report |
 | working | activity line fresher than a threshold |
@@ -257,7 +258,7 @@ does. One row per roster entry:
   clicking it goes to the holder's row. Two agents waiting on each other is
   a drawn edge, not a diagram the human assembles in his head.
 
-A shared value's row opens too (session 46): the full value when the line clipped
+A shared value's row opens too: the full value when the line clipped
 it at 40ch, and the owner with a jump to its row, or why nobody is coming back for
 it when the owner is gone. A row with nothing more to show does not highlight
 under the pointer at all, because on this surface the highlight is the promise that
@@ -440,7 +441,7 @@ that is neither a turn nor an event - claim tables for fanned-out work, a
 The efficiency claim has to be honest about the runtime the agents actually
 have. A Claude session is a turn loop: a parked tool call spends no tokens,
 but it does occupy the turn - and MCP clients abort a call that stays silent
-too long. **Measured 2026-08-04 (session 42) against the real client, not
+too long. **Measured 2026-08-04 against the real client, not
 guessed: Claude Code aborts a stdio tool call after exactly 1800s of silence,
 and a progress notification resets that clock.** The probe is
 `tools/idlecap-probe.sh`; the numbers and the two surprises are FR88. The design
@@ -504,7 +505,7 @@ the house grammar: 0 granted/delivered, 1 refused/timeout, 3 unanswered,
 `--json` everywhere. The CLI is how hooks, Makefiles and non-Claude agents
 join the same fabric - and the first consumer is this repo's own
 `make deploy`, wrapped in `agentbox sync lock deploy:agentbox -- ...`, which
-retires a CLAUDE.md trap by construction.
+retires one of this repo's own traps by construction.
 
 ## Mechanics, grounded
 
@@ -682,7 +683,7 @@ ceilings are unrelated and the manual must not let them read as one number.
    shows dim; a pre-sync session shows as "seen, not attached" and
    `partial` rides the reads; `make stop` with three live sessions leaves
    the daemon down; the strip and the roster agree while one agent drives.
-2. **Locks. COMPLETE, DEPLOYED AND VERIFIED LIVE 2026-08-04 (session 42).**
+2. **Locks. COMPLETE, DEPLOYED AND VERIFIED LIVE 2026-08-04.**
    Acquire/try/release, orphaning with a pid probe, break from the board and from
    the CLI, deadlock refusal, the stall and human-edge warnings, the roster's
    holds and waits, and the deploy serialized. Every acceptance line below was
@@ -729,7 +730,7 @@ ceilings are unrelated and the manual must not let them read as one number.
    the board and the ex-holder is told on its next call. The one line covered by
    test rather than by a live run is the *holder parked on `ask_user`* warning: the
    toast path is the same `warnOf` the deadlock refusal proved on screen.
-3. **Signals. COMPLETE, DEPLOYED AND VERIFIED LIVE 2026-08-04 (session 43).**
+3. **Signals. COMPLETE, DEPLOYED AND VERIFIED LIVE 2026-08-04.**
    Post/await, the one global cursor, gap reporting, migrations 0008 and 0009,
    retention, and the built-in `agents:<area>`, `to:<key>` and `lock:<name>`
    topics. Driven against the deployed daemon by live mcp children
@@ -923,23 +924,23 @@ ceilings are unrelated and the manual must not let them read as one number.
 
 ## Making it the default for every agent
 
-Boris's mandate is that **every** agent using the platform declares itself and
+The requirement is that **every** agent using the platform declares itself and
 coordinates, not that the option exists. An MCP tool nobody is told to call is
 a tool nobody calls, so the teaching is part of the feature and it has four
 doors, each reaching a different kind of agent:
 
 1. **`~/.claude/CLAUDE.md`, the global instructions** - the only door that
    reaches every Claude session in every project on this machine, which is the
-   scope Boris asked for. Its existing AgentBox section gets the standing
+   scope this needs. Its existing AgentBox section gets the standing
    contract: announce your purpose at session start, keep the activity line
    current as the work changes, check for peers in your area before editing a
    shared tree, and take the lock before a shared resource (the deploy, the
    repo, the VM, the desktop). Written as a habit with a reason, the way the
    interruption-cost paragraph already is, because a rule an agent understands
-   survives paraphrase. **Refreshed in session 45** once all five slices were
+   survives paraphrase. **Refreshed 2026-08-04** once all five slices were
    real: it had been written while locks were still "arriving as that work lands"
    and while a row with no announce was "dim and nameless", and it still sent
-   agents to a shell for `request_control`, which has had a tool since session 32.
+   agents to a shell for `request_control`, which has had a tool since FR74.
    It now says what exists - the hook that has already put the row there, the
    placeholder purpose that is the agent's job to replace, the peer list that is a
    snapshot of session start rather than a standing answer, and signals and shared
@@ -956,7 +957,7 @@ doors, each reaching a different kind of agent:
    honest when a model forgets: SessionStart announces, PostToolUse updates
    the activity line. Zero tokens, and it means even an agent that ignores
    every instruction still shows up truthfully. **Installed in Boris's real
-   `~/.claude/settings.json` in session 45**, which is what turned this door from
+   `~/.claude/settings.json` on 2026-08-04**, which is what turned this door from
    a recipe into a door - and which is when the recipe was found to be wrong. The
    snippet now needs nothing exported, and `agentbox docs setup` prints it beside
    the other two.
@@ -978,7 +979,7 @@ throwaway `agentbox webui-demo agents` case is **written for this purpose**
 the Agents surface over canned roster data - two working agents in one area,
 one asking, one blocked on a lock held by another, one dim and unannounced, one
 orphaned lock. Boris walks that before any daemon code exists. Note the one-UI
-trap in CLAUDE.md while doing it: showing a working-copy surface means holding
+trap while doing it: showing a working-copy surface means holding
 the desktop's only daemon, so it needs a window when no other agent is live.
 
 The primitives get the slice-0 spike instead: protocols are validated by being

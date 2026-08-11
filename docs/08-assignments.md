@@ -5,8 +5,8 @@ schedule or on demand, with the whole of AgentBox available to it while it runs.
 the inversion of everything AgentBox did before: until now an agent summoned AgentBox, and
 here AgentBox summons the agent.
 
-Decided with Boris 2026-08-01 (session 34). FR82. Depends on FR81 (the main
-panel), because an assignment with no surface is a cron job with extra steps.
+Decided 2026-08-01. FR82. Depends on FR81 (the main panel), because an
+assignment with no surface is a cron job with extra steps.
 
 ## Why
 

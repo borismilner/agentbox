@@ -316,7 +316,7 @@ the tab that answers "what did this cost me", and settings.
 
 **The history tab shows real agent names, so it shows whatever has actually been
 asking on this machine** - `showcase`, `zsh`, `probe` and `placement` from rehearsals
-alongside `claude` and `systemd`. **Boris decided (2026-07-25) to leave it that way:**
+alongside `claude` and `systemd`. **It stays that way deliberately (2026-07-25):**
 the honest table is the point of the slide, and a tidied one would be a nicer lie. Do
 not prune it before a take, and do not offer to.
 

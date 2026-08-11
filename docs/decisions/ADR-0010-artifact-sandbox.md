@@ -4,13 +4,13 @@ Status: accepted (2026-07-25)
 
 ## Context
 
-M10's owner direction: AgentBox should render everything the official Claude
-desktop client renders and more, **including interactive HTML the agent can
-watch you use**, with your clicks and inputs reaching it in real time. Boris
-chose the wider of the two options deliberately: React and Tailwind bundled, so
-an artifact written for claude.ai runs as written.
+M10's target: AgentBox renders everything the official Claude desktop client
+renders and more, **including interactive HTML the agent can watch you use**,
+with your clicks and inputs reaching it in real time. The wider of the two
+options was taken deliberately: React and Tailwind bundled, so an artifact
+written for claude.ai runs as written.
 
-That means running agent-authored code on his desktop. The question this ADR
+That means running agent-authored code on your desktop. The question this ADR
 settles is not whether to run it - that was the ask - but what it is allowed to
 touch while it runs, and how anything gets out of it.
 

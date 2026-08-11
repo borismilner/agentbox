@@ -272,6 +272,5 @@ Calm and multi-agent refinements (each fills a gap in the features above):
 ## Open questions
 
 All settled as ADRs: UI toolkit (ADR-0002, superseded by ADR-0009's
-webview), sound playback (ADR-0006), the name (decided by Boris; its ADRs
-were retired with the old names). The ADR ledger in STATUS.md tracks the
-full set.
+webview), sound playback (ADR-0006), the name (its ADRs were retired with
+the old names). The ADR ledger in STATUS.md tracks the full set.
