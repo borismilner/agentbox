@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/MCP-20%20tools-7c8cf8?style=flat-square" alt="20 MCP tools">
   <img src="https://img.shields.io/badge/Go-1.26-4fa3e3?style=flat-square" alt="Go 1.26">
-  <img src="https://img.shields.io/badge/Linux-X11-4fb286?style=flat-square" alt="Linux X11">
+  <img src="https://img.shields.io/badge/Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-one%20binary-4fb286?style=flat-square" alt="Linux, macOS, Windows">
   <img src="https://img.shields.io/badge/local%20only-no%20telemetry-69717e?style=flat-square" alt="local only, no telemetry">
   <img src="https://img.shields.io/badge/licence-Beerware-d9a441?style=flat-square" alt="Beerware licence">
 </p>
@@ -168,7 +168,9 @@ lets an agent narrate a sequence without timing it by hand.
 **A hand.**\
 `drive_desktop` moves the pointer along the curve a hand actually follows,
 clicks, drags and types on your live keyboard layout.\
-Real X11 input events, so anything on screen accepts them.\
+Real X11 input events, so anything on screen accepts them - and X11 is the
+requirement rather than an optimisation here, because the events have to be
+indistinguishable from a hand for an application not to treat them specially.\
 It is how an agent finishes a job with a GUI in the middle of it.
 
 **A ledger.**\
@@ -228,14 +230,31 @@ For an agent, the whole manual is in the binary: `agentbox docs agent`.
 
 ## Requirements
 
-Linux with X11; GNOME/mutter is what it is developed against.
+**Linux, macOS or Windows.** One source tree, one binary per platform, and no
+message depends on a display server: the daemon, the socket, the CLI, all 20 MCP
+tools, and every surface that asks a human something work the same everywhere.
+`make check` compiles macOS and Windows on every run, so that is a checked claim
+rather than a hopeful one.
 
-Cards, the global hotkey and `drive_desktop` need X11.\
-On Wayland the CLI and MCP still work, and the X-specific parts report that
-they cannot rather than pretending.
+GNOME/mutter on X11 is what it is developed against, and that desktop gets more -
+not because the others get less of the product, but because X11 lets AgentBox
+place its own windows. There, a card lands dead centre of the screen you are
+looking at and a toast in a managed top-centre column, and both appear **above
+without stealing your keystrokes**. Elsewhere the window manager places them: the
+card still appears, still carries its content, still answers. It just appears
+where your desktop puts things.
 
-Speech takes any engine that reads a line of text on stdin and writes raw PCM
-on stdout - piper and Kokoro both do.
+Two capabilities are X11-only, and each says so when asked rather than failing
+quietly: the **global hotkey** for the drop-down panel, and **`drive_desktop`**,
+which needs to synthesise real input events. Wayland refuses both by design.
+
+Sound finds a player on any desktop (`pw-play`, `paplay`, `aplay`, `afplay`,
+PowerShell). Speech takes any engine that reads a line of text on stdin and writes
+raw PCM on stdout - piper and Kokoro both do - and needs a player that accepts raw
+PCM on a pipe, which off Linux means sox.
+
+Full per-desktop detail, measured rather than assumed:
+[docs/04-platform.md](docs/04-platform.md).
 
 ## Documentation
 
@@ -246,14 +265,14 @@ on stdout - piper and Kokoro both do.
 | [docs/00-vision.md](docs/00-vision.md) | what AgentBox is for, and what it refuses to be |
 | [docs/02-architecture.md](docs/02-architecture.md) | one binary, a daemon, a socket: how it fits together |
 | [docs/03-ui-ux.md](docs/03-ui-ux.md) | the surfaces, the keyboard map, the sound design |
-| [docs/04-platform.md](docs/04-platform.md) | X11, GNOME, audio, autostart, paths |
+| [docs/04-platform.md](docs/04-platform.md) | what each desktop gets: placement, audio, autostart, paths |
 | [docs/06-configuration.md](docs/06-configuration.md) | every knob, and why its default is what it is |
 | [docs/decisions/](docs/decisions/) | ADRs: the artifact sandbox, the webview, the socket protocol |
 
 ## Development
 
 ```sh
-make check      # gofmt + go vet + go test ./... -race
+make check      # gofmt + vet + race tests + the no-X11 path + macOS/Windows builds
 make run        # rebuild and restart the daemon from this working copy
 make webui-demo # every surface, with no daemon and no queue
 ```

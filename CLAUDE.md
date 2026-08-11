@@ -69,9 +69,25 @@ touching anything.
   click. The same goes for the Agents board. There is no lock protecting this:
   the queue is shared with every other session on the machine.
 
+- **A build tag with nothing on the other side is not a gate, it is a hole.**
+  `x11.go` was `//go:build linux` for months with no `!linux` counterpart, so the
+  tag looked like portability while the build broke the moment anything else
+  asked. Worse, the twenty `if u.x != nil` guards above it made the no-X11 path
+  reachable and untested, which is exactly where R-12 hid. Since ADR-0013 there
+  are two sides and `make check` runs both. If you add a call to `x11`, add it to
+  `x11_absent.go` too - the compiler will not always tell you, because a method
+  you only call on Linux compiles fine until somebody builds for Windows.
+- **Platform-specific code goes in a file named for its platform**, with the
+  CONTRACT stated once in the portable caller (see `pidAlive`, `peerUID`,
+  `procParent`). `filepath.Base` and friends only know the separator they were
+  compiled for - a test caught a Windows path falling through a switch on Linux
+  and landing in the branch that looks like it worked.
+
 ## Rituals
 
-- Quality gate: `make check` (gofmt + vet + race tests). A PostToolUse hook in
+- Quality gate: `make check` (gofmt + vet + race tests + `test-nox11` + `cross`).
+  The last two are the portability claim: the whole suite through the no-X11
+  placement layer, and cross-compiles for macOS and Windows. A PostToolUse hook in
   `.claude/settings.json` already runs gofmt, go vet, and `go fix -diff` on
   every Go edit - keep the tree clean of modernization nags.
 - Deploy: commit first (deploy warns on dirty builds, NFR14), then

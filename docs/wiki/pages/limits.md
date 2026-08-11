@@ -1,9 +1,12 @@
-# Linux, X11, and the things it will not become
+# What X11 buys, and the things it will not become
 
-> **In short.** AgentBox runs on Linux with X11, and there is no Wayland, macOS or
-> Windows build. It carries discrete questions and events, so it is not your chat
-> window, not your terminal and not the machine's notification centre. The rough
-> edges at the bottom are the ones known and not fixed.
+> **In short.** AgentBox builds and runs on Linux, macOS and Windows, and nothing
+> that carries a message needs a display server. X11 is where it looks its best,
+> because that is the one desktop where AgentBox places its own windows, and two
+> capabilities are X11-only. Nobody has run the macOS build yet. It carries
+> discrete questions and events, so it is not your chat window, not your terminal
+> and not the machine's notification centre. The rough edges at the bottom are the
+> ones known and not fixed.
 >
 > **Read on if** you would rather find the reasons to say no here than later.
 > **Skip to** [[Safe on a work machine?|is-it-safe]], or [[Install|install]].
@@ -11,25 +14,65 @@
 A page of limits is cheaper to write than to earn back, so this one is complete as
 far as anybody knows. Nothing below is softened.
 
-## X11 is not a soft requirement
+## X11 is an enhancement, and a real one
 
-Five things need X11, and between them they are the product. Placing a card on the
-monitor your pointer is on. Noticing that the focused window is fullscreen, which is
-what holds a chime while you are presenting. The three global hotkeys. Driving the
-desktop with synthetic input. And `agentbox summon`, which is a
-`_NET_ACTIVE_WINDOW` message and has no other way to exist.
+This page used to say "X11 is not a soft requirement". It was right for as long as
+the code made it true, and it does not any more. Everything that delivers a
+message, asks a question or brings back an answer is portable: the daemon, the
+socket, the CLI, all twenty MCP tools, and every surface that puts something in
+front of you. Without X11 they all still work. `make check` compiles macOS and
+Windows on every run, so that is a checked claim.
 
-The CLI and the MCP tools are ordinary process work and do not care.
+What X11 adds is **placement**. That is worth being precise about, because it is
+the difference between a card you notice and a card you go looking for:
 
-That is the shape of it. On a session without X11 you have a working queue and no
-way to be interrupted by it, which is not the product.
+- A card lands dead centre of the monitor your pointer is on. Measured on
+  2026-08-11: `x=2505` on a 2560-wide screen starting at 1440, which is centred to
+  the pixel. Without X11 the window manager centres it on whatever it considers
+  the current screen, and vertically wherever it likes.
+- A toast takes a slot in a managed top-centre column, so two of them and the
+  hands-off strip do not stack on top of each other.
+- Both appear **above without taking your keystrokes**. That one is X11's
+  `_NET_WM_USER_TIME = 0` trick, and it is the single behaviour with no guaranteed
+  equivalent anywhere else. On another desktop the card takes focus when it
+  appears.
+- The drop-down panel rolls from the top edge of the right screen at the right
+  size. Elsewhere it appears at full height wherever the WM puts it.
+
+None of that loses a message. All of it is why GNOME on X11 is the desktop
+AgentBox is developed against, and the one it looks right on.
 
 > [!IMPORTANT]
-> There is no Wayland build, no macOS build and no Windows build, and Wayland is
-> not a near miss. Card placement, fullscreen detection, the hotkeys, the target
-> lock a driven script uses and the summon key all read or write X. Keeping the code
-> portable where portability is free is a rule here; trading Linux quality for it is
-> not.
+> **Two capabilities are genuinely X11-only, and each says so rather than
+> pretending.** The three **global hotkeys**, because a grab needs a display server
+> that lets a client claim a key for the whole desktop, which Wayland refuses by
+> design. And **driving the desktop** - moving the pointer and typing - because
+> the events have to be indistinguishable from a hand for an application not to
+> treat them specially, and that is what X11's XTEST is for. `agentbox summon` is
+> in the same family: it is a `_NET_ACTIVE_WINDOW` message and has no other way to
+> exist. On a session without them, everything else works and those three report
+> that they cannot.
+
+> [!NOTE]
+> **The macOS build has never been run.** Every package except the two that link a
+> native UI is compiled for macOS on every check, and the UI toolkit supports the
+> platform, so the honest claim is "no platform-locked call is left and the toolkit
+> is there" - not "somebody has used it". The same goes for Windows, where the
+> whole tree compiles but nobody has started it. If you run either, the thing worth
+> reporting is whether the surfaces appear at all.
+
+> [!WARNING]
+> **On Windows the socket has one lock instead of two.** Everywhere else AgentBox
+> checks both that the socket is reachable only by you and that the process which
+> connected is you. Windows unix sockets carry no credentials and offer no call
+> that asks, so there the first check is all there is: a directory only your
+> account can open. It is the same first line of defence every platform has, and it
+> is the one place a security property is thinner. See
+> [[Safe on a work machine?|is-it-safe]].
+
+Speech is thinner off Linux, for a dull reason. The engine writes raw audio into a
+player's pipe and macOS's own player will not read from one. Install sox and it
+works. Do not, and speech is silent while everything else carries on.
 
 ## What it does not try to be
 

@@ -14,19 +14,22 @@ tags exist and nothing is stamped into it. What identifies a build is the
 toolchain's own record of the commit it came from, which `agentbox status` reports
 back to you.
 
-## Two shared libraries, an X display, and sound it can do without
+## Two shared libraries, a display server it can do without, and sound too
 
 | What | Why it is needed | If it is missing |
 |---|---|---|
 | GTK4 and WebKitGTK 6.0 | every surface is a webview, so these are the UI | nothing renders, and `make doctor` prints MISSING |
-| X11 | placing a card, the global hotkeys, driving the desktop, the summon key | the parts that need a display say they cannot rather than pretending |
+| X11 | placing a card exactly, appearing above without taking focus, the global hotkeys, driving the desktop, the summon key | the window manager places the card instead and it takes focus; the hotkeys and driving say they cannot rather than pretending |
 | Go, the version in `go.mod` | building | `make bootstrap` says which version and stops. It never installs Go for you |
-| `pw-play`, `paplay` or `aplay` | playing an earcon | sound switches itself off. Cards, speech and everything else are unaffected |
+| an audio player (`pw-play`, `paplay`, `aplay`, `afplay`, PowerShell) | playing an earcon | sound switches itself off. Cards, speech and everything else are unaffected |
 | `piper` and one voice | the spoken line an agent attaches to a card | nothing is read out. AgentBox finds the voice unaided once it is there |
 | `npm` | rebuilding the web UI from source | nothing. `frontend/dist` is committed so a machine without npm still builds |
 
-<sub>The first three rows are hard requirements. The last three degrade, and each one
-degrades to exactly the feature it belongs to and nothing else.</sub>
+<sub>GTK4/WebKitGTK and Go are the hard requirements on Linux (macOS uses the system
+WebKit, Windows uses WebView2, and neither needs installing). Every other row
+degrades, and each one degrades to exactly the feature it belongs to and nothing
+else - X11's row included, which is the change that made
+[[the limits page|limits]] shorter.</sub>
 
 > [!NOTE]
 > `make bootstrap` knows apt, dnf and pacman. On anything else it prints the four
@@ -122,7 +125,9 @@ Do it before you need it. This is the binding that makes a card answerable at al
 card is drawn above every window and never takes the keyboard, so until something
 hands it focus, your single keystrokes go on reaching whatever you were typing in.
 `agentbox summon` is that something, and what it sends is one `_NET_ACTIVE_WINDOW`
-message to the card, which is also why it needs X11.
+message to the card, which is also why it needs X11. On a desktop without it the
+binding is unnecessary rather than missing: the card takes focus when it appears,
+so it is already answerable.
 
 ## The first card, from your own shell
 

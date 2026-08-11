@@ -90,9 +90,13 @@ that holds everything while you are away or presenting. Urgent is the one level
 that still gets through, and even that has a switch.
 
 > [!IMPORTANT]
-> AgentBox runs on Linux with X11, and that is not a soft requirement. Placing a
-> card, detecting a fullscreen app, the global hotkeys, driving the desktop and
-> the summon key all need X11. There is no Wayland, macOS or Windows build.
+> AgentBox builds and runs on Linux, macOS and Windows, and nothing that carries a
+> message needs a display server. X11 is where it looks its best: it is the one
+> desktop where AgentBox places its own windows, so a card lands dead centre of the
+> screen you are on and appears above without taking your keystrokes. Elsewhere the
+> window manager places it and it takes focus. Two capabilities are X11-only and say
+> so when asked - the global hotkeys and driving the desktop. Nobody has run the
+> macOS build yet. [[The whole picture|limits]].
 
 ## What it is, underneath
 

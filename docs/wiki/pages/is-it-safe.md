@@ -3,7 +3,8 @@
 > **In short.** A secret you type goes into a `0600` file and the agent is handed
 > the path, never the value. Anything an agent wrote runs with no network at all.
 > Nothing listens on a network port: one unix socket, in a directory created
-> `0700`, with the peer's user id checked on every connection.
+> `0700`, with the peer's user id checked on every connection (on Linux and macOS -
+> Windows cannot, and the box below says what that costs).
 >
 > **Read on if** you have to approve this on a work machine. **Skip to**
 > [[Install|install]], or [[Limits and non-goals|limits]].
@@ -139,11 +140,22 @@ ever binds it to a port.
 Access control is the directory and then a check per connection. The runtime
 directory is created `0700`; the socket file itself takes its mode from your umask,
 which is why the directory is the control rather than the file. Every accepted
-connection has its peer's user id read out of the kernel with `SO_PEERCRED` and
-compared with the daemon's own before one byte is served. A mismatch is logged as
-`ipc.rejected` and the connection is closed.
+connection has its peer's user id read out of the kernel and compared with the
+daemon's own before one byte is served - `SO_PEERCRED` on Linux, `LOCAL_PEERCRED` on
+macOS. A mismatch is logged as `ipc.rejected` and the connection is closed.
 
 Not once at startup, and not by trusting a file mode. On every connection.
+
+> [!WARNING]
+> **On Windows there is one lock instead of two, and this is the only place in
+> AgentBox where that is true.** Unix sockets exist on Windows and AgentBox uses one,
+> but the kernel records no credentials for them and offers no call that asks - so
+> the second check cannot be made there. What remains is the first: a directory only
+> your account can open, which is the same first line of defence every platform has.
+> The fix is a connect token, a secret in a file only you can read and presented on
+> every connection, and it is a protocol change rather than a patch. It is tracked as
+> R-46 and `internal/server/peer_windows.go` states the gap at the point where the
+> check would be. Nothing about the Linux or macOS behaviour changes.
 
 ## No account, no telemetry, and a log that holds shapes
 

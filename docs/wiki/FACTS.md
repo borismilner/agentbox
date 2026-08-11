@@ -138,14 +138,36 @@ which is the check `make deploy` relies on (`Makefile:295`).
 
 ## Runtime requirements
 
-GTK4 and WebKitGTK 6.0 shared libraries, X11. Audio needs one of `pw-play`,
-`paplay` or `aplay`, and its absence disables sound rather than failing
-(`internal/sound/sound.go:61-63`, `:91-93`). Speech needs `piper` and a voice,
-auto-detected. `npm` is optional because `frontend/dist` is committed.
+Linux, macOS or Windows (ADR-0013, 2026-08-11). On Linux the GTK4 and WebKitGTK 6.0
+shared libraries are required; macOS uses the system WebKit and Windows uses
+WebView2, neither of which is installed separately.
+
+**X11 is not required and is not load-bearing.** `dialX11` answers nil without it
+(`internal/webui/x11_absent.go`) and the twenty guard sites above it let the window
+manager place and stack the window. What is lost is exact placement, the managed
+top-centre column, and appearing above WITHOUT taking focus - measured 2026-08-11, a
+toast at `x=2505 y=48` with X11 and `x=2505 y=695` (WM-centred) without. What is
+X11-only and reports that it is: the three global hotkeys (`internal/hotkey`),
+pointer and keyboard driving (`internal/hand`), `summon`, and fullscreen detection
+for the presence gate.
+
+Audio needs one of `pw-play`, `paplay`, `aplay`, `afplay` or `powershell`, resolved
+by `LookPath` in that order, and its absence disables sound rather than failing
+(`internal/sound/sound.go`). Speech needs `piper` and a voice, auto-detected, plus a
+player that reads raw PCM from a pipe - the three Linux players or sox's `play`;
+`afplay` cannot, so off Linux speech needs sox. `npm` is optional because
+`frontend/dist` is committed.
+
+Verified by `make check`, which runs the whole suite through the no-X11 layer
+(`test-nox11`) and compiles windows/amd64 plus both darwin arches (`cross`). Not
+verified: that anybody has RUN the macOS or Windows build. The two packages linking a
+native UI need that platform's toolchain.
 
 Direct dependencies: Wails v3 alpha (the webview shell), the official MCP Go
 SDK, `modernc.org/sqlite` (pure Go), goldmark, chroma, BurntSushi/toml,
-jezek/xgb, fyne.io/systray, golang.org/x/sys.
+jezek/xgb, fyne.io/systray, golang.org/x/sys. xgb compiles on every platform (it is
+pure Go) and is only reached where there is an X server, which is why the X11-only
+packages need no build tag of their own.
 
 ## Do not claim these
 
@@ -165,7 +187,9 @@ jezek/xgb, fyne.io/systray, golang.org/x/sys.
 | `session.default_mode = "plan"` is the default | It is `"full"` (`config.go:325`) |
 | A `[sync] enabled` flag | Does not exist. `internal/mcp/mcp.go:51` refers to it anyway |
 | Amendment of a walkthrough | Registered and always refuses |
-| Wayland | X11 only. Placement, fullscreen detection, the target lock, hotkeys, driving and `summon` all need X11 |
+| "X11 only", "no macOS or Windows build", "there is no Wayland build" | Out of date since 2026-08-11 (ADR-0013). All three platforms build and `make check` proves two of them from a Linux box. X11 buys exact placement and focus-free pop-above; only the hotkeys, driving, `summon` and fullscreen detection need it. Anything still saying otherwise predates that commit |
+| That the macOS or Windows build has been run | It has not. Compiled on every check, started by nobody |
+| That the socket's peer check is the same everywhere | Windows AF_UNIX carries no credentials, so NFR8 there is the 0700 directory alone (`internal/server/peer_windows.go`, R-46). Linux uses SO_PEERCRED, macOS LOCAL_PEERCRED |
 | `Ctrl+L` on a card jumps to the next waiting item, `Ctrl+I` opens the inbox | Neither is bound. `docs/03-ui-ux.md:122` listed both in what reads as the built keymap |
 | The inbox has a level filter and a per-agent filter | One search box, matching title, body, agent, project, kind and state at once |
 | Toasts stack three high and collapse into a "+N more" collector | One item at a time. The collector was specified and never built, which 03-ui-ux.md does say a few lines later |

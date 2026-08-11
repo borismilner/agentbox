@@ -4,6 +4,15 @@ Desktop integration for AgentBox: a `.desktop` launcher, an application icon, an
 a systemd `--user` service for autostart. Everything installs under `$HOME`
 (no root), via the Makefile targets.
 
+**Linux only, and that is not a portability gap.** AgentBox itself builds and runs
+on macOS and Windows (ADR-0013); what is in this directory is the Linux desktop's
+own conventions for a launcher and an autostart unit. The equivalents elsewhere are
+a launchd `LaunchAgent` plist in `~/Library/LaunchAgents` and a Startup-folder
+shortcut or a logon task, and neither is shipped yet - which costs nothing, because
+autostart has always been a convenience rather than a requirement: the first client
+call spawns the daemon (ADR-0003), on every platform, and `detach` is what makes it
+outlive the call that needed it.
+
 ## Install
 
 ```
