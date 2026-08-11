@@ -12,9 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
-
-	"golang.org/x/sys/unix"
 
 	"github.com/borismilner/agentbox/internal/logging"
 	"github.com/borismilner/agentbox/internal/proto"
@@ -79,9 +76,9 @@ func Listen(dir string, log *slog.Logger) (*Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open lock file: %w", err)
 	}
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := lockFile(lock); err != nil {
 		lock.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
+		if errors.Is(err, ErrAlreadyRunning) {
 			return nil, ErrAlreadyRunning
 		}
 		return nil, fmt.Errorf("acquire lock: %w", err)
@@ -148,31 +145,10 @@ func errStr(err error) string {
 	return err.Error()
 }
 
-func peerUID(conn *net.UnixConn) (int, error) {
-	raw, err := conn.SyscallConn()
-	if err != nil {
-		return -1, err
-	}
-	uid := -1
-	var credErr error
-	ctlErr := raw.Control(func(fd uintptr) {
-		cred, err := unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
-		if err != nil {
-			credErr = err
-			return
-		}
-		uid = int(cred.Uid)
-	})
-	if ctlErr != nil {
-		return -1, ctlErr
-	}
-	return uid, credErr
-}
-
 // Close releases the socket and the lock, in that order.
 func (l *Listener) Close() error {
 	err := l.ln.Close()
-	syscall.Flock(int(l.lock.Fd()), syscall.LOCK_UN)
+	unlockFile(l.lock)
 	l.lock.Close()
 	return err
 }

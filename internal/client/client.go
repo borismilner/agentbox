@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"syscall"
 	"time"
 
 	"github.com/borismilner/agentbox/internal/proto"
@@ -26,7 +25,9 @@ func SpawnDaemon() error {
 		return fmt.Errorf("locate own executable: %w", err)
 	}
 	cmd := exec.Command(exe, "daemon")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// Detached from this session, so the daemon outlives the shell that first
+	// asked for it. See detach for what that means per platform.
+	detach(cmd)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("spawn daemon: %w", err)

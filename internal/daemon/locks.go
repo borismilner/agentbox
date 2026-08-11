@@ -3,13 +3,11 @@ package daemon
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/borismilner/agentbox/internal/logging"
@@ -236,17 +234,6 @@ func (l *locks) SetPolicy(waitWarn, grace time.Duration) {
 		l.grace = grace
 	}
 	l.mu.Unlock()
-}
-
-// pidAlive answers whether a process exists. EPERM counts as alive: the process
-// is there, it just is not ours to signal, and treating that as death would free
-// a resource somebody is still using.
-func pidAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 // Acquire takes the lock or BLOCKS in a FIFO queue until it is granted, the

@@ -175,8 +175,9 @@ func runHeld(conn *proto.Conn, id proto.Identity, in lockCLI, attachCtx context.
 	cmd := exec.Command(in.wrapped[0], in.wrapped[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	// Its own process group, so a signal aimed at this wrapper can be passed on to
-	// the whole command tree rather than only to its top process.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// the whole command tree rather than only to its top process. How a group is
+	// asked for is per platform; see ownGroup.
+	ownGroup(cmd)
 
 	release := func() {
 		req := proto.SyncLockParams{Identity: id, Name: in.name}
@@ -215,7 +216,7 @@ func runHeld(conn *proto.Conn, id proto.Identity, in lockCLI, attachCtx context.
 			// Pass it on to the command's group, then wait for it to go. The hold is
 			// released either way, which is the whole reason this loop exists.
 			if cmd.Process != nil {
-				_ = syscall.Kill(-cmd.Process.Pid, sig.(syscall.Signal))
+				_ = signalGroup(cmd.Process, sig)
 			}
 			select {
 			case err := <-done:
