@@ -314,6 +314,31 @@ func TestSnapshotEncodesRowsPendingFirst(t *testing.T) {
 	}
 }
 
+func TestSnapshotSaysAToastNeverAppeared(t *testing.T) {
+	// The link between the two tests around it: TestOutcomeOf checks the wording and
+	// the daemon's own tests check the stored marker, but the chip the surface paints
+	// is only honest if the payload carries the marker's wording out of the store
+	// (R-06). A dismissed row with no marker has a blank chip, which is what made
+	// the old row read as an ordinary dismissal.
+	never := item("n1", proto.KindNotify, store.StateDismissed)
+	never.NeverShown = true
+	plain := item("d1", proto.KindNotify, store.StateDismissed)
+
+	src := &fakeSource{items: []store.StoredItem{never, plain}}
+	u := testUI(&fakeResolver{}, src)
+
+	snap := u.inbox.snapshot()
+	if len(snap.Items) != 2 {
+		t.Fatalf("rows = %+v, want two", snap.Items)
+	}
+	if snap.Items[0].Outcome != "never appeared" || snap.Items[0].Tone != "warning" {
+		t.Fatalf("the never-shown row's chip = (%q, %q)", snap.Items[0].Outcome, snap.Items[0].Tone)
+	}
+	if snap.Items[1].Outcome != "" {
+		t.Fatalf("an ordinary dismissal should not claim anything: %q", snap.Items[1].Outcome)
+	}
+}
+
 func TestSnapshotSurvivesAMissingOrBrokenSource(t *testing.T) {
 	u := testUI(&fakeResolver{}, nil)
 	if snap := u.inbox.snapshot(); len(snap.Items) != 0 || snap.Items == nil {
