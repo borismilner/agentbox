@@ -69,10 +69,16 @@ The distance turned out to be six syscalls, two `/proc` reads, and that one tag.
   `agentbox status` plus `agentbox sync locks` answers it. **Never `pkill
   agentbox`.**
 - **PRs:** none, ever. Boris pushes `main` directly.
-- **Git:** `main` clean and pushed through `9cddbb3` to **both** remotes -
-  `gitlab` (origin) and `github`. Verified by `git ls-remote` on each: all three
-  of local, gitlab and github read `9cddbb3`. The github code mirror needed no
-  separate push this time, unlike sessions 59 and 60.
+- **Git:** `main` clean and pushed to **both** remotes, `gitlab` (origin) and
+  `github`. Deliberately not quoting a sha here, because this file's own commit
+  moves it - check with `git rev-parse --short HEAD` against
+  `git ls-remote origin main` and `git ls-remote github main`, and expect all
+  three to agree.
+  **The github code mirror needs no separate push**, which is new: gitlab mirrors
+  to it within about twenty seconds. Sessions 59 and 60 recorded the push as
+  blocked by the permission classifier; a direct `git push github main` worked
+  once here and was then rejected as stale because the mirror had already
+  delivered it. So if github looks behind, wait rather than force anything.
 - **Wiki:** both hosts current (`publish.sh --dry-run` says so), four pages
   changed - home, install, is-it-safe, limits. Read back the published `limits.md`
   over HTTP to confirm the new first section is live.
