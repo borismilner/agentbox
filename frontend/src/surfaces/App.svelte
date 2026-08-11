@@ -2,6 +2,7 @@
   import { bridge, on } from "../lib/bridge.js";
   import { forget } from "../lib/trouble.svelte.js";
   import { endQuestion } from "../lib/endsession.js";
+  import { unsavedKnobs } from "../lib/settingsdraft.svelte.js";
   import Home from "./Home.svelte";
   import Session from "./Session.svelte";
   import Agents from "./Agents.svelte";
@@ -24,6 +25,14 @@
 
   const selected = $derived(sessions.find((s) => s.selected) ?? null);
   const working = $derived(sessions.filter((s) => s.state === "working").length);
+  // Settings knobs changed and not yet written (U-10). The draft survives the
+  // surface being swapped out, so leaving Settings no longer throws the edits
+  // away - but work you can no longer see is work you forget you started, and
+  // the rail is the one thing on screen whichever surface is in front. Same
+  // arrangement as the pending and attached counts above it, and for the same
+  // reason: a badge that only updates while you are looking at the surface it
+  // describes would be worse than no badge.
+  const unsaved = $derived(unsavedKnobs().length);
 
   // U-01's notice is one line per window, and this window has nine surfaces in
   // it. A failure that happened on the inbox is not something the sessions
@@ -85,7 +94,7 @@
     <button class="winbtn" title="Close to tray" onclick={() => bridge.hideApp()}>&#x2715;</button>
   </div>
 
-  <Rail bind:tab pending={inbox.pending} {working} {attached} />
+  <Rail bind:tab pending={inbox.pending} {working} {attached} {unsaved} />
 
   <aside class="sessions">
     <div class="head">

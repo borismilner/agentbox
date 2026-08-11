@@ -1,6 +1,7 @@
 <script>
   import { bridge } from "../lib/bridge.js";
   import { applyThemeTo } from "../lib/tokens.js";
+  import { draft, unsavedKnobs } from "../lib/settingsdraft.svelte.js";
 
   // Settings. Two ideas from the reviewed design carry the whole surface.
   //
@@ -12,70 +13,103 @@
   // Save is honest: it lists the exact lines it wrote. agentbox edits your
   // config.toml in place - only the keys you changed, comments and untouched
   // keys intact - and the way to make that claim believable is to show it.
+  //
+  // What the surface is showing is NOT stored here (U-10). The shell destroys a
+  // surface to swap it, so a component field is gone the moment another rail
+  // icon is clicked, and pending edits went with it; the draft outlives the
+  // mount in lib/settingsdraft.svelte.js, which says why at length. Reads keep
+  // their old short names through the aliases below and every write goes through
+  // `draft.`, so it is visible at each write which copy is being changed.
+  const data = $derived(draft.data);
+  const values = $derived(draft.values);
+  const base = $derived(draft.base);
+  const active = $derived(draft.active);
+  const saving = $derived(draft.saving);
+  const note = $derived(draft.note);
+  const written = $derived(draft.written);
+  const err = $derived(draft.err);
 
-  let data = $state(null);
-  let values = $state({});
-  let base = $state({});
-  let active = $state("appearance");
-  let saving = $state(false);
-  let note = $state("");
-  let err = $state("");
-  let written = $state([]);
+  // The preview element is the one piece that cannot be lifted: it is this
+  // mount's DOM, and the theme is applied to that subtree.
   let previewEl = $state(null);
 
   const section = $derived(data?.sections?.find((s) => s.id === active) ?? null);
-  const knobs = $derived(data ? data.sections.flatMap((s) => s.groups.flatMap((g) => g.knobs)) : []);
-  const dirty = $derived(knobs.filter((k) => values[k.id] !== base[k.id]));
+  const dirty = $derived(unsavedKnobs());
   const needsRestart = $derived(dirty.some((k) => k.restart));
-
-  load();
-
-  async function load() {
-    const got = await bridge.settings();
-    if (!got) return;
-    data = got;
-    values = Object.fromEntries(got.sections.flatMap((s) => s.groups.flatMap((g) => g.knobs.map((k) => [k.id, k.value]))));
-    base = { ...values };
-    err = got.err ?? "";
-    repaint();
-  }
 
   // The preview follows the controls at a debounce: dragging a slider should not
   // put a bridge call on every pixel.
+  //
+  // It reads the draft rather than the alias above, and drops the timer when the
+  // surface goes away. Both for the same reason: this callback can outlive the
+  // mount that armed it by up to 90ms plus a round trip, and a derived read after
+  // its component is destroyed is the Session.svelte:35 shape - invisible in the
+  // app, because nothing in a dead component has anywhere to report from.
   let pending = null;
   function repaint() {
     clearTimeout(pending);
     pending = setTimeout(async () => {
-      const theme = await bridge.previewTheme(values).catch(() => null);
+      const theme = await bridge.previewTheme(draft.values).catch(() => null);
       if (theme && previewEl) applyThemeTo(previewEl, theme);
     }, 90);
   }
+  $effect(() => () => clearTimeout(pending));
+
+  load();
+
+  // Every arrival re-reads, and the pending edits are carried across the read.
+  //
+  // Both halves matter. The file is the baseline and it changes without this
+  // surface: agentbox writes it itself when the font size is bumped from a
+  // session, and Save compares what it is handed against the file rather than
+  // against `base`, so a stale value for a knob nobody touched would be written
+  // straight back over somebody else's change. And a plain re-read would replace
+  // the values being edited and move `base` under the dots, which is the loss
+  // this whole arrangement exists to prevent (U-10).
+  //
+  // So the edited keys win and every other key comes back from the file. A knob
+  // the file has moved to what was pending stops being pending, which is right:
+  // there is nothing left to write.
+  async function load() {
+    const got = await bridge.settings();
+    if (!got) return;
+    // Read after the await, not before: a knob changed while the call was in
+    // flight is still a pending edit.
+    const edited = new Map(unsavedKnobs().map((k) => [k.id, draft.values[k.id]]));
+    const fresh = Object.fromEntries(got.sections.flatMap((s) => s.groups.flatMap((g) => g.knobs.map((k) => [k.id, k.value]))));
+    draft.data = got;
+    draft.base = fresh;
+    draft.values = { ...fresh };
+    for (const [id, v] of edited) if (id in fresh) draft.values[id] = v;
+    draft.err = got.err ?? "";
+    repaint();
+  }
 
   function set(id, v) {
-    values[id] = String(v);
-    note = "";
-    written = [];
+    draft.values[id] = String(v);
+    draft.note = "";
+    draft.written = [];
     repaint();
   }
 
   function revert() {
-    values = { ...base };
-    note = "";
-    written = [];
-    err = "";
+    draft.values = { ...draft.base };
+    draft.note = "";
+    draft.written = [];
+    draft.err = "";
     repaint();
   }
 
   async function save() {
-    saving = true;
-    note = "";
-    err = "";
-    const res = await bridge.saveSettings(values).catch((e) => ({ err: String(e) }));
-    saving = false;
-    written = res?.written ?? [];
-    note = res?.note ?? "";
-    err = res?.err ?? "";
-    if (!res?.err || written.length) await load();
+    draft.saving = true;
+    draft.note = "";
+    draft.err = "";
+    const res = await bridge.saveSettings(draft.values).catch((e) => ({ err: String(e) }));
+    draft.saving = false;
+    draft.written = res?.written ?? [];
+    draft.note = res?.note ?? "";
+    draft.err = res?.err ?? "";
+    if (!res?.err || draft.written.length) await load();
   }
 
   // A short enum reads better as a segmented control; a long one belongs in a
@@ -102,9 +136,9 @@
           <button
             class:on={active === s.id}
             onclick={() => {
-              active = s.id;
-              note = "";
-              written = [];
+              draft.active = s.id;
+              draft.note = "";
+              draft.written = [];
             }}>{s.title}</button
           >
         {/each}

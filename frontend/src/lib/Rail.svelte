@@ -7,7 +7,10 @@
   // that decides whether you go and look. working marks the session icon while
   // an agent is mid-turn, and attached does the same for Agents: with several
   // agents running, that any of them is live is the thing worth a glance (FR83).
-  let { tab = $bindable("home"), pending = 0, working = 0, attached = 0 } = $props();
+  // unsaved is how many settings knobs are changed and not yet written (U-10):
+  // the edits now survive leaving the surface, and this is what says so from the
+  // other eight.
+  let { tab = $bindable("home"), pending = 0, working = 0, attached = 0, unsaved = 0 } = $props();
 
   const items = [
     { id: "home", label: "Home" },
@@ -79,11 +82,17 @@
 
   <span class="grow"></span>
 
-  <button class="btn" class:on={tab === "settings"} title="Settings" onclick={() => (tab = "settings")}>
+  <button
+    class="btn"
+    class:on={tab === "settings"}
+    title={unsaved ? `Settings · ${unsaved} change${unsaved === 1 ? "" : "s"} not yet written` : "Settings"}
+    onclick={() => (tab = "settings")}
+  >
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4 7h10" /><path d="M18 7h2" /><path d="M4 17h4" /><path d="M12 17h8" />
       <circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" />
     </svg>
+    {#if unsaved > 0}<span class="unsaved"></span>{/if}
   </button>
 </nav>
 
@@ -142,6 +151,21 @@
     border-radius: 50%;
     background: var(--k-success);
     box-shadow: 0 0 0 2px var(--k-ground);
+  }
+  /* The same dot the settings surface puts beside a knob it is holding an edit
+   * for, in the same accent, so the rail says the same thing from further away.
+   * Not the inbox's badge: how many keys are pending is not a number anyone acts
+   * on, and this is a reminder rather than a queue. The count is in the tooltip
+   * for whoever wants it. */
+  .unsaved {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--k-accent, #7c8cf8);
+    box-shadow: 0 0 0 2px var(--k-ground, #0f1116);
   }
   .badge {
     position: absolute;
