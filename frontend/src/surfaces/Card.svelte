@@ -27,6 +27,15 @@
   // Focus the first field of a form without binding a ref per row.
   const first = (node, yes) => { if (yes) queueMicrotask(() => node.focus()); };
 
+  // U-14. Whether a field holds the keyboard, which decides whether a hint that
+  // names a bare letter is true. onKey below stops at the typing branch, so `c`
+  // in a focused form field types a c - and "c copy" written under it would be
+  // an instruction to do the wrong thing. Tracked from the events because
+  // activeElement is a DOM read and nothing re-runs on it; focusout fires before
+  // focusin, so moving between two fields never blinks the hint.
+  let fieldFocused = $state(false);
+  const isField = (t) => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement;
+
   const clock = ticker();
 
   const item = $derived(view?.item ?? null);
@@ -339,7 +348,11 @@
       queueMicrotask(() => field?.focus?.());
       return;
     }
-    if (e.key === "c" && !e.ctrlKey) {
+    // metaKey alongside ctrlKey, which the inbox has always had and this did
+    // not: the body is selectable, and swallowing the platform's own copy would
+    // put the whole item on the clipboard in place of the sentence the reader
+    // had just selected.
+    if (e.key === "c" && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       bridge.copy(item.id);
       return;
@@ -415,7 +428,7 @@
   }
 </script>
 
-<svelte:window on:keydown={onKey} />
+<svelte:window onkeydown={onKey} onfocusin={(e) => (fieldFocused = isField(e.target))} onfocusout={() => (fieldFocused = false)} />
 
 {#if item}
   <div class="card" class:urgent={level === "urgent"} style="--sev: {severity}" bind:this={shell}>
@@ -642,6 +655,15 @@
         {#if expiresIn && kind !== "veto"}<span>expires in {expiresIn}</span>{/if}
         {#if item.default}<span>default: {item.default}</span>{/if}
         {#if canReply && !replying}<span><kbd>/</kbd> reply</span>{/if}
+        <!-- U-14. `c` has copied the item since the surface existed and no card
+             ever said so, which is a working feature nobody finds - and copying
+             what an agent said is exactly what a human wants at the moment a
+             card is about to close. It goes in the footer beside `/ reply`
+             rather than in the header beside Esc: the header names the two keys
+             that END the card, and a third key of a different weight there
+             would make the loudest line on the card longer for the sake of the
+             least urgent thing on it. -->
+        {#if !fieldFocused}<span><kbd>c</kbd> copy</span>{/if}
         <!-- What Esc costs on a stack card, said before it is pressed: the
              notifications go, the questions do not. Without it, dismissing a
              card that says "14 notifications" looks like abandoning whatever
@@ -1191,6 +1213,14 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    /* The row is nowrap per item and wrapping between them. Without the wrap an
+     * overflowing footer is clipped by .card's overflow: hidden, and what sits
+     * at the far end is the count of other agents waiting - so the one thing
+     * lost would be the one saying somebody else is still queued. It matters
+     * from U-14 on: a stack card's footer already carries a sentence, and
+     * `c copy` is another item on the same line. Wrapping grows the card, and
+     * the card measures itself and asks Go for the height. */
+    flex-wrap: wrap;
     white-space: nowrap;
     border-top: 1px solid var(--k-edge-soft);
     background: color-mix(in srgb, var(--k-surface-3) 55%, transparent);

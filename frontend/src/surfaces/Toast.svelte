@@ -18,6 +18,22 @@
   let clamped = $state(false);
   let body = $state(null); // the body element, measured for the "more" affordance
 
+  // U-14. `c` copies the notice and Esc takes it away, and the strip has never
+  // named either. The line that names them is tied to focus rather than shown
+  // always, and the reason is not restraint: a toast is the one X11
+  // NOTIFICATION window in the product (x11.go prepare), it maps without asking
+  // for focus, and a WM is under no obligation to hand a notification the
+  // keyboard afterwards. A key hint on a strip that cannot receive the key
+  // would be advertising a keystroke that goes nowhere - worse than the silence
+  // it replaces. So the strip says it exactly while it holds the keyboard,
+  // which is also when it is worth saying: the ordinary six-second notice stays
+  // as bare as it is now, and the reader who has already reached for this one
+  // is told what reaching further would get them.
+  //
+  // hasFocus() for the opening value because a window focused before this
+  // bundle mounts never fires the event.
+  let keys = $state(document.hasFocus());
+
   const clock = ticker();
 
   const item = $derived(view?.item ?? null);
@@ -126,14 +142,17 @@
       dismiss();
       return;
     }
-    if (e.key === "c" && !e.ctrlKey) {
+    // metaKey as well as ctrlKey: the body is selectable once it is open, and a
+    // strip that ate the platform's copy would replace a selected sentence with
+    // the whole notice.
+    if (e.key === "c" && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       bridge.copy(item.id);
     }
   }
 </script>
 
-<svelte:window on:keydown={onKey} />
+<svelte:window onkeydown={onKey} onfocus={() => (keys = true)} onblur={() => (keys = false)} />
 
 {#if item}
   <!-- The strip is a click target, not a control: the keyboard path is the window
@@ -174,8 +193,15 @@
         <div class="body k-md selectable" class:open={expanded} bind:this={body} use:markdown={view.bodyHtml}>{@html view.bodyHtml}</div>
       {/if}
 
-      {#if clamped}
-        <span class="more">click to expand</span>
+      <!-- Both of these are the same kind of thing - one quiet line about what
+           you can do next - so they share a row. Stacked they would cost the
+           strip two lines on the case that has a clipped body AND the keyboard,
+           which is the reader most likely to have both. -->
+      {#if clamped || keys}
+        <div class="foot">
+          {#if clamped}<span class="more">click to expand</span>{/if}
+          {#if keys}<span class="keys">c copy · Esc dismiss</span>{/if}
+        </div>
       {/if}
 
       <!-- U-01: what the last click actually did. It is inside the strip's own
@@ -263,12 +289,33 @@
     line-height: 1.3;
     letter-spacing: -0.005em;
   }
+  /* The keyboard line borrows the clock's treatment rather than inventing one:
+   * the two say the same kind of thing about the same strip, and a second
+   * quiet-text size on a surface this small would read as a mistake. */
   .clock,
-  .more {
-    font-family: var(--k-font-mono);
+  .more,
+  .keys {
+    font-family: var(--k-font-mono, ui-monospace, monospace);
     font-size: 0.62rem;
-    color: var(--k-ink-3);
+    color: var(--k-ink-3, #8b93a1);
     white-space: nowrap;
+  }
+  .foot {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    min-width: 0;
+  }
+  .more {
+    flex: 0 0 auto;
+  }
+  /* Last, and first to give: on a narrow strip (toast_width is configurable)
+   * the affordance that is about reading the notice outranks the one about
+   * leaving it. min-width: 0 is what lets a nowrap flex item shrink at all. */
+  .keys {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .x {
     width: 20px;
