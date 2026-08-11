@@ -10,6 +10,7 @@ ICONDIR    ?= $(HOME)/.local/share/icons/hicolor/256x256/apps
 UNITDIR    ?= $(HOME)/.config/systemd/user
 
 .PHONY: help build frontend test check fmt vet generate run stop logs deploy deployed \
+	test-js test-svelte test-nox11 cross \
 	restart-daemon rollback clean install install-bin install-desktop install-service uninstall \
 	bootstrap deps deps-build deps-desktop deps-speech config doctor deck
 
@@ -192,7 +193,33 @@ fmt: ## fail when any file is not gofmt-clean
 vet: fmt ## gofmt check + go vet
 	go vet ./...
 
-check: vet test test-js test-svelte ## everything CI would run
+# The desktop with no X11: macOS, Windows, a Wayland session with no Xwayland, or
+# this one built with -tags nox11. It is in the gate rather than in a doc because
+# that path is CODE - twenty guard sites reached by `u.x != nil` - and code that is
+# never run is code that is wrong. R-12 is the proof: a panel took the no-X11 branch,
+# recorded itself open, and swallowed every question routed to it.
+test-nox11: ## the whole suite through the no-X11 placement layer
+	go test -tags nox11 ./... -count=1
+
+# Portability is a claim, and a claim in a README rots. These are the two hosts the
+# code says it supports beside this one, compiled from here on every check.
+#
+# CGO_ENABLED=0 is not a limitation of the port - it is what makes the check possible
+# without three toolchains installed. It reaches every package except the two that
+# link a native UI (internal/webui, internal/tray), and on Windows even those build,
+# which is why windows gets the whole tree and darwin gets the rest. A darwin webui
+# needs clang and is verified by building on a Mac, not here.
+CROSS_DARWIN = $(shell go list ./... | grep -v -e /tools/ -e /internal/webui -e /internal/tray -e /cmd/agentbox)
+
+cross: ## compile for macOS and Windows from here (catches a platform-locked call)
+	@echo "--> windows/amd64, whole tree"
+	@GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /dev/null ./...
+	@echo "--> darwin/arm64 and darwin/amd64, everything that does not link a native UI"
+	@GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build $(CROSS_DARWIN)
+	@GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build $(CROSS_DARWIN)
+	@echo "ok: no platform-locked call outside a tagged file"
+
+check: vet test test-js test-svelte test-nox11 cross ## everything CI would run
 
 generate: ## regenerate earcon WAVs
 	go run ./tools/genearcons internal/sound/assets
