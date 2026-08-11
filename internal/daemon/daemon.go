@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/borismilner/agentbox/internal/change"
 	"github.com/borismilner/agentbox/internal/logging"
 	"github.com/borismilner/agentbox/internal/proto"
 	"github.com/borismilner/agentbox/internal/sound"
@@ -1258,6 +1259,19 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 	}
 	if err := it.Validate(); err != nil {
 		return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: err.Error()}
+	}
+	// R-26. The byte cap in Validate bounds how much diff arrives and says nothing
+	// about how much STRUCTURE it is, and structure is what the card builds a rail
+	// button and a section out of. The count is the surfaces' own parser's, so the
+	// number in the refusal is the number that would have been drawn - and it is
+	// here rather than in Validate because reaching that parser is a dependency
+	// proto does not have.
+	if it.Kind == proto.KindDiff {
+		if n := change.CountFiles(it.Diff); n > proto.MaxDiffFiles {
+			return nil, &proto.RPCError{Code: proto.CodeInvalidParams, Message: fmt.Sprintf(
+				"the diff touches %d files, over the %d-file limit: review it in slices, "+
+					"or write it to a file and show_document it", n, proto.MaxDiffFiles)}
+		}
 	}
 	// Every item carries an identity, so this costs nothing and it is what keeps
 	// the roster from lying (FR83). A session whose child predates sync has no

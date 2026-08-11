@@ -2788,3 +2788,52 @@ func TestAFailedStoreWriteStillReleasesTheCaller(t *testing.T) {
 		t.Fatal("the answered card is still on screen, so it is still claiming to be sending")
 	}
 }
+
+// R-26, the diff shape. The byte cap bounds how much diff arrives and says
+// nothing about how much structure it is: the card draws a rail button and a
+// section per file and caps only how many lines render, so a diff of nothing but
+// headers - 73,081 of them inside the 2 MB ceiling - is 73,081 buttons on a card
+// meant to be read.
+func TestADiffOfTooManyFilesIsRefusedAtTheDoor(t *testing.T) {
+	d, ui, _, _ := newTestDaemon(t, Config{})
+
+	headers := func(n int) string {
+		var b strings.Builder
+		for i := range n {
+			fmt.Fprintf(&b, "diff --git a/f%d b/f%d\n--- a/f%d\n+++ b/f%d\n@@ -1 +1 @@\n-a\n+b\n", i, i, i, i)
+		}
+		return b.String()
+	}
+	item := func(diff string) json.RawMessage {
+		return mustJSON(t, proto.Item{Kind: proto.KindDiff, Title: "review this",
+			Diff: diff, Identity: proto.Identity{Agent: "a"}})
+	}
+
+	_, rpcErr := d.Handle(context.Background(), proto.MethodAsk, item(headers(proto.MaxDiffFiles+1)))
+	if rpcErr == nil {
+		t.Fatal("a diff one file over the limit was accepted")
+	}
+	// Actionable, for R-04's reason: an agent that is told only "too big" cannot
+	// tell which of the caps it hit or what to do about it.
+	for _, want := range []string{"501", "500", "file limit"} {
+		if !strings.Contains(rpcErr.Message, want) {
+			t.Errorf("refusal %q does not contain %q", rpcErr.Message, want)
+		}
+	}
+
+	// And the bound is on FILES, not on size or lines: a two-file diff of the same
+	// byte weight is a review somebody can actually read, and it must still go up.
+	var big strings.Builder
+	big.WriteString("diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1,20000 +1,20000 @@\n")
+	for range 20000 {
+		big.WriteString("+a line of a real change\n")
+	}
+	big.WriteString("diff --git a/b b/b\n--- a/b\n+++ b/b\n@@ -1 +1 @@\n-x\n+y\n")
+	ch := askAsync(t, d, proto.Item{Kind: proto.KindDiff, Title: "review this",
+		Diff: big.String(), Identity: proto.Identity{Agent: "a"}})
+	shown := waitForItem(t, ui)
+	d.Review(shown.ID, true, "")
+	if res := <-ch; !res.Answered {
+		t.Errorf("a 2-file diff of %d bytes did not reach a card: %+v", big.Len(), res)
+	}
+}

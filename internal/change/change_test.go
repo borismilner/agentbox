@@ -1,8 +1,11 @@
 package change
 
 import (
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 // One git diff exercising the shapes that matter: a changed line (del+add),
@@ -227,4 +230,46 @@ func TestAnEmptyLineIsStillContext(t *testing.T) {
 	if got := len(set.Files[0].Hunks[0].Lines); got != 4 {
 		t.Errorf("hunk has %d lines, want 4", got)
 	}
+}
+
+// R-26. CountFiles is what the daemon's door asks before it accepts a review, so
+// what matters is that it agrees with the parser the surfaces draw from - a
+// number that came from anywhere else would refuse diffs the card can render, or
+// accept ones it cannot.
+func TestCountFilesAgreesWithParse(t *testing.T) {
+	for name, raw := range map[string]string{
+		"git":     gitDiff,
+		"plain":   "--- a.txt\t2026-07-29 10:00\n+++ a.txt\t2026-07-29 10:01\n@@ -1 +1,2 @@\n one\n+two\n",
+		"empty":   "",
+		"garbage": "not a diff at all\njust prose\n",
+		"body looks like a header": "diff --git a/x b/x\n--- a/x\n+++ b/x\n" +
+			"@@ -0,0 +1,2 @@\n+--- a/not-a-file\n++++ b/not-a-file\n",
+		"headers only": strings.Repeat("diff --git a/f b/f\n", 40),
+	} {
+		if got, want := CountFiles(raw), len(Parse(raw).Files); got != want {
+			t.Errorf("%s: CountFiles = %d, Parse = %d files", name, got, want)
+		}
+	}
+}
+
+func TestCountFilesOnTheShapeThatNeededTheBound(t *testing.T) {
+	// 2 MB of nothing but headers passes every byte cap in the item path. The
+	// door has to answer about it quickly, because it answers before the item is
+	// stored and while the caller is parked.
+	var b strings.Builder
+	n := 0
+	for b.Len() < 2<<20 {
+		fmt.Fprintf(&b, "diff --git a/f%d b/f%d\n", n, n)
+		n++
+	}
+	start := time.Now()
+	got := CountFiles(b.String())
+	el := time.Since(start)
+	if got != n {
+		t.Errorf("counted %d of %d headers", got, n)
+	}
+	if el > 2*time.Second {
+		t.Errorf("counting %d files took %v; the door parks the caller while it thinks", n, el)
+	}
+	t.Logf("%d files in %d bytes counted in %v", n, b.Len(), el)
 }

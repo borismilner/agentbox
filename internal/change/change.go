@@ -54,7 +54,14 @@ type Deletion struct {
 	Lines []string
 }
 
-var hunkRe = regexp.MustCompile(`^@@+ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
+var (
+	hunkRe = regexp.MustCompile(`^@@+ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
+	// Compiled once, next to the other one. It used to be compiled inside the
+	// loop, once per `diff --git` line, which is most of a second on a diff of
+	// 73,000 headers - and that diff is exactly what CountFiles is asked about
+	// while the caller who sent it is parked.
+	gitHeaderRe = regexp.MustCompile(`^diff --git a/(.*) b/(.*)$`)
+)
 
 // strip removes the a/ or b/ prefix and a plain-diff "\tTIMESTAMP" suffix.
 func strip(p string) string {
@@ -178,7 +185,7 @@ func Parse(raw string) Set {
 		case strings.HasPrefix(t, "diff --git "):
 			closeHunk()
 			name := ""
-			if m := regexp.MustCompile(`^diff --git a/(.*) b/(.*)$`).FindStringSubmatch(t); m != nil {
+			if m := gitHeaderRe.FindStringSubmatch(t); m != nil {
 				name = m[2]
 			}
 			open(name)
@@ -232,6 +239,18 @@ func Parse(raw string) Set {
 	s.Files = kept
 	return s
 }
+
+// CountFiles reports how many files a diff opens: the number of rail buttons and
+// sections the review card builds out of it, which is the thing that needs a
+// bound (R-26). It is Parse's own count on purpose - a second, cheaper scanner
+// here would be a third parser of the same format, and the two that exist are
+// kept in step deliberately.
+//
+// It reads slightly LOW: Parse drops a file with no path and no hunks, which a
+// renderer still draws a section for. Low is the safe direction for a limit,
+// because the error it can make is letting a diff through, never refusing a real
+// one.
+func CountFiles(raw string) int { return len(Parse(raw).Files) }
 
 // File finds the change for a new-side path, or nil when the diff does not
 // touch it.

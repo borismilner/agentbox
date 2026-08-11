@@ -289,6 +289,22 @@ const (
 	MaxSpeakBytes = 4 << 10   // a sentence to read out loud
 )
 
+// MaxDiffFiles bounds the STRUCTURE of a review diff, which the byte cap above
+// does not (R-26).
+//
+// The card draws a rail button and a section per file and caps only how many
+// LINES render, so 2 MB of nothing but `diff --git` headers - measured at 73,081
+// of them, well inside MaxDiffBytes - is 73,081 rail buttons on a card meant to
+// be read. (R-26's entry says 200,000 headers at 5 MB. That diff is refused by
+// the byte cap already; the reachable shape is a third of it and just as
+// unreadable.)
+//
+// 500 is far past any diff a human reads on a card in one sitting and far short
+// of what breaks one. The check itself lives in the daemon, next to the other
+// door this package cannot hold: counting files means parsing the diff, and
+// proto has no dependencies outside the stdlib.
+const MaxDiffFiles = 500
+
 func (it *Item) Validate() error {
 	switch it.Kind {
 	case KindNotify, KindText, KindConfirm:
