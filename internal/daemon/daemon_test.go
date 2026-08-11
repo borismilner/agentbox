@@ -2194,9 +2194,109 @@ func TestShutdownDisconnectIsNotCallerGone(t *testing.T) {
 	cancel()
 	<-ch
 
-	waitForState(t, st, shown.ID, store.StateCancelled)
+	// Pending, not cancelled (R-07). This test asserted cancelled until 2026-08-11,
+	// which is what the code did on the days the handler won its race with os.Exit.
+	stored, err := st.Item(shown.ID)
+	if err != nil || stored == nil {
+		t.Fatalf("item %s: %v", shown.ID, err)
+	}
+	if stored.State != store.StatePending {
+		t.Fatalf("state = %q, want pending: a question in flight at shutdown comes back", stored.State)
+	}
 	if ui.sawCaller(CallerGone) {
 		t.Fatal("daemon teardown must not present a card as caller-disconnected")
+	}
+}
+
+func TestDrainWaitsForAHandlerTheShutdownWoke(t *testing.T) {
+	// R-07's other half. The store closes immediately after the shutdown cancel, so
+	// a handler still inside Handle has to be waited for. Nothing waited before: the
+	// parked ask and os.Exit went for the same door.
+	d, ui, _, _ := newTestDaemon(t, Config{})
+	d.BeginShutdown()
+	ctx, cancel := context.WithCancel(context.Background())
+	returned := make(chan struct{})
+	go func() {
+		d.Handle(ctx, proto.MethodAsk, mustJSON(t, askItem()))
+		close(returned)
+	}()
+	waitForItem(t, ui)
+
+	if d.DrainHandlers(20 * time.Millisecond) {
+		t.Fatal("the drain claimed nothing was in flight while an ask was parked")
+	}
+	cancel()
+	if !d.DrainHandlers(2 * time.Second) {
+		t.Fatal("the drain gave up on a handler that was returning")
+	}
+	select {
+	case <-returned:
+	default:
+		t.Fatal("the drain returned before the handler did, which is the race R-07 is about")
+	}
+}
+
+func TestDrainIsBounded(t *testing.T) {
+	// A handler deaf to its context must not hold the daemon open. The drain says so
+	// instead of waiting, and shutdown logs it rather than hiding it.
+	d, ui, _, _ := newTestDaemon(t, Config{})
+	go d.Handle(t.Context(), proto.MethodAsk, mustJSON(t, askItem())) // nobody will answer it
+	shown := waitForItem(t, ui)
+
+	start := time.Now()
+	if d.DrainHandlers(100 * time.Millisecond) {
+		t.Fatal("the drain claimed a parked handler had finished")
+	}
+	if waited := time.Since(start); waited > time.Second {
+		t.Fatalf("the drain waited %v, which is not the bound it was given", waited)
+	}
+	d.Answer(shown.ID, "One") // let the handler go before the daemon does
+}
+
+func TestShutdownTellsTheCallerWhyAndKeepsTheQuestion(t *testing.T) {
+	// R-07's own "test that would have caught it". Two promises in one: the agent
+	// hears CodeShuttingDown rather than a transport EOF, and the question is still
+	// pending afterwards, which is the only state a restart reads back off disk
+	// (NFR7). Before this, which of those happened depended on whether this
+	// goroutine or os.Exit got there first.
+	d, ui, _, st := newTestDaemon(t, Config{})
+	d.BeginShutdown()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	type outcome struct {
+		res    any
+		rpcErr *proto.RPCError
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		res, rpcErr := d.Handle(ctx, proto.MethodAsk, mustJSON(t, askItem()))
+		done <- outcome{res, rpcErr}
+	}()
+	shown := waitForItem(t, ui)
+	cancel()
+
+	var got outcome
+	select {
+	case got = <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the handler never returned after the shutdown cancel")
+	}
+	if got.rpcErr == nil || got.rpcErr.Code != proto.CodeShuttingDown {
+		t.Fatalf("caller got %+v, want a shutting-down error", got)
+	}
+	stored, err := st.Item(shown.ID)
+	if err != nil || stored == nil {
+		t.Fatalf("item %s: %v", shown.ID, err)
+	}
+	if stored.State != store.StatePending {
+		t.Fatalf("state = %q, want pending", stored.State)
+	}
+
+	// And it comes back, with its caller marked awaiting-reconnect rather than gone:
+	// a restored item never had a connection to lose.
+	pending, err := st.Pending()
+	if err != nil || len(pending) != 1 || pending[0].ID != shown.ID {
+		t.Fatalf("pending after shutdown = %+v (err %v), want the one question", pending, err)
 	}
 }
 
@@ -2204,6 +2304,37 @@ func TestShutdownDisconnectIsNotCallerGone(t *testing.T) {
 // took is to ask the daemon which build it is. `make deploy` fails on this, so
 // the field has to be there and it has to be the SERVING build - not whatever
 // binary happened to open the socket.
+func TestStatusCountsTheQuestionsWithAnAgentWaiting(t *testing.T) {
+	// What `make deploy` warns on (R-07): a sticky warning nobody has closed and a
+	// question an agent is parked on are both "pending", and only the second one
+	// costs anything when the daemon restarts.
+	d, ui, _, _ := newTestDaemon(t, Config{})
+	callNotify(t, d, notifyItem(proto.LevelWarning)) // sticky, nobody waiting
+	waitForItem(t, ui)
+
+	status := func() (pending, blocking int) {
+		t.Helper()
+		res, rpcErr := d.Handle(context.Background(), proto.MethodStatus, nil)
+		if rpcErr != nil {
+			t.Fatalf("status: %v", rpcErr)
+		}
+		m := res.(map[string]any)
+		return m["pending"].(int), m["blocking"].(int)
+	}
+	if p, b := status(); p != 1 || b != 0 {
+		t.Fatalf("a sticky warning reads as %d pending / %d blocking, want 1 / 0", p, b)
+	}
+
+	askAsync(t, d, askItem()) // an agent parked on an answer
+	waitFor(t, "the question to be queued", func() bool {
+		_, b := status()
+		return b == 1
+	})
+	if p, b := status(); p != 2 || b != 1 {
+		t.Fatalf("with one of each: %d pending / %d blocking, want 2 / 1", p, b)
+	}
+}
+
 func TestStatusReportsTheServingBuild(t *testing.T) {
 	d, _, _, _ := newTestDaemon(t, Config{})
 

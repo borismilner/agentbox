@@ -1011,8 +1011,14 @@ func (c *Conn) readLoop() {
 }
 
 // Serve reads requests until the stream closes, dispatching each to h on
-// its own goroutine so a blocked ask does not starve the connection. It
-// returns when the peer disconnects or ctx is done.
+// its own goroutine so a blocked ask does not starve the connection.
+//
+// It returns when the PEER disconnects. A cancelled ctx wakes the handlers - that
+// is what a shutdown uses - but it does not interrupt the read, so this call, and
+// the goroutine it runs in, outlive the handlers it dispatched. Anything wanting to
+// know when the handlers are done has to count the handlers: see
+// daemon.DrainHandlers, which exists because waiting on connections here would have
+// meant waiting for every CLI on the machine to hang up (R-07).
 func (c *Conn) Serve(ctx context.Context, h Handler) error {
 	ctx, cancel := context.WithCancel(ctx)
 	// Order matters, and it is the whole of FR45 working or not working.

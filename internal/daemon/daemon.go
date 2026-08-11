@@ -403,6 +403,11 @@ type Daemon struct {
 	shared *shared
 
 	closing atomic.Bool // FR45: set at shutdown so a teardown disconnect is not shown as "caller gone"
+	// inflight counts the wire calls inside Handle, so shutdown can wait for them
+	// before the store closes underneath one (R-07). Deliberately not under d.mu:
+	// it is incremented on the way into every method, including the ones that take
+	// that lock.
+	inflight sync.WaitGroup
 }
 
 // SetPolicy applies the live-reloadable knobs (config file watch).
@@ -767,7 +772,16 @@ func safely(log *slog.Logger, where string, fn func()) func() {
 // Handle is the proto.Handler for the socket server. A panic in any handler
 // is recovered here and turned into a logged CodeInternal error, so one bad
 // request can never take the daemon down or leave its caller hanging.
+//
+// It is also where in-flight calls are counted, for DrainHandlers below (R-07).
+// One place, because every method on the wire comes through this switch - and the
+// count has to be the daemon's rather than the socket's: a connection lives until
+// its CLI hangs up, which is long after the handler it is waiting for has
+// finished, so waiting on connections would have made every shutdown pay the
+// whole bound.
 func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessage) (result any, rpcErr *proto.RPCError) {
+	d.inflight.Add(1)
+	defer d.inflight.Done()
 	d.log.Debug(logging.EvIPCCall, "component", "daemon", "method", method)
 	defer func() {
 		if r := recover(); r != nil {
@@ -809,15 +823,28 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 	case proto.MethodStatus:
 		d.mu.Lock()
 		pending := len(d.queue)
+		blocking := 0
+		for _, it := range d.queue {
+			if it.Blocking() {
+				blocking++
+			}
+		}
 		if d.current != nil {
 			pending++
+			if d.current.Blocking() {
+				blocking++
+			}
 		}
 		d.mu.Unlock()
 		// The version of the build that is actually SERVING, which is not the same
 		// question as what the client on the other end of the socket happens to be.
 		// `make deploy` replaces the binary and restarts, and the only way to know
 		// the restart took is to ask the daemon what it is.
-		return map[string]any{"pending": pending, "version": version.Get()}, nil
+		// blocking is the part of pending that has an agent waiting on the other end,
+		// which is the number a deploy cares about (R-07): those callers are told the
+		// daemon is going and their questions come back unanswered on the next start.
+		// A sticky warning left on screen costs nobody anything by comparison.
+		return map[string]any{"pending": pending, "blocking": blocking, "version": version.Get()}, nil
 	case proto.MethodInbox:
 		d.ui.ShowApp("inbox")
 		return map[string]bool{"ok": true}, nil
@@ -1384,9 +1411,14 @@ func (d *Daemon) handleSubmit(ctx context.Context, params json.RawMessage, block
 			continue
 		case <-ctx.Done():
 			if d.closing.Load() {
-				// Daemon teardown, not a caller drop: cancel quietly. Pending items
-				// re-present on the next start (NFR7).
-				d.resolve(it.ID, store.StateCancelled, store.Outcome{})
+				// Daemon teardown, not a caller drop. The item is LEFT PENDING on
+				// purpose, which is R-07: cancelling it here contradicted the promise
+				// two lines of documentation make about a restart - pending is the one
+				// state that reads back off disk (NFR7) - and which of the two happened
+				// was decided by a race between this goroutine and os.Exit. The caller
+				// is told why its question is coming back rather than being answered.
+				d.log.Info("item.left_pending", "component", "daemon", "item_id", it.ID,
+					"reason", "daemon shutting down", "consequence", "it is re-presented on the next start")
 				return nil, &proto.RPCError{Code: proto.CodeShuttingDown, Message: "daemon shutting down"}
 			}
 			// The caller's socket dropped while the question was still open (FR45):
@@ -1947,6 +1979,33 @@ func (d *Daemon) callerGone(id string) {
 func (d *Daemon) BeginShutdown() {
 	d.closing.Store(true)
 	d.finalizeGraceNow()
+}
+
+// DrainHandlers waits for the wire calls still inside Handle to return, up to
+// bound, and says whether they all did (R-07). Call it AFTER the server context is
+// cancelled - that is what wakes a parked handler - and BEFORE closing the store,
+// which is what they are still writing to.
+//
+// Bounded on purpose. A handler deaf to its context must not hold the daemon open
+// for ever, and a false answer is worth logging rather than hiding: it means
+// something outlived its wait and whatever it was writing may not be on disk.
+//
+// A call that arrives from an already-connected client after the wait has started
+// can still slip past it. That is a narrow window - the socket is closed by then,
+// so there are no new callers - and it is strictly better than the nothing that
+// was here before.
+func (d *Daemon) DrainHandlers(bound time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		d.inflight.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(bound):
+		return false
+	}
 }
 
 // finalizeGraceNow ships an answer sitting in its undo window, rather than

@@ -619,7 +619,14 @@ func runStatus(args []string) int {
 		fmt.Println(string(out))
 		return exitOK
 	}
-	fmt.Printf("daemon running, %v pending\n%s\n", res["pending"], daemonVer)
+	// The blocking count is said only when there is one, so the ordinary line stays
+	// the ordinary line - a number that is nearly always zero, printed every time,
+	// is a number nobody reads (R-07).
+	if n, ok := res["blocking"].(float64); ok && n > 0 {
+		fmt.Printf("daemon running, %v pending (%d with an agent waiting)\n%s\n", res["pending"], int(n), daemonVer)
+	} else {
+		fmt.Printf("daemon running, %v pending\n%s\n", res["pending"], daemonVer)
+	}
 	if mine := version.Get().String(); daemonVer != mine && daemonVer != "" {
 		fmt.Printf("this client is %s - restart the daemon to run the new build\n", mine)
 	}

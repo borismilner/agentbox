@@ -58,6 +58,13 @@ func (l *lateResolver) set(d *daemon.Daemon) {
 // startup swallowed the keystroke and looked exactly like one that worked.
 const notYet = "agentbox is still starting up. Try that again in a moment."
 
+// shutdownDrain bounds the wait for handlers woken by the shutdown cancel (R-07).
+// Two seconds against a handler that has nothing left to do but send a reply: long
+// enough that a loaded machine still finishes, short enough that `make deploy` and
+// a systemd stop do not notice. What it protects is the store, which closes
+// straight after it.
+const shutdownDrain = 2 * time.Second
+
 func (l *lateResolver) Answer(id, label string) string {
 	if d := l.get(); d != nil {
 		return d.Answer(id, label)
@@ -524,6 +531,17 @@ func runDaemon() {
 		u.ShutdownApp()   // close button only hides to tray; quit ends the sessions
 		d.BeginShutdown() // a disconnect now is teardown, not a caller drop (FR45)
 		cancel()
+		// R-07. cancel() above wakes every parked handler; this waits for them to
+		// finish saying so before the store they write to is closed underneath them.
+		// Without it a question in flight raced os.Exit, and the winner decided
+		// whether it was cancelled or left pending - two different promises to the
+		// agent, chosen by timing. The bound is short because a woken handler has
+		// nothing left to do but send its reply, and a deploy is waiting on all of it.
+		if !d.DrainHandlers(shutdownDrain) {
+			log.Warn("daemon.drain_timeout", "component", "daemon",
+				"bound_ms", shutdownDrain.Milliseconds(),
+				"consequence", "a handler outlived the wait; its item stays pending and returns on the next start")
+		}
 		lst.Close()
 		st.Close()
 		logCloser.Close()

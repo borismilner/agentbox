@@ -296,6 +296,16 @@ deploy-locked: check build ## the deploy itself; take the lock through `make dep
 		echo "replacing $$($(BINDIR)/$(BIN) version 2>/dev/null || echo 'an unreadable build')"; \
 		cp -p $(BINDIR)/$(BIN) $(BINDIR)/$(BIN).prev; \
 	fi
+	@# R-07: a question with an agent waiting on it comes back UNANSWERED after the
+	@# restart, and its caller is told the daemon is going. That is now what happens
+	@# every time rather than sometimes, so this warns instead of refusing - the deploy
+	@# is usually the more urgent of the two. Named counts, because "1 pending" for a
+	@# sticky warning nobody has closed is not the same news.
+	@blocking=$$($(BINDIR)/$(BIN) status --json 2>/dev/null | grep -o '"blocking":[0-9]*' | cut -d: -f2); \
+	if [ -n "$$blocking" ] && [ "$$blocking" -gt 0 ]; then \
+		echo "warning: $$blocking question(s) have an agent waiting; the restart sends them back unanswered"; \
+		$(BINDIR)/$(BIN) pending 2>/dev/null | sed 's/^/         /'; \
+	fi
 	-$(BINDIR)/$(BIN) quit 2>/dev/null || true
 	@sleep 0.5
 	-@$(kill-daemons)
