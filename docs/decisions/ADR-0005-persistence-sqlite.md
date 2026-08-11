@@ -54,3 +54,11 @@ not ad hoc.
   migrations emit `store.migrated` log events (NFR13).
 - Schema history reads as the migration directory listing; an AI
   maintainer can reconstruct the schema's evolution from the binary alone.
+- Forward-only has one sharp edge and `make rollback` is where it cuts: the
+  build being restored may be older than the store, and refusing to start is
+  a total outage at the moment somebody is already recovering from something
+  else (R-23). So the rollback asks first. `agentbox store schema` reports
+  what the store is at and what the asking build knows, exiting 1 when that
+  build would refuse it, and `make rollback-check` stops the rollback on that
+  answer. The build being restored is the one asked, because it is the only
+  thing that knows which migrations it carries.

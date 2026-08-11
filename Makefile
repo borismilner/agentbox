@@ -11,7 +11,7 @@ UNITDIR    ?= $(HOME)/.config/systemd/user
 
 .PHONY: help build frontend test check fmt vet generate run stop logs deploy deployed \
 	test-js test-svelte test-nox11 cross \
-	restart-daemon rollback clean install install-bin install-desktop install-service uninstall \
+	restart-daemon rollback rollback-check clean install install-bin install-desktop install-service uninstall \
 	bootstrap deps deps-build deps-desktop deps-speech config doctor deck
 
 # Where a piper voice goes. agentbox looks here first (internal/speech/speech.go), so
@@ -347,8 +347,36 @@ deployed: ## verify the running daemon is the build in $(BINDIR)
 	esac; \
 	echo "deployed to $(BINDIR)/$(BIN)"
 
-rollback: ## restore the build deploy replaced and restart the daemon on it
+# rollback-check is the one thing that must happen BEFORE the rollback touches
+# anything (R-23). The store refuses a database written by a newer binary on
+# purpose (ADR-0005), so rolling back across a migration installs a binary that
+# exits at startup: the recovery command produces a total outage, at the moment
+# somebody is already recovering from something. The build being restored is the
+# only thing that knows which migrations it carries, so it is the one asked, and
+# the answer is its exit code (see cmd/agentbox/store.go).
+#
+# A build older than that command exits 2 on an unknown command, which is not
+# consent - it is "cannot check", and it says so and continues, because refusing
+# every rollback to a build that predates the check would be a worse trade than
+# the outage it prevents.
+rollback-check: ## say whether the build in $(BIN).prev can open the store as it is now
 	@test -x $(BINDIR)/$(BIN).prev || { echo "nothing to roll back to: no $(BINDIR)/$(BIN).prev"; exit 1; }
+	@out=$$($(BINDIR)/$(BIN).prev store schema 2>&1); rc=$$?; \
+	if [ $$rc -eq 0 ]; then \
+		echo "$$out"; \
+	elif [ $$rc -eq 1 ]; then \
+		echo "$$out"; \
+		echo "ROLLBACK REFUSED: the build you are rolling back to cannot open this store."; \
+		echo "It would exit at startup and leave the desktop with no daemon at all."; \
+		echo "Roll forward instead, or restore a copy of the store taken before the migration"; \
+		echo "and roll back then (agentbox.db under \$$XDG_STATE_HOME/agentbox, ~/.local/state/agentbox by default)."; \
+		exit 1; \
+	else \
+		echo "cannot check the store against $(BIN).prev (exit $$rc): $$out"; \
+		echo "that build predates 'agentbox store schema'; if it added a migration, expect it to refuse the store"; \
+	fi
+
+rollback: rollback-check ## restore the build deploy replaced and restart the daemon on it
 	@echo "rolling back to $$($(BINDIR)/$(BIN).prev version 2>/dev/null || echo 'an unreadable build')"
 	-$(BINDIR)/$(BIN) quit 2>/dev/null || true
 	@sleep 0.5

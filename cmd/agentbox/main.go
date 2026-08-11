@@ -91,6 +91,8 @@ Commands:
   mute      silence an agent now        agentbox mute claude-code   (agentbox mute --list)
   unmute    let an agent through again  agentbox unmute claude-code
   logs      print the daemon event log (--follow to tail)
+  store     what schema the store is at, and whether this build can open it
+            agentbox store schema   (exit 1 means this build would refuse it)
   docs      embedded manual            agentbox docs agent
   schema    JSON Schema for the wire protocol and item kinds
   mcp       MCP stdio server for agents (register in .mcp.json)
@@ -172,6 +174,8 @@ func main() {
 		runWebUIDemo(args)
 	case "logs":
 		os.Exit(runLogs(args))
+	case "store":
+		os.Exit(runStore(args))
 	case "docs":
 		os.Exit(runDocs(args))
 	case "schema":

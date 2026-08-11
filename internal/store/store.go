@@ -123,6 +123,62 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// KnownSchemaVersion is the highest migration this binary carries. It is what a
+// build can say about itself without touching any database at all.
+func KnownSchemaVersion() (int, error) {
+	ms, err := loadMigrations()
+	if err != nil {
+		return 0, err
+	}
+	return len(ms), nil
+}
+
+// Inspect answers the one question a rollback has to ask first (R-23): is the
+// database on disk newer than the build about to be installed. onDisk is the
+// store's schema version (0 when there is no store yet, which is a fresh machine
+// and never a conflict), known is this binary's own.
+//
+// It exists because Open is the wrong tool for the question: Open MIGRATES, so
+// asking it would write the very migration the caller is trying to find out
+// about, and it refuses outright on the one answer that matters most. Nothing
+// here writes.
+//
+// The handle is an ordinary read-write one rather than mode=ro on purpose. The
+// daemon is normally still running when this is asked, its database is in WAL
+// mode, and a read-only connection to a WAL database is the fragile case - it
+// needs the shared-memory file it is not allowed to create. A SELECT changes
+// nothing either way.
+func Inspect(path string) (onDisk, known int, err error) {
+	known, err = KnownSchemaVersion()
+	if err != nil {
+		return 0, 0, err
+	}
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return 0, known, nil
+		}
+		return 0, known, err
+	}
+	dsn := "file:" + url.PathEscape(path) + "?_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return 0, known, fmt.Errorf("open db: %w", err)
+	}
+	defer db.Close()
+	var v sql.NullInt64
+	// A store written before the migration table existed, or a file that is not a
+	// store at all, both read as version 0 rather than as an error: the caller is
+	// deciding whether a rollback is safe, and "I cannot tell" has to be sayable
+	// separately from "the schema is ahead".
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&v); err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return 0, known, nil
+		}
+		return 0, known, fmt.Errorf("read schema version: %w", err)
+	}
+	return int(v.Int64), known, nil
+}
+
 type migration struct {
 	version int
 	name    string
