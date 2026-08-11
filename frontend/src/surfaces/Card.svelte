@@ -17,21 +17,6 @@
   window.addEventListener("error", (e) => note("card error: " + e.message));
   window.addEventListener("unhandledrejection", (e) => note("card error: " + e.reason));
 
-  // TEMPORARY (U-16/R-48). Every measurement so far stopped at the window
-  // boundary: fifteen of sixteen cards ignored the key they advertise, and
-  // "ignored" could equally mean the keystroke never arrived or that it arrived
-  // and onKey did nothing with it. These four lines are the difference. Capture
-  // phase, on window, so a handler that swallows the event cannot hide it from
-  // the log. Removed with the diagnosis.
-  bridge.probe(`mount hasFocus=${document.hasFocus()}`);
-  window.addEventListener("focus", () => bridge.probe(`focus hasFocus=${document.hasFocus()}`));
-  window.addEventListener("blur", () => bridge.probe(`blur hasFocus=${document.hasFocus()}`));
-  window.addEventListener(
-    "keydown",
-    (e) => bridge.probe(`keydown key=${e.key} active=${document.activeElement?.tagName} hasFocus=${document.hasFocus()}`),
-    true,
-  );
-
   let view = $state(null);
   let draft = $state("");
   let replying = $state(false);
@@ -247,11 +232,7 @@
 
   function choose(i) {
     const opt = item?.options?.[i];
-    // TEMPORARY (U-16/R-48): what the number key resolved to, and what the daemon
-    // said about it - a refusal and a call that never happened look the same from
-    // outside. Removed with the diagnosis.
-    bridge.probe(`choose i=${i} opt=${opt?.label ?? "NONE"}`);
-    if (opt) bridge.answer(item.id, opt.label).then((r) => bridge.probe(`answer said=${JSON.stringify(r)}`));
+    if (opt) bridge.answer(item.id, opt.label);
   }
 
   // SPELL_AT is where a choice option stops fitting the closed select (FR84).
@@ -278,9 +259,6 @@
   }
 
   function onKey(e) {
-    // TEMPORARY (U-16/R-48): the keydown reaches the web content, so the question
-    // is now which line of this function eats it. Removed with the diagnosis.
-    bridge.probe(`onKey key=${e.key} item=${item?.id ?? "NULL"} kind=${kind} target=${e.target?.tagName} opts=${item?.options?.length ?? -1}`);
     if (!item) return;
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
 
