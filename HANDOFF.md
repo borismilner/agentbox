@@ -14,7 +14,7 @@ of them from this box, and nothing on this machine behaves or looks different.*
 ```bash
 cd ~/me/projects/agentbox
 git status -sb                          # expect clean, in sync with origin/main
-make deployed                           # expect 9cddbb3cada6, matching HEAD
+make deployed                           # expect 9cddbb3cada6 (HEAD minus this handoff commit)
 make check                              # expect green: 44 ok lines, 43 vitest + 1 expected fail
 bash tools/wiki/publish.sh --dry-run    # expect "already up to date" on both
 agentbox pending                        # expect nothing pending
@@ -76,8 +76,12 @@ The distance turned out to be six syscalls, two `/proc` reads, and that one tag.
 - **Wiki:** both hosts current (`publish.sh --dry-run` says so), four pages
   changed - home, install, is-it-safe, limits. Read back the published `limits.md`
   over HTTP to confirm the new first section is live.
-- **Deployed daemon:** `9cddbb3cada6`, matching HEAD, restarted via
-  `agentbox.service`, 0 pending.
+- **Deployed daemon:** `9cddbb3cada6`, restarted via `agentbox.service`, 0
+  pending. That is HEAD minus the two commits that wrote this file, both
+  documentation - nothing under `frontend/`, `internal/manual/`, `internal/sound/`
+  or `internal/store/migrations/` changed, so the binary is the same code and a
+  redeploy would only restamp the version string. Do not restart the daemon just to
+  make the two shas match.
 - **Desktop:** never driven. The screen was locked for the middle of this session,
   which is why the verification below is geometry and logs rather than screenshots.
 - **In-flight edits:** none.
@@ -203,7 +207,7 @@ The distance turned out to be six syscalls, two `/proc` reads, and that one tag.
 | "NFR10 X11 today, Wayland-ready" | Superseded in place by the amended NFR10. The old bar - a documented Wayland equivalent - is quoted as the thing that was not enough |
 | `docs/04-platform.md`'s "Wayland (later, GNOME)" framing | Rewritten as a table of what each desktop gets. The Wayland research is kept verbatim; only the framing changed |
 | The wiki's four "X11 only, no macOS or Windows build" statements | `docs/wiki/FACTS.md` lists the old claim under "do not claim these" with the date it stopped being true |
-| Session 60's note that `make deployed` is behind HEAD | No longer true and not carried: deployed == HEAD == `9cddbb3` |
+| Session 60's note that `make deployed` is behind HEAD | Restated once, precisely, in Live state rather than argued again: deployed is `9cddbb3`, HEAD is that plus this file, and the difference is documentation only |
 
 ## Map
 
