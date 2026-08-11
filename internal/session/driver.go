@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/borismilner/agentbox/internal/logging"
 )
@@ -50,7 +51,19 @@ type Config struct {
 	// agentbox's own MCP server; AllowedTools pre-approves tools (Phase 7).
 	MCPConfig    string
 	AllowedTools []string
+
+	// SendTimeout bounds how long Send waits for the child to take a prompt
+	// (R-25). It is a bound on a FREEZE and not on delivery: Send is called from
+	// the goroutine that draws, so what this number buys is the length of the
+	// worst pause the window can suffer when a child has stopped reading its
+	// stdin. Zero means the default below.
+	SendTimeout time.Duration
 }
+
+// defaultSendTimeout is generous for the case it has to allow - a prompt larger
+// than the 64 kB pipe buffer, handed to a child that is reading it - and short
+// enough that the window is not visibly stuck when the child is not.
+const defaultSendTimeout = 5 * time.Second
 
 // Driver owns a headless `claude` child and the goroutines that pump its
 // stream-json I/O. The conversation it builds is read with Turns()/State().
@@ -64,6 +77,11 @@ type Driver struct {
 	stdin    io.WriteCloser
 	started  bool
 	stopping bool
+
+	// writeMu serialises the prompts going into the child. It is not d.mu and
+	// must never be taken with it: a write can block for as long as the child
+	// declines to read, and d.mu is taken by everything else here.
+	writeMu sync.Mutex
 }
 
 // New builds a driver. onUpdate is called (off the frame goroutine) whenever
@@ -78,6 +96,9 @@ func New(cfg Config, log *slog.Logger, onUpdate func()) *Driver {
 	}
 	if cfg.Mode == "" {
 		cfg.Mode = "plan"
+	}
+	if cfg.SendTimeout <= 0 {
+		cfg.SendTimeout = defaultSendTimeout
 	}
 	return &Driver{cfg: cfg, log: log, conv: &conversation{onUpdate: onUpdate}}
 }
@@ -245,7 +266,21 @@ func (d *Driver) drainStderr(stderr io.ReadCloser) {
 }
 
 // Send writes a user prompt to the child and records it in the conversation.
-// It is safe to call from the UI goroutine.
+// It is safe to call from the UI goroutine, and R-25 is what that sentence used
+// to be worth: the write went straight out with no deadline, so a child that had
+// stopped reading its stdin - or a prompt bigger than the 64 kB pipe buffer -
+// froze the goroutine that draws, for as long as the session lived.
+//
+// The write now happens on a goroutine of its own and this waits out
+// SendTimeout for it. The ordinary case is unchanged, because a small prompt
+// into a pipe with room in it lands in microseconds; what changes is the worst
+// case, which is now a bounded pause and a sentence in the conversation instead
+// of a window that never comes back.
+//
+// The user's turn is recorded by the writer, once the bytes are gone. It used to
+// be recorded before the write, so a prompt the child never received sat in the
+// transcript as though it had been sent - and the transcript said "working"
+// about a turn that was never delivered.
 func (d *Driver) Send(prompt string) error {
 	prompt = strings.TrimRight(prompt, "\n")
 	if strings.TrimSpace(prompt) == "" {
@@ -262,13 +297,46 @@ func (d *Driver) Send(prompt string) error {
 	if err != nil {
 		return err
 	}
-	d.conv.addUserPrompt(prompt)
-	if _, err := stdin.Write(line); err != nil {
-		d.conv.setState(StateError)
-		d.log.Error("session.send_failed", "component", "session", "err", err.Error())
-		return err
+	done := make(chan error, 1)
+	go func() {
+		// One prompt at a time: two writers into one pipe would interleave their
+		// JSON lines, and a caller whose predecessor is stuck parks here rather
+		// than corrupting the stream behind it.
+		d.writeMu.Lock()
+		defer d.writeMu.Unlock()
+		_, err := stdin.Write(line)
+		if err == nil {
+			// Late is possible and it is still the truth: a write that lands after
+			// this call gave up records its turn then, below the line saying it had
+			// not arrived, in the order things actually happened.
+			d.conv.addUserPrompt(prompt)
+		}
+		done <- err
+	}()
+
+	timer := time.NewTimer(d.cfg.SendTimeout)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		if err != nil {
+			d.conv.setState(StateError)
+			d.conv.append(systemErrorTurn("That prompt did not reach the session: %s", err.Error()))
+			d.log.Error("session.send_failed", "component", "session", "err", err.Error())
+			return err
+		}
+		return nil
+	case <-timer.C:
+		// Not StateError: the child may still be working and may still take this
+		// prompt. What is certain is that it has not taken it yet, and saying so
+		// is the difference between a session that looks slow and one that looks
+		// answered.
+		d.conv.append(systemErrorTurn(
+			"The session has not taken that prompt after %s - it is not reading its input. Nothing was sent.",
+			d.cfg.SendTimeout))
+		d.log.Error("session.send_stalled", "component", "session",
+			"waited_s", d.cfg.SendTimeout.Seconds(), "bytes", len(line))
+		return fmt.Errorf("session: the child has not read its input for %s", d.cfg.SendTimeout)
 	}
-	return nil
 }
 
 // Stop closes the child's stdin so it finishes the current turn and exits
