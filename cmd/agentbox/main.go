@@ -352,56 +352,6 @@ func agentProcessFrom(from int) (pid int, comm string, ok bool) {
 	return 0, "", false
 }
 
-// procParent is one step up the tree: this pid's name and its parent's pid.
-func procParent(pid int) (comm string, ppid int, err error) {
-	c, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
-	if err != nil {
-		return "", 0, err
-	}
-	// The name is read from comm rather than from stat, whose own comm field is
-	// parenthesised and may itself contain parentheses or spaces.
-	p, err := procStatField(pid, 4) // ppid
-	if err != nil {
-		return "", 0, err
-	}
-	return strings.TrimSpace(string(c)), p, nil
-}
-
-// procStartTime is the boot-clock tick a process started on. It is what makes a
-// pid safe to name a session after: pids are recycled, and without the start time
-// a new process landing on a dead agent's number would inherit its locks and its
-// claims.
-func procStartTime(pid int) (int64, error) {
-	v, err := procStatField(pid, 22) // starttime
-	if err != nil {
-		return 0, err
-	}
-	return int64(v), nil
-}
-
-// procStatField reads one numeric field of /proc/PID/stat by its documented
-// 1-based number (proc(5)).
-//
-// Fields 1 and 2 are the pid and the parenthesised name, and that name may itself
-// contain parentheses or spaces - so the line is cut at its LAST close paren and
-// counted from there rather than split whole.
-func procStatField(pid, field int) (int, error) {
-	st, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return 0, err
-	}
-	rest := string(st)
-	if i := strings.LastIndex(rest, ")"); i >= 0 {
-		rest = rest[i+1:]
-	}
-	f := strings.Fields(rest)
-	i := field - 3 // f[0] is field 3, the state
-	if i < 0 || i >= len(f) {
-		return 0, fmt.Errorf("unreadable stat for %d: no field %d", pid, field)
-	}
-	return strconv.Atoi(f[i])
-}
-
 type multiFlag []string
 
 func (m *multiFlag) String() string { return strings.Join(*m, ",") }
