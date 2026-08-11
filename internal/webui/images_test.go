@@ -277,16 +277,58 @@ func TestImageVerdicts(t *testing.T) {
 }
 
 func TestImageAcceptsEveryFormatItClaimsTo(t *testing.T) {
-	// GIF and WebP by their magic numbers; PNG and JPEG through the encoders.
+	// GIF by its magic number; PNG and JPEG through the encoders. GIF's config
+	// reads fine off a header this thin (width and height both 0), which is why
+	// it belongs in the accepted set rather than the refused one below.
 	gif := append([]byte("GIF89a"), bytes.Repeat([]byte{0}, 32)...)
-	webp := append([]byte("RIFF\x00\x00\x00\x00WEBPVP8 "), bytes.Repeat([]byte{0}, 24)...)
 
-	for name, data := range map[string][]byte{"png": pngBytes(t), "gif": gif, "webp": webp} {
+	for name, data := range map[string][]byte{"png": pngBytes(t), "gif": gif} {
 		path := writeFile(t, "pic-"+name, data)
 		got := RenderMarkdown("![x](" + path + ")")
 		if !strings.Contains(got, `<img class="k-img"`) {
 			t.Errorf("%s should be accepted:\n%s", name, got)
 		}
+	}
+}
+
+// TestImageRefusesWebpBecauseNothingCanCheckItsSize pins the consequence of the
+// pixel budget rather than a defect of its own: WebP sniffs correctly by magic
+// number, but this file registers no WebP decoder, so image.DecodeConfig can
+// never read its dimensions. Passing an unverifiable image through would defeat
+// the whole point of the budget, so it is refused instead.
+func TestImageRefusesWebpBecauseNothingCanCheckItsSize(t *testing.T) {
+	webp := append([]byte("RIFF\x00\x00\x00\x00WEBPVP8 "), bytes.Repeat([]byte{0}, 24)...)
+	path := writeFile(t, "pic-webp", webp)
+	got := RenderMarkdown("![x](" + path + ")")
+	if !strings.Contains(got, `data-reason="undecodable"`) {
+		t.Errorf("a WebP nothing here can decode should say so:\n%s", got)
+	}
+	if strings.Contains(got, "<img") {
+		t.Errorf("an unverifiable image must not reach an <img>:\n%s", got)
+	}
+}
+
+// TestImageRefusesAPixelBomb is R-18: a small file whose header claims huge
+// dimensions. 20000x20000 gray encodes to well under maxImageBytes, so the byte
+// ceiling never trips, and nothing before this fix ever read the header to find
+// out what a full decode would have cost.
+func TestImageRefusesAPixelBomb(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 20000, 20000))
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode bomb: %v", err)
+	}
+	if buf.Len() >= maxImageBytes {
+		t.Fatalf("the file must stay under the byte ceiling for this to test the pixel one: %d bytes", buf.Len())
+	}
+
+	path := writeFile(t, "bomb.png", buf.Bytes())
+	got := RenderMarkdown("![x](" + path + ")")
+	if !strings.Contains(got, `data-reason="too-many-pixels"`) {
+		t.Fatalf("a %d-byte file with a 20000x20000 header should be refused on pixels, not bytes:\n%s", buf.Len(), got)
+	}
+	if strings.Contains(got, "<img") {
+		t.Errorf("a pixel bomb must not reach an <img>:\n%s", got)
 	}
 }
 

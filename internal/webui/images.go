@@ -1,8 +1,13 @@
 package webui
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"net/http"
 	"net/url"
 	"os"
@@ -64,6 +69,17 @@ import (
 // is still a conversation.
 const maxImageBytes = 2 << 20
 
+// maxImagePixels bounds width*height once the bytes are decoded, because that is
+// the number that matters to the webview: bytes of RGBA = width * height * 4. A
+// card or document image never needs more pixels than a screenshot of a real
+// desktop at retina density - this tree's own reference is the dual-monitor
+// 3000x1920 root described in monitor.go - and 40,000,000 pixels covers an 8K
+// panel (7680x4320, 33.2 MP) with room to spare. The PNG that motivated this
+// check was 20000x20000, 400,000,000 pixels, ten times the budget, and would have
+// decoded to about 1.5 GB of RGBA while sitting at 439 kB on disk - nowhere near
+// maxImageBytes, which is why that ceiling alone never caught it.
+const maxImagePixels = 40_000_000
+
 // imageCacheBytes bounds what inlining keeps in memory. It matters because
 // encodeTurns re-renders every turn on every stream push (~16Hz): without a cache
 // a screenshot in an early turn would be re-read and re-encoded sixteen times a
@@ -73,6 +89,11 @@ const imageCacheBytes = 16 << 20
 // imageTypes is the set agentbox will inline. SVG is deliberately absent: a vector
 // picture from an agent is a ```chart or a ```mermaid fence, both of which agentbox
 // draws itself, and neither of which needs a parser for somebody else's XML.
+//
+// WebP passes this sniff but not pixelBudgetReason below: nothing in this file
+// registers a WebP decoder, so its dimensions can never be read and it is always
+// refused as "undecodable". Kept in the set rather than removed so a WebP source
+// gets that reason instead of the less honest "not-an-image".
 var imageTypes = map[string]bool{
 	"image/png":  true,
 	"image/jpeg": true,
@@ -240,6 +261,9 @@ func inlineFile(path string) (uri, reason string) {
 	if mime == "" {
 		return "", "not-an-image"
 	}
+	if reason := pixelBudgetReason(data); reason != "" {
+		return "", reason
+	}
 	uri = dataURI(mime, data)
 	storeImage(path, info, uri)
 	return uri, ""
@@ -272,6 +296,9 @@ func inlineDataURI(dest string) (uri, reason string) {
 	if mime == "" {
 		return "", "not-an-image"
 	}
+	if reason := pixelBudgetReason(data); reason != "" {
+		return "", reason
+	}
 	return dataURI(mime, data), ""
 }
 
@@ -292,6 +319,38 @@ func sniffImage(data []byte) string {
 
 func dataURI(mime string, data []byte) string {
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+// pixelBudgetReason checks the sniffed bytes against maxImagePixels before they
+// become a data URI. image.DecodeConfig reads only the header, which is orders
+// of magnitude cheaper than the decode a browser would otherwise be asked to do
+// - the whole point, since catching this costs microseconds and missing it costs
+// a WebProcess.
+//
+// A format DecodeConfig cannot read is refused rather than passed through: WebP
+// sniffs correctly (net/http knows its magic number) but has no decoder
+// registered in this file, so its config can never be read here, and an image
+// whose size cannot be checked is not one this function can call safe. The same
+// branch also catches a file whose magic number matches but whose header does
+// not - a lie one layer deeper than the extension the doc comment above already
+// distrusts.
+func pixelBudgetReason(data []byte) string {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return "undecodable"
+	}
+	w, h := cfg.Width, cfg.Height
+	if w <= 0 || h <= 0 {
+		return ""
+	}
+	// w*h*4 overflows a 64-bit int well before either axis looks suspicious on
+	// its own - a crafted header can claim close to 2^32 on a side - so the
+	// budget is checked by dividing first rather than multiplying and comparing
+	// after.
+	if w > maxImagePixels/h {
+		return "too-many-pixels"
+	}
+	return ""
 }
 
 // --- the cache --------------------------------------------------------------
@@ -348,12 +407,14 @@ func storeImage(path string, info os.FileInfo, uri string) {
 // blockedReasons is what a reader is told. Each one says what to do about it,
 // because the person reading is usually the person who can fix it.
 var blockedReasons = map[string]string{
-	"remote":       "remote image not loaded",
-	"relative":     "needs an absolute path",
-	"missing":      "file not found",
-	"too-big":      "over the size limit",
-	"not-an-image": "not a PNG, JPEG, GIF or WebP",
-	"unreadable":   "could not be read",
+	"remote":          "remote image not loaded",
+	"relative":        "needs an absolute path",
+	"missing":         "file not found",
+	"too-big":         "over the size limit",
+	"too-many-pixels": "too many pixels to decode safely",
+	"undecodable":     "could not be decoded",
+	"not-an-image":    "not a PNG, JPEG, GIF or WebP",
+	"unreadable":      "could not be read",
 }
 
 func blockedImageHTML(alt, dest, reason string) string {
