@@ -264,10 +264,18 @@
 
     if (e.key === "Escape") {
       e.preventDefault();
-      // In a review's note, Esc hands the keyboard back (a/r answer again);
-      // it takes a second Esc to defer. In the note Enter is a newline, so
-      // blur is the only way back to the single-key answers.
-      if (typing && kind === "diff") {
+      // While typing, Esc leaves the FIELD and a second Esc acts on the card
+      // (U-11). This was the rule for a review's note only, and everything else
+      // took the branch below: Esc in a form or text field deferred the whole
+      // question mid-sentence, taking the half-filled answer with it. Every other
+      // input in the product blurs - the inbox's search, the board's fields, the
+      // viewer's find - so the card was the one surface where the convention did
+      // not hold.
+      //
+      // In a review's note Enter is a newline, which makes blur the only way back
+      // to the single-key answers; in the other kinds it is simply what Esc means
+      // everywhere else.
+      if (typing) {
         e.target.blur();
         return;
       }

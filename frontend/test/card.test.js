@@ -238,3 +238,99 @@ describe("a form card that gets shorter", () => {
     expect(sent("Fit").length).toBeGreaterThan(before);
   });
 });
+
+// U-11. Esc in a field used to defer the whole question, mid-sentence, taking the
+// half-filled answer with it. Every other input in the product blurs: the inbox's
+// search, the board's fields, the viewer's find, and the card itself in the one kind
+// it special-cased. The rule is now the same for all four kinds - Esc leaves the
+// field, a second Esc acts on the card.
+describe("Escape while typing leaves the field, not the question (U-11)", () => {
+  // The window handler reads e.target, so the event has to come FROM the field. The
+  // shared key() helper dispatches on window, where e.target is the window itself.
+  function escapeIn(el, opts = {}) {
+    el.focus();
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, ...opts }));
+    flushSync();
+  }
+
+  test("a text card's field blurs and the question stays", () => {
+    show(view({ kind: "text", title: "which tag?" }));
+    const field = host.querySelector("input.text, textarea");
+    expect(field, "a text card has a field to type in").not.toBeNull();
+
+    escapeIn(field);
+
+    expect(sent("Defer"), "the question was deferred out from under the answer").toHaveLength(0);
+    expect(sent("Dismiss")).toHaveLength(0);
+    expect(document.activeElement).not.toBe(field);
+  });
+
+  test("and a second Escape, now outside the field, defers it", () => {
+    show(view({ kind: "text", title: "which tag?" }));
+    const field = host.querySelector("input.text, textarea");
+    escapeIn(field);
+    expect(sent("Defer")).toHaveLength(0);
+
+    key("Escape");
+
+    expect(sent("Defer"), "with the field left, Esc means what the hint says").toHaveLength(1);
+  });
+
+  test("a form field blurs too", () => {
+    show(view({
+      kind: "form",
+      title: "where does this go?",
+      fields: [{ key: "tag", label: "Tag", type: "text" }],
+    }));
+    const field = host.querySelector("input.text");
+    expect(field).not.toBeNull();
+
+    escapeIn(field);
+
+    expect(sent("Defer")).toHaveLength(0);
+    expect(sent("Dismiss")).toHaveLength(0);
+  });
+
+  test("shift+Escape in a field leaves the field first, rather than forcing the card away", () => {
+    show(view({ kind: "text", title: "which tag?" }));
+    const field = host.querySelector("input.text, textarea");
+
+    escapeIn(field, { shiftKey: true });
+
+    expect(sent("Dismiss"), "the force-dismiss key is one press away, not zero").toHaveLength(0);
+  });
+
+  // The entry left one thing undetermined: whether what was typed comes back with a
+  // deferred card. It does, and this is why - formValues is keyed on the item id, so a
+  // re-presented question keeps its half-filled answer.
+  test("a deferred form comes back with what was typed still in it", () => {
+    const form = view({
+      kind: "form",
+      title: "where does this go?",
+      fields: [{ key: "tag", label: "Tag", type: "text" }],
+    });
+    show(form);
+
+    const field = host.querySelector("input.text");
+    field.value = "2026.7.30";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    flushSync();
+
+    escapeIn(field); // leaves the field
+    key("Escape"); // defers the card
+    expect(sent("Defer")).toHaveLength(1);
+
+    // The daemon re-presents the same item later.
+    emit("agentbox:view", form);
+    flushSync();
+
+    expect(host.querySelector("input.text").value, "the half-filled answer was lost").toBe("2026.7.30");
+  });
+
+  test("outside a field nothing changed: a notification still dismisses", () => {
+    show(view({ kind: "notify", title: "deploy finished" }));
+    key("Escape");
+    expect(sent("Dismiss")).toHaveLength(1);
+    expect(sent("Defer")).toHaveLength(0);
+  });
+});
