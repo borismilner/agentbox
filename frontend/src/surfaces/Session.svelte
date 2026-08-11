@@ -32,7 +32,16 @@
   $effect(() => {
     conv.length;
     if (!scroller || !stick) return;
-    queueMicrotask(() => (scroller.scrollTop = scroller.scrollHeight));
+    // Checked again inside the microtask, because the check above does not hold
+    // that long: `bind:this` nulls `scroller` on unmount, and an unmount lands
+    // between the two whenever the surface goes away while a conversation is
+    // streaming - closing the panel, or switching rail tabs mid-turn. The throw
+    // is invisible in the app (an unhandled rejection in a dead component) and
+    // surfaced in the test run instead.
+    queueMicrotask(() => {
+      if (!scroller) return;
+      scroller.scrollTop = scroller.scrollHeight;
+    });
   });
 
   function send() {
