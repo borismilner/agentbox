@@ -1,5 +1,6 @@
 <script>
   import { bridge, on } from "../lib/bridge.js";
+  import { endQuestion, ARM_MS } from "../lib/endsession.js";
   import Session from "./Session.svelte";
 
   // The drop-down panel (M10): the session surface, reached with a hotkey instead
@@ -59,11 +60,14 @@
     el.select();
   }
 
-  // Closing kills a child. One click when it is idle; two when it is mid-turn.
+  // Closing kills a child, so it always takes two clicks - idle included (U-09).
+  // Idle only means the agent is not mid-turn; the conversation it would take
+  // with it is worth the same either way, and the app window has always said so
+  // about the same session. endQuestion is where the wording lives.
   function close(s) {
-    if (s.state === "working" && arm !== s.id) {
+    if (arm !== s.id) {
       arm = s.id;
-      setTimeout(() => (arm = arm === s.id ? "" : arm), 3000);
+      setTimeout(() => (arm = arm === s.id ? "" : arm), ARM_MS);
       return;
     }
     arm = "";
@@ -138,13 +142,14 @@
               <span class="mk working" title="Claude is working">●</span>
             {/if}
           </button>
-          <!-- Two clicks to close a session that is mid-turn, one when it is idle:
-               closing kills the child, and a mis-click on a working agent is the
-               expensive mistake. The conversation is saved either way. -->
+          <!-- Two clicks to close, whatever the session is doing (U-09): closing
+               kills the child and takes an unsaved conversation with it. The chip
+               has no room for the sentence, so the armed tooltip carries it -
+               same words the app window puts in the row. -->
           <button
             class="x"
             class:arm={arm === s.id}
-            title={arm === s.id ? "Click again to close" : "Close this session"}
+            title={arm === s.id ? endQuestion(s) + " Click again to end it." : "End this session"}
             onclick={() => close(s)}>{arm === s.id ? "sure?" : "✕"}</button>
         </span>
       {/each}

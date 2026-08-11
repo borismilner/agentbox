@@ -1,6 +1,7 @@
 <script>
   import { bridge, on } from "../lib/bridge.js";
   import { forget } from "../lib/trouble.svelte.js";
+  import { endQuestion } from "../lib/endsession.js";
   import Home from "./Home.svelte";
   import Session from "./Session.svelte";
   import Agents from "./Agents.svelte";
@@ -117,11 +118,7 @@
                  takes its own line: it has to be readable, and a 224px rail cannot
                  hold a sentence and two buttons on one. -->
             <span class="ask">
-              <span class="q">
-                {s.state === "working"
-                  ? "Claude is working here. End it anyway?"
-                  : "End this session? An unsaved conversation goes with it."}
-              </span>
+              <span class="q">{endQuestion(s)}</span>
               <span class="btns">
                 <button class="end" onclick={(e) => (e.stopPropagation(), close(s.id))}>End session</button>
                 <button class="keep" onclick={(e) => (e.stopPropagation(), (closing = null))}>Keep</button>
