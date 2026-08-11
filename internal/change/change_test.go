@@ -268,8 +268,25 @@ func TestCountFilesOnTheShapeThatNeededTheBound(t *testing.T) {
 	if got != n {
 		t.Errorf("counted %d of %d headers", got, n)
 	}
-	if el > 2*time.Second {
-		t.Errorf("counting %d files took %v; the door parks the caller while it thinks", n, el)
-	}
 	t.Logf("%d files in %d bytes counted in %v", n, b.Len(), el)
+
+	// The cost is asserted in ALLOCATIONS, not in wall clock. The first version of
+	// this test failed the gate at 2.97s for work that takes 136ms here: `make
+	// check` runs the suite under -race, which costs an order of magnitude, on a
+	// machine that had three sessions and a deploy on it. A wall-clock ceiling in a
+	// race-enabled suite is a flake waiting for a busy evening, and widening it
+	// only moves the evening.
+	//
+	// What it is really guarding is a regexp that used to be compiled once per
+	// `diff --git` line. Compiling one allocates about eighty objects, so the
+	// defect states itself in a number no load can move: 200 headers is 409 allocs
+	// hoisted and 16,011 not.
+	const headers = 200
+	perHeader := testing.AllocsPerRun(5, func() {
+		CountFiles(strings.Repeat("diff --git a/f b/f\n", headers))
+	})
+	if perHeader > 2000 {
+		t.Errorf("counting %d headers allocates %.0f objects; something inside the loop "+
+			"is being built per line rather than once", headers, perHeader)
+	}
 }
