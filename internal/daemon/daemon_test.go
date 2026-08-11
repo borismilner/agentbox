@@ -2335,6 +2335,39 @@ func TestStatusCountsTheQuestionsWithAnAgentWaiting(t *testing.T) {
 	}
 }
 
+func TestARestoredQuestionHasNobodyWaitingOnIt(t *testing.T) {
+	// Found by running a real shutdown and restart (R-07): the question came back,
+	// and status called it one an agent was waiting on. Nobody is - its caller died
+	// with the previous daemon, which is what CallerAwaiting means. Counting it would
+	// warn every deploy about a loss that already happened.
+	st, err := store.Open(filepath.Join(t.TempDir(), "agentbox.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.CreateItem(&proto.Item{ID: "k1", Kind: proto.KindChoice, Title: "Deploy?",
+		Options: []proto.Option{{Label: "Yes"}, {Label: "No"}}, Identity: proto.Identity{Agent: "a"}}); err != nil {
+		t.Fatal(err)
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	d, err := New(Config{}, log, st, &fakeSound{}, &fakeUI{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, rpcErr := d.Handle(context.Background(), proto.MethodStatus, nil)
+	if rpcErr != nil {
+		t.Fatalf("status: %v", rpcErr)
+	}
+	m := res.(map[string]any)
+	if m["pending"].(int) != 1 {
+		t.Fatalf("pending = %v, want the restored question", m["pending"])
+	}
+	if m["blocking"].(int) != 0 {
+		t.Fatalf("blocking = %v, want 0: the caller went with the previous daemon", m["blocking"])
+	}
+}
+
 func TestStatusReportsTheServingBuild(t *testing.T) {
 	d, _, _, _ := newTestDaemon(t, Config{})
 

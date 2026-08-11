@@ -825,13 +825,13 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 		pending := len(d.queue)
 		blocking := 0
 		for _, it := range d.queue {
-			if it.Blocking() {
+			if d.callerStateLocked(it) == CallerLive {
 				blocking++
 			}
 		}
 		if d.current != nil {
 			pending++
-			if d.current.Blocking() {
+			if d.callerStateLocked(d.current) == CallerLive {
 				blocking++
 			}
 		}
@@ -840,10 +840,13 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 		// question as what the client on the other end of the socket happens to be.
 		// `make deploy` replaces the binary and restarts, and the only way to know
 		// the restart took is to ask the daemon what it is.
-		// blocking is the part of pending that has an agent waiting on the other end,
-		// which is the number a deploy cares about (R-07): those callers are told the
-		// daemon is going and their questions come back unanswered on the next start.
-		// A sticky warning left on screen costs nobody anything by comparison.
+		// blocking is the part of pending with an agent waiting on the other end RIGHT
+		// NOW, which is the number a deploy cares about (R-07): those callers are told
+		// the daemon is going and their questions come back unanswered. It is a live
+		// caller and not merely a blocking kind, which the first version got wrong -
+		// an item restored from a previous run is blocking, is pending, and has nobody
+		// on the other end, so counting it warned every deploy about a loss that had
+		// already happened. A sticky warning on screen costs nobody anything either.
 		return map[string]any{"pending": pending, "blocking": blocking, "version": version.Get()}, nil
 	case proto.MethodInbox:
 		d.ui.ShowApp("inbox")
