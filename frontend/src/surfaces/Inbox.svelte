@@ -159,6 +159,13 @@
     }
     if (inField) return;
 
+    // A held modifier means the keystroke was never triage. Nothing on this
+    // surface uses one, and the meanings collide with the ones a desktop
+    // already has: Ctrl+S is save everywhere, not snooze, and the shell walks
+    // the rail with Ctrl+1..9 over whichever surface is in front. The copy key
+    // below used to make this argument on its own; it holds for all of them.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
     // A row is a real button, so Tab reaches it and Enter or Space opens its
     // detail - the only keyboard path to a resolved row, since triage's selection
     // only ever walks the pending run. Those two keys belong to the focused
@@ -185,7 +192,7 @@
       return;
     }
     if (!chosen) return;
-    if (e.key === "c" && !e.ctrlKey && !e.metaKey) {
+    if (e.key === "c") {
       e.preventDefault();
       bridge.copyItem(chosen.id);
       return;

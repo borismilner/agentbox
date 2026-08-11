@@ -32,6 +32,7 @@
   // The preview element is the one piece that cannot be lifted: it is this
   // mount's DOM, and the theme is applied to that subtree.
   let previewEl = $state(null);
+  let navEl = $state(null);
 
   const section = $derived(data?.sections?.find((s) => s.id === active) ?? null);
   const dirty = $derived(unsavedKnobs());
@@ -112,6 +113,76 @@
     if (!res?.err || draft.written.length) await load();
   }
 
+  // Writes go through `draft`, never through the aliases above: those are
+  // $derived reads of the shell-held draft (U-10), so assigning to them would
+  // not survive the surface being swapped out even if the compiler allowed it.
+  function pick(id) {
+    draft.active = id;
+    draft.note = "";
+    draft.written = [];
+  }
+
+  // The keyboard (U-12). This is a dense form with a Save button as its whole
+  // point, and until now every one of those things needed the pointer or the Tab
+  // order: nothing wrote the file, nothing took a change back, and the sections
+  // were reachable only one Tab stop at a time.
+  //
+  // The sections answer to the arrow keys rather than to a chord, because they
+  // are a tab strip and that is what a tab strip does. A control that reads the
+  // arrows itself keeps them: a slider is the point of the appearance section,
+  // and a select is a list you walk.
+  const usesArrows = (t) =>
+    t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
+
+  function step(delta) {
+    const ids = data?.sections?.map((s) => s.id) ?? [];
+    const at = ids.indexOf(active);
+    if (at < 0 || ids.length < 2) return;
+    const to = (at + delta + ids.length) % ids.length;
+    pick(ids[to]);
+    // The keyboard goes to the tab that is now selected. It cannot stay where it
+    // was: a section change replaces the whole panel, so a control that held the
+    // focus is gone a moment later and the focus falls to the document with it.
+    // The tabs are all rendered, so the new one takes it by position rather than
+    // after a repaint.
+    navEl?.querySelectorAll("button")[to]?.focus();
+  }
+
+  function onKey(e) {
+    if (!data) return;
+    if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+      // The webview offers to save the page otherwise, which is never what
+      // Ctrl+S means while looking at a settings form.
+      e.preventDefault();
+      if (dirty.length && !saving) save();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    if (e.key === "Escape") {
+      // Esc leaves the field first and acts on the surface second, which is what
+      // the rest of the product does (U-11) and the reason a half-typed value is
+      // never thrown away by one keystroke.
+      if (usesArrows(e.target)) {
+        e.preventDefault();
+        e.target.blur();
+      } else if (dirty.length) {
+        e.preventDefault();
+        revert();
+      }
+      return;
+    }
+
+    if (usesArrows(e.target)) return;
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      step(1);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      step(-1);
+    }
+  }
+
   // A short enum reads better as a segmented control; a long one belongs in a
   // select, where the options do not fight the panel for width.
   const isSegmented = (k) => k.kind === "enum" && k.enum.length <= 3 && k.enum.every((v) => v.length <= 12);
@@ -124,6 +195,8 @@
   };
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <section class="settings">
   <header>
     <div class="line">
@@ -131,18 +204,22 @@
       {#if data}<span class="path" title={data.path}>{data.path}</span>{/if}
     </div>
     {#if data}
-      <nav>
+      <!-- A tab strip, said out loud: one Tab stop for the whole strip, the
+           arrows between the tabs, and a reader who cannot see the underline is
+           told which section is selected. -->
+      <div class="tabs" bind:this={navEl} role="tablist" aria-label="Settings sections">
         {#each data.sections as s (s.id)}
           <button
+            role="tab"
+            id="tab-{s.id}"
+            aria-selected={active === s.id}
+            aria-controls="sec-{s.id}"
+            tabindex={active === s.id ? 0 : -1}
             class:on={active === s.id}
-            onclick={() => {
-              draft.active = s.id;
-              draft.note = "";
-              draft.written = [];
-            }}>{s.title}</button
+            onclick={() => pick(s.id)}>{s.title}</button
           >
         {/each}
-      </nav>
+      </div>
     {/if}
   </header>
 
@@ -150,7 +227,7 @@
     <p class="empty">Reading {"~/.config/agentbox/config.toml"}…</p>
   {:else}
     <div class="body" class:split={section?.preview}>
-      <div class="panel">
+      <div class="panel" id="sec-{active}" role="tabpanel" aria-labelledby="tab-{active}">
         {#if section?.blurb}<p class="blurb">{section.blurb}</p>{/if}
 
         {#each section?.groups ?? [] as g (g.title)}
@@ -330,6 +407,9 @@
           <span class="wrote">{dirty.map((k) => k.id).join("  ·  ")}</span>
         {/if}
       </div>
+      <!-- A shortcut nobody can see is a shortcut nobody uses, and this surface
+           has room for the line. -->
+      <span class="keys">Ctrl+S save · Esc revert · ←/→ sections</span>
       <button class="btn" disabled={!dirty.length || saving} onclick={revert}>Revert</button>
       <button class="btn primary" disabled={!dirty.length || saving} onclick={save}>{saving ? "Writing…" : "Save"}</button>
     </footer>
@@ -369,22 +449,22 @@
     white-space: nowrap;
     max-width: 46ch;
   }
-  nav {
+  .tabs {
     display: flex;
     gap: 2px;
     margin-top: 12px;
   }
-  nav button {
+  .tabs button {
     padding: 6px 12px;
     border-radius: 7px 7px 0 0;
     font-size: 0.8rem;
     color: var(--k-ink-3);
     border-bottom: 2px solid transparent;
   }
-  nav button:hover {
+  .tabs button:hover {
     color: var(--k-ink-2);
   }
-  nav button.on {
+  .tabs button.on {
     color: var(--k-ink);
     border-bottom-color: var(--k-accent);
   }
@@ -850,6 +930,15 @@
   .state span {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Mono and quiet, the voice every other key hint in the product uses. It never
+   * shrinks: the state line beside it ellipsises first. */
+  .keys {
+    flex: 0 0 auto;
+    font-family: var(--k-font-mono, monospace);
+    font-size: 0.64rem;
+    color: var(--k-ink-3, #888);
     white-space: nowrap;
   }
   .state .ok {

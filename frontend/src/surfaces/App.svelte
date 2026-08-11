@@ -12,7 +12,7 @@
   import Settings from "./Settings.svelte";
   import Viewer from "./Viewer.svelte";
   import Library from "./Library.svelte";
-  import Rail from "../lib/Rail.svelte";
+  import Rail, { SURFACES } from "../lib/Rail.svelte";
 
   // The app shell: title bar, surface rail, session list, and whichever
   // surface is in front. agentbox as an application rather than a series of
@@ -78,10 +78,29 @@
     queueMoved++;
   });
 
+  // Ctrl+1..9 picks a surface by where its icon sits in the rail (U-13). This is
+  // the most repeated navigation in the app and it used to cost a pointer or up
+  // to nine Tab stops. The shortcut lives here rather than in the rail because
+  // the tab state does, and because it has to work while another surface holds
+  // the keyboard.
+  //
+  // A bare digit is left alone: the inbox reads one as an answer to the selected
+  // question, and the surface in front owns the unmodified keys.
+  function onKey(e) {
+    if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    if (!/^[1-9]$/.test(e.key)) return;
+    const surface = SURFACES[Number(e.key) - 1];
+    if (!surface) return;
+    e.preventDefault();
+    tab = surface.id;
+  }
+
   bridge.ready("app");
   bridge.sessions().then((list) => (sessions = list ?? []));
   bridge.inbox().then((v) => v && (inbox = v));
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <!-- The session list belongs to the session surface, so it collapses on the
      others: the inbox and history want every pixel of width for their rows, and

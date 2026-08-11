@@ -15,6 +15,8 @@
   let typing = $state(false);
   let box = $state(null);
   let asking = $state(null); // id awaiting delete confirmation
+  let sel = $state(0);
+  let listEl = $state(null);
 
   const clock = ticker();
 
@@ -24,6 +26,20 @@
       return !q || (r.title + " " + r.repo + " " + r.id).toLowerCase().includes(q);
     }),
   );
+
+  const chosen = $derived(shown[Math.min(sel, shown.length - 1)] ?? null);
+
+  // The list moves under the reader - a review is deleted, the filter narrows,
+  // Refresh brings back a shorter list - so the selection is clamped against
+  // what is on screen now rather than against a remembered index.
+  $effect(() => {
+    if (sel > shown.length - 1) sel = Math.max(0, shown.length - 1);
+  });
+
+  $effect(() => {
+    if (!chosen || !listEl) return;
+    listEl.querySelector(`[data-id="${chosen.id}"]`)?.scrollIntoView({ block: "nearest" });
+  });
 
   async function load() {
     try {
@@ -55,6 +71,52 @@
     }
   }
 
+  // The keys are the inbox's, deliberately (U-12): this is the other list of
+  // rows in the app, and a reader who has learned j/k there should not have to
+  // learn a second set here. Enter puts the selected review back on the board,
+  // which is the one thing this surface is for.
+  function onKey(e) {
+    const inField = e.target instanceof HTMLInputElement;
+
+    if (e.key === "Escape") {
+      if (inField || typing) {
+        e.preventDefault();
+        box?.blur();
+      } else if (asking) {
+        // A delete waiting for a second click is a question, and Esc answers it
+        // the safe way.
+        e.preventDefault();
+        asking = null;
+      }
+      return;
+    }
+    if (inField || e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // A row is a real button, so Tab reaches it and Enter presses the one that
+    // has the focus. Acting on the selection as well would open two reviews.
+    if ((e.key === "Enter" || e.key === " ") && e.target instanceof HTMLButtonElement) return;
+
+    if (e.key === "/") {
+      e.preventDefault();
+      box?.focus();
+      return;
+    }
+    if (e.key === "j" || e.key === "ArrowDown") {
+      e.preventDefault();
+      sel = Math.min(sel + 1, Math.max(0, shown.length - 1));
+      return;
+    }
+    if (e.key === "k" || e.key === "ArrowUp") {
+      e.preventDefault();
+      sel = Math.max(sel - 1, 0);
+      return;
+    }
+    if (e.key === "Enter" && chosen) {
+      e.preventDefault();
+      open(chosen.id);
+    }
+  }
+
   // Relative, because "yesterday" is what you remember about a review, not a
   // date. Anything older than a week gets the date instead - by then the
   // number of days stops meaning anything. Ages ride the shared 1Hz tick so
@@ -69,12 +131,19 @@
   }
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <section class="library">
   <header>
     <div class="line">
       <h1>Library</h1>
       {#if rows?.length}
-        <span class="count">{rows.length} review{rows.length === 1 ? "" : "s"}</span>
+        <!-- The hint is only honest while the keys are live: with the search box
+             focused, "j/k move" would type a j. -->
+        <span class="count"
+          >{rows.length} review{rows.length === 1 ? "" : "s"} ·
+          <em>{typing ? "esc leaves search" : "j/k move · enter opens · / search"}</em></span
+        >
       {/if}
     </div>
     <div class="tools">
@@ -117,9 +186,9 @@
     {:else if shown.length === 0}
       <p class="blank">Nothing matches “{query}”.</p>
     {:else}
-      <div class="rows">
+      <div class="rows" bind:this={listEl}>
         {#each shown as r (r.id)}
-          <div class="row" class:asked={asking === r.id}>
+          <div class="row" data-id={r.id} class:on={!typing && chosen?.id === r.id} class:asked={asking === r.id}>
             <button class="main" onclick={() => open(r.id)} title="Put this review on the board">
               <span class="hue"></span>
               <span class="body">
@@ -190,6 +259,11 @@
     font-family: var(--k-font-mono);
     font-size: 0.7rem;
     color: var(--k-ink-3);
+  }
+  /* The key hint travels in the count line. It is a hint, not an emphasis, so it
+   * keeps the count's voice rather than leaning. */
+  .line .count em {
+    font-style: normal;
   }
   .tools {
     display: flex;
@@ -306,6 +380,13 @@
   }
   .row:hover {
     background: var(--k-surface-2);
+  }
+  /* Where the keyboard is. The rows are joined and borderless, so the mark is an
+   * inset edge rather than a border: a border here would move the row by a pixel
+   * and shift every row under it. */
+  .row.on {
+    background: var(--k-surface-2);
+    box-shadow: inset 2px 0 0 var(--k-accent, currentColor);
   }
   .row.asked {
     background: color-mix(in srgb, var(--k-warning) 7%, var(--k-surface));

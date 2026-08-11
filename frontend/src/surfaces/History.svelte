@@ -21,6 +21,32 @@
 
   let window_ = $state("7d");
   let stats = $state(null);
+  let winEl = $state(null);
+
+  // The only choice on this surface is which window it covers, and until now the
+  // only way to make it was the pointer or four Tab stops (U-12). Four buttons
+  // where exactly one is chosen is a radio group, so it answers to the arrows,
+  // costs one Tab stop, and says which window is current out loud.
+  //
+  // The buttons are all on screen already, so the new one takes the focus by its
+  // position without waiting for a repaint.
+  function move(delta) {
+    const at = WINDOWS.findIndex((w) => w.id === window_);
+    const to = (at + delta + WINDOWS.length) % WINDOWS.length;
+    window_ = WINDOWS[to].id;
+    winEl?.querySelectorAll("button")[to]?.focus();
+  }
+
+  function onKey(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      move(1);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      move(-1);
+    }
+  }
 
   // Re-query on a window change and whenever the queue moved (refresh is bumped
   // by the app on every agentbox:inbox push), so an answer given a second ago is
@@ -45,9 +71,19 @@
   <header>
     <div class="line">
       <h1>History</h1>
-      <div class="windows" role="group" aria-label="Time window">
+      <div class="windows" role="radiogroup" aria-label="Time window" bind:this={winEl}>
+        <!-- The keys sit on the buttons rather than on the group, because the
+             chosen window is the only one in the Tab order and so the only one
+             that can be holding the keyboard when an arrow arrives. -->
         {#each WINDOWS as w}
-          <button class:on={window_ === w.id} onclick={() => (window_ = w.id)}>{w.label}</button>
+          <button
+            role="radio"
+            aria-checked={window_ === w.id}
+            tabindex={window_ === w.id ? 0 : -1}
+            class:on={window_ === w.id}
+            onkeydown={onKey}
+            onclick={() => (window_ = w.id)}>{w.label}</button
+          >
         {/each}
       </div>
     </div>

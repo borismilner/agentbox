@@ -65,7 +65,9 @@ async function settle() {
 
 const rail = (name) => host.querySelector(`nav.rail button[title^="${name}"]`);
 const slider = () => host.querySelector('.settings input[type="range"]');
-const sectionTab = (title) => [...host.querySelectorAll(".settings header nav button")].find((b) => b.textContent.trim() === title);
+// The section strip became a real tablist (U-12), so it is a div with
+// role="tablist" rather than the nav this used to look for.
+const sectionTab = (title) => [...host.querySelectorAll('.settings header [role="tablist"] button')].find((b) => b.textContent.trim() === title);
 const footer = () => host.querySelector(".settings footer .state")?.textContent.replace(/\s+/g, " ").trim() ?? "";
 const dots = () => host.querySelectorAll(".settings .dot").length;
 
@@ -207,7 +209,8 @@ describe("the rail says settings is holding an edit (U-10)", () => {
     click(rail("Inbox"));
 
     expect(mark()).toBeTruthy();
-    expect(rail("Settings").title).toBe("Settings · 1 change not yet written");
+    // The tooltip carries the shortcut too since U-13; the count is appended to it.
+    expect(rail("Settings").title).toBe("Settings · Ctrl+9 · 1 change not yet written");
   });
 
   test("reverting takes the dot back down", async () => {
@@ -216,6 +219,6 @@ describe("the rail says settings is holding an edit (U-10)", () => {
     click([...host.querySelectorAll(".settings footer button")].find((b) => b.textContent.trim() === "Revert"));
 
     expect(mark()).toBeNull();
-    expect(rail("Settings").title).toBe("Settings");
+    expect(rail("Settings").title).toBe("Settings · Ctrl+9");
   });
 });
