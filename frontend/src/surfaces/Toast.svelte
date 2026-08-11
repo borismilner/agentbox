@@ -77,9 +77,23 @@
 
   // "click to expand" only earns its place when there is something hidden: three
   // lines is the clamp (03-ui-ux.md), so compare the full height against it.
+  //
+  // U-07. `scrollHeight` is a DOM read, so Svelte does not track it, and this window
+  // is REUSED: a new item swapped into the same node left the previous item's answer
+  // on screen - a long notice clipped with nothing saying so, or a short one offering
+  // to expand into nothing. The item id is read to make the effect re-run, and the
+  // measurement is repeated after paint because the new body is not laid out yet at
+  // the moment the effect runs.
   $effect(() => {
     if (!body) return;
-    clamped = !expanded && body.scrollHeight - body.clientHeight > 4;
+    void view?.item?.id;
+    void view?.bodyHtml;
+    const measure = () => {
+      if (body) clamped = !expanded && body.scrollHeight - body.clientHeight > 4;
+    };
+    measure();
+    const raf = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(raf);
   });
 
   function dismiss() {
@@ -90,11 +104,18 @@
   // when there is more to read, where the first click opens it. Buttons stop the
   // click themselves; a notice with actions must not dismiss under the fingers of
   // someone reaching for one.
+  //
+  // U-08. And once it IS open, the strip stops being a dismiss target. The expanded
+  // body scrolls and is selectable, so the two gestures for reading a long notice -
+  // clicking the scrollbar, clicking to place a cursor before selecting a passage -
+  // were taking it away mid-sentence. Dismissal moves to the ✕ (shown whenever
+  // expanded, below) and to the keyboard, which are both deliberate.
   function onClick() {
     if (clamped && !expanded) {
       expanded = true;
       return;
     }
+    if (expanded) return;
     dismiss();
   }
 
@@ -125,7 +146,7 @@
     style="--sev: {severity}"
     bind:this={shell}
     onclick={onClick}
-    title={clamped ? "click to expand" : "click to dismiss"}
+    title={clamped ? "click to expand" : expanded ? "press Esc, or ✕, to dismiss" : "click to dismiss"}
   >
     <span class="rail"></span>
     <SeverityIcon glyph={view.glyph} size={20} />
@@ -135,7 +156,7 @@
         <span class="title">{item.title}</span>
         <span class="spacer"></span>
         <IdentityPill agent={item.identity?.agent} project={item.identity?.project} session={item.identity?.session} compact />
-        {#if view.sticky}
+        {#if view.sticky || expanded}
           <button
             class="x"
             title="dismiss"
