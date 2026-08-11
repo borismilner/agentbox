@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && !nox11
 
 package webui
 
@@ -49,11 +49,11 @@ import (
 
 // xidOf returns the X11 window id backing a Wails window's GtkWindow, or 0
 // when there is no X11 surface (Wayland).
-func xidOf(native unsafe.Pointer) xproto.Window {
+func xidOf(native unsafe.Pointer) winID {
 	if native == nil {
 		return 0
 	}
-	return xproto.Window(C.xidFor(native))
+	return winID(C.xidFor(native))
 }
 
 // showNoActivate maps a Wails window without asking the WM for focus. Must
@@ -181,13 +181,13 @@ func card32(v uint32) []byte {
 
 // activeWindow reads _NET_ACTIVE_WINDOW so we can hand focus back if the WM
 // takes it anyway.
-func (x *x11) activeWindow() xproto.Window {
+func (x *x11) activeWindow() winID {
 	r, err := xproto.GetProperty(x.c, false, x.root, x.atoms["_NET_ACTIVE_WINDOW"],
 		xproto.AtomWindow, 0, 1).Reply()
 	if err != nil || len(r.Value) < 4 {
 		return 0
 	}
-	return xproto.Window(binary.LittleEndian.Uint32(r.Value))
+	return winID(binary.LittleEndian.Uint32(r.Value))
 }
 
 // prepare is agentbox's existing card treatment, aimed at a GTK window instead
@@ -205,7 +205,8 @@ func (x *x11) activeWindow() xproto.Window {
 // rest of what a card needs - it can still take the keyboard when you summon it,
 // which notification and dock cannot - so a card and the panel are utility
 // windows now, and only a toast is a notification.
-func (x *x11) prepare(win xproto.Window, notification bool) {
+func (x *x11) prepare(id winID, notification bool) {
+	win := xproto.Window(id)
 	motif := make([]byte, 20)
 	binary.LittleEndian.PutUint32(motif, 2) // flags = MWM_HINTS_DECORATIONS, decorations = 0
 	xproto.ChangeProperty(x.c, xproto.PropModeReplace, win,
@@ -246,7 +247,8 @@ func (x *x11) prepare(win xproto.Window, notification bool) {
 // The undecorated half is not cosmetic either. Mutter frames a bare window, and a
 // 4px window then comes back about 30px tall wearing a title bar - measured, while
 // answering this feature's own question with a probe that had forgotten to say it.
-func (x *x11) plain(win xproto.Window) {
+func (x *x11) plain(id winID) {
+	win := xproto.Window(id)
 	motif := make([]byte, 20)
 	binary.LittleEndian.PutUint32(motif, 2) // flags = MWM_HINTS_DECORATIONS, decorations = 0
 	xproto.ChangeProperty(x.c, xproto.PropModeReplace, win,
@@ -269,7 +271,8 @@ func (x *x11) plain(win xproto.Window) {
 // the WM owns that property, so writing it directly is ignored - Mutter had
 // already replaced our pre-map ABOVE with DEMANDS_ATTENTION by the time the
 // card was on screen. Client messages are the supported route.
-func (x *x11) stateMsg(win xproto.Window, action uint32, names ...string) {
+func (x *x11) stateMsg(id winID, action uint32, names ...string) {
+	win := xproto.Window(id)
 	var a1, a2 uint32
 	if len(names) > 0 {
 		a1 = uint32(x.atoms[names[0]])
@@ -290,12 +293,12 @@ func (x *x11) stateMsg(win xproto.Window, action uint32, names ...string) {
 // stack, stay out of the taskbar, drop the "demands attention" flag Mutter
 // adds to any window that declined focus, and place the window where we want it
 // rather than where the WM put it - a card dead center, a toast at the top.
-func (x *x11) settle(win xproto.Window, w, h int, top bool, topInset int) {
-	x.stateMsg(win, 1, "_NET_WM_STATE_ABOVE")
-	x.stateMsg(win, 1, "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER")
-	x.stateMsg(win, 0, "_NET_WM_STATE_DEMANDS_ATTENTION")
-	x.raise(win)
-	x.place(win, w, h, top, topInset)
+func (x *x11) settle(id winID, w, h int, top bool, topInset int) {
+	x.stateMsg(id, 1, "_NET_WM_STATE_ABOVE")
+	x.stateMsg(id, 1, "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER")
+	x.stateMsg(id, 0, "_NET_WM_STATE_DEMANDS_ATTENTION")
+	x.raise(id)
+	x.place(id, w, h, top, topInset)
 }
 
 // above is settle's stacking half on its own: stay on top, never take focus, and
@@ -306,10 +309,10 @@ func (x *x11) settle(win xproto.Window, w, h int, top bool, topInset int) {
 // the progress bar ran the whole time underneath it, on camera and invisible.
 // Boris's rule, 2026-07-26: every surface agentbox puts up must be top-most,
 // otherwise it will be missed.
-func (x *x11) above(win xproto.Window) {
-	x.stateMsg(win, 1, "_NET_WM_STATE_ABOVE")
-	x.stateMsg(win, 0, "_NET_WM_STATE_DEMANDS_ATTENTION")
-	x.raise(win)
+func (x *x11) above(id winID) {
+	x.stateMsg(id, 1, "_NET_WM_STATE_ABOVE")
+	x.stateMsg(id, 0, "_NET_WM_STATE_DEMANDS_ATTENTION")
+	x.raise(id)
 	xproto.GetInputFocus(x.c).Reply() // flush
 }
 
@@ -328,7 +331,8 @@ func (x *x11) above(win xproto.Window) {
 // agentbox can be in front and still not steal the keyboard. The ConfigureWindow
 // afterwards is the belt: a WM that ignores the pager message usually honours a
 // plain stack-mode request, and neither costs anything when the other worked.
-func (x *x11) raise(win xproto.Window) {
+func (x *x11) raise(id winID) {
+	win := xproto.Window(id)
 	ev := xproto.ClientMessageEvent{
 		Format: 32, Window: win, Type: x.atoms["_NET_RESTACK_WINDOW"],
 		// source 2 = pager, sibling None, detail Above
@@ -351,7 +355,8 @@ func (x *x11) raise(win xproto.Window) {
 // The window stays MAPPED. It is not withdrawn and not hidden: the moment the
 // fullscreen window loses the focus the keeper raises it again, and a window that
 // was only restacked comes back in one round trip with nothing to rebuild.
-func (x *x11) lower(win xproto.Window) {
+func (x *x11) lower(id winID) {
+	win := xproto.Window(id)
 	ev := xproto.ClientMessageEvent{
 		Format: 32, Window: win, Type: x.atoms["_NET_RESTACK_WINDOW"],
 		// source 2 = pager, sibling None, detail Below
@@ -375,12 +380,12 @@ func (x *x11) lower(win xproto.Window) {
 // fullscreen window is not covering anything and there is nothing to step aside
 // from. Any error, and a display that cannot answer, reads as not fullscreen -
 // the direction that keeps the strip visible.
-func (x *x11) fullscreenActive() (xproto.Window, bool) {
+func (x *x11) fullscreenActive() (winID, bool) {
 	win := x.activeWindow()
 	if win == 0 {
 		return 0, false
 	}
-	r, err := xproto.GetProperty(x.c, false, win, x.atoms["_NET_WM_STATE"],
+	r, err := xproto.GetProperty(x.c, false, xproto.Window(win), x.atoms["_NET_WM_STATE"],
 		xproto.GetPropertyTypeAny, 0, 64).Reply()
 	if err != nil || r == nil || r.Format != 32 {
 		return 0, false
@@ -401,7 +406,8 @@ func (x *x11) fullscreenActive() (xproto.Window, bool) {
 //
 // A window whose geometry cannot be read falls back to activeMon, which is what
 // every other placement uses.
-func (x *x11) windowMon(win xproto.Window) mon {
+func (x *x11) windowMon(id winID) mon {
+	win := xproto.Window(id)
 	g, gerr := xproto.GetGeometry(x.c, xproto.Drawable(win)).Reply()
 	t, terr := xproto.TranslateCoordinates(x.c, win, x.root, 0, 0).Reply()
 	if gerr != nil || terr != nil || g == nil || t == nil {
@@ -417,7 +423,8 @@ func (x *x11) windowMon(win xproto.Window) mon {
 // [window] toast_top_inset). Both axes are ours: Mutter's own placement runs at
 // map time and puts a frameless override-ish window wherever it likes - and what
 // it likes, on two monitors, is not where you are looking.
-func (x *x11) place(win xproto.Window, w, h int, top bool, topInset int) {
+func (x *x11) place(id winID, w, h int, top bool, topInset int) {
+	win := xproto.Window(id)
 	m := x.activeMon()
 	px, py := centreIn(m, w, h)
 	if top {
@@ -431,7 +438,8 @@ func (x *x11) place(win xproto.Window, w, h int, top bool, topInset int) {
 // corner pins a window to the bottom-right of that monitor, inset from its edges.
 // This is where progress goes (FR21): a long task reports where it cannot cover
 // the middle of the screen, which belongs to whatever is asking a question.
-func (x *x11) corner(win xproto.Window, w, h int) {
+func (x *x11) corner(id winID, w, h int) {
+	win := xproto.Window(id)
 	const inset = 28
 	px, py := cornerIn(x.activeMon(), w, h, inset, inset+24)
 	xproto.ConfigureWindow(x.c, win, xproto.ConfigWindowX|xproto.ConfigWindowY,
@@ -449,7 +457,8 @@ func (x *x11) corner(win xproto.Window, w, h int) {
 // same route the position already takes (a managed window resizes on
 // ConfigureWindow, which is how wmctrl -e does it), and GTK follows the
 // ConfigureNotify that comes back.
-func (x *x11) moveResize(win xproto.Window, px, py, w, h int) {
+func (x *x11) moveResize(id winID, px, py, w, h int) {
+	win := xproto.Window(id)
 	if w < 1 {
 		w = 1
 	}
@@ -468,9 +477,9 @@ func (x *x11) moveResize(win xproto.Window, px, py, w, h int) {
 // panel ended up with a dock icon that Boris could see and agentbox could not
 // explain. Client messages are cheap; sending them twice is cheaper than a
 // wrong-looking dock.
-func (x *x11) unlisted(win xproto.Window) {
-	x.stateMsg(win, 1, "_NET_WM_STATE_ABOVE")
-	x.unlistedPlain(win)
+func (x *x11) unlisted(id winID) {
+	x.stateMsg(id, 1, "_NET_WM_STATE_ABOVE")
+	x.unlistedPlain(id)
 }
 
 // unlistedPlain is unlisted without the ABOVE, for FR95's demoted marker. It is
@@ -479,9 +488,9 @@ func (x *x11) unlisted(win xproto.Window) {
 // ABOVE before mapping got it anyway on the next line, and a fullscreen window
 // still could not cover it. Measured on screen after the code read correctly:
 // four amber pixels on top of a genuinely fullscreen window.
-func (x *x11) unlistedPlain(win xproto.Window) {
-	x.stateMsg(win, 1, "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER")
-	x.stateMsg(win, 0, "_NET_WM_STATE_DEMANDS_ATTENTION")
+func (x *x11) unlistedPlain(id winID) {
+	x.stateMsg(id, 1, "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER")
+	x.stateMsg(id, 0, "_NET_WM_STATE_DEMANDS_ATTENTION")
 	xproto.GetInputFocus(x.c).Reply() // flush
 }
 
@@ -489,7 +498,8 @@ func (x *x11) unlistedPlain(win xproto.Window) {
 // drop-down panel is animated by moving it - a fixed-size window sliding down
 // from above the top edge - rather than by growing it: a resize reflows the
 // webview on every frame and a move does not touch it at all.
-func (x *x11) moveTo(win xproto.Window, px, py int) {
+func (x *x11) moveTo(id winID, px, py int) {
+	win := xproto.Window(id)
 	xproto.ConfigureWindow(x.c, win, xproto.ConfigWindowX|xproto.ConfigWindowY,
 		[]uint32{uint32(int32(px)), uint32(int32(py))})
 }
@@ -503,7 +513,8 @@ func (x *x11) flush() { xproto.GetInputFocus(x.c).Reply() }
 // windows (linux_cgo.go setTitle), and every agentbox window is frameless, so the
 // property goes on directly - otherwise the reading window would show up in the
 // task switcher as "agentbox" with no hint of what it is showing.
-func (x *x11) setName(win xproto.Window, name string) {
+func (x *x11) setName(id winID, name string) {
+	win := xproto.Window(id)
 	b := []byte(name)
 	xproto.ChangeProperty(x.c, xproto.PropModeReplace, win,
 		x.atoms["_NET_WM_NAME"], x.atoms["UTF8_STRING"], 8, uint32(len(b)), b)
@@ -517,14 +528,16 @@ func (x *x11) setName(win xproto.Window, name string) {
 // task starting in the background must not take the focus off whatever the user
 // is typing into, but it is a normal window otherwise - taskbar, stacking and
 // all.
-func (x *x11) quiet(win xproto.Window) {
+func (x *x11) quiet(id winID) {
+	win := xproto.Window(id)
 	xproto.ChangeProperty(x.c, xproto.PropModeReplace, win,
 		x.atoms["_NET_WM_USER_TIME"], xproto.AtomCardinal, 32, 1, card32(0))
 	xproto.GetInputFocus(x.c).Reply()
 }
 
 // activate is the deliberate opposite: agentbox summon, which does want focus.
-func (x *x11) activate(win xproto.Window) {
+func (x *x11) activate(id winID) {
+	win := xproto.Window(id)
 	ev := xproto.ClientMessageEvent{
 		Format: 32, Window: win, Type: x.atoms["_NET_ACTIVE_WINDOW"],
 		Data: xproto.ClientMessageDataUnionData32New([]uint32{2, 0, 0, 0, 0}),

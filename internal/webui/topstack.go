@@ -2,8 +2,6 @@ package webui
 
 import (
 	"sync"
-
-	"github.com/jezek/xgb/xproto"
 )
 
 // topStack owns the top-centre column (FR75).
@@ -38,7 +36,7 @@ type topStack struct {
 // under it.
 type topSlot struct {
 	key  string // stable per window: "control", "toast:<id>"
-	xid  xproto.Window
+	xid  winID
 	w, h int
 	// first pins a slot to the top of the column whatever the claim order. Only
 	// the hands-off strip sets it: FR74 requires that nothing of agentbox's own covers
@@ -55,7 +53,7 @@ func newTopStack(ui *UI) *topStack { return &topStack{ui: ui} }
 
 // put claims or updates a slot and re-lays the column out. Idempotent per key, so
 // the resize path can call it on every measurement without growing the column.
-func (t *topStack) put(key string, xid xproto.Window, w, h int, first bool) {
+func (t *topStack) put(key string, xid winID, w, h int, first bool) {
 	t.mu.Lock()
 	found := false
 	for i := range t.slots {

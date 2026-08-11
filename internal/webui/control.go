@@ -4,8 +4,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jezek/xgb/xproto"
-
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
@@ -87,13 +85,13 @@ type control struct {
 	// open and the step-aside happen on the edge rather than every tick.
 	fs      bool
 	mark    *application.WebviewWindow
-	markXID xproto.Window
+	markXID winID
 	kind    markKind
 	// winXID is the strip's own X id, recorded where it is already known - on the
 	// main thread, inside openWindow. Asking a Wails window for its native handle
 	// from any other goroutine is a GTK call off the UI thread, which is not a
 	// thing to do for a number that never changes.
-	winXID xproto.Window
+	winXID winID
 
 	// Recording mode (FR95). quiet is the last state the daemon sent, kept so the
 	// promote path can tell "still loud" from "loud again". stripMon is where the
@@ -378,7 +376,7 @@ func (c *control) openWindow() {
 // after it - including one of agentbox's own - cannot end up in front. It never touches
 // focus: x11.raise uses _NET_RESTACK_WINDOW for exactly this, restacking without
 // activating, which is what lets agentbox be in front without taking the keyboard.
-func (c *control) keepOnTop(xid xproto.Window) {
+func (c *control) keepOnTop(xid winID) {
 	stop := make(chan struct{})
 	c.mu.Lock()
 	if c.stop != nil {
@@ -406,7 +404,7 @@ func (c *control) keepOnTop(xid xproto.Window) {
 
 // beat is one tick of the keeper: read the desktop, decide, act. Split out from
 // keepOnTop because it now has a decision in it and the goroutine does not.
-func (c *control) beat(strip xproto.Window) {
+func (c *control) beat(strip winID) {
 	x := c.ui.x
 	fsWin, fs := x.fullscreenActive()
 	var fsM mon
