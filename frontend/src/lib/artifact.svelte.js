@@ -153,6 +153,38 @@ function sourceOf(block) {
 // matters: an opaque-origin document has origin "null", which names nothing.
 const frames = new Map();
 
+// U-18. How long an artifact may show nothing before the bar says so.
+//
+// The clock starts at "ready", which the bootstrap posts synchronously as the
+// document's first script, so it measures the artifact's own startup rather than
+// the frame's load. An artifact that renders anything reports a height; one that
+// renders nothing never does, and that absence is the ONLY signal available for the
+// worst failure class - a module import the policy blocks, which reports to no
+// error listener in any phase (measured in Chrome, U-18). Everything else now
+// arrives as a message, so this deadline only ever speaks when nothing else could.
+const SILENT_STAGE_MS = 2500;
+const silent = new Map();
+
+function clearSilence(block) {
+  const t = silent.get(block);
+  if (t) {
+    clearTimeout(t);
+    silent.delete(block);
+  }
+}
+
+function watchForSilence(block) {
+  clearSilence(block);
+  silent.set(block, setTimeout(() => {
+    silent.delete(block);
+    if (block.dataset.drew === "1") return;
+    // A specific message beats a generic one: if the artifact managed to say what
+    // went wrong, or buildDocument left a note, that stays.
+    if (block.querySelector(".k-artifact-note")?.textContent) return;
+    note(block, "this artifact did not start: it rendered nothing");
+  }, SILENT_STAGE_MS));
+}
+
 function onMessage(e) {
   const msg = e.data;
   if (!msg || msg.from !== "agentbox-artifact") return;
@@ -161,14 +193,21 @@ function onMessage(e) {
 
   switch (msg.type) {
     case "height":
+      // Anything on screen at all, which is what ends the silent-stage watch.
+      if (msg.height > 0) {
+        block.dataset.drew = "1";
+        clearSilence(block);
+      }
       fit(block, msg.height);
       break;
     case "error":
       note(block, String(msg.message ?? "").slice(0, 240));
       block.dataset.state = "error";
+      clearSilence(block);
       break;
     case "ready":
       block.dataset.state = "running";
+      watchForSilence(block);
       break;
     case "event":
       emit(block, msg);
@@ -316,6 +355,9 @@ async function run(block) {
   }
   note(block, built.notes[0] || "");
 
+  delete block.dataset.drew;
+  clearSilence(block);
+
   const frame = document.createElement("iframe");
   frame.className = "k-artifact-frame";
   // The two attributes the whole arrangement rests on: allow-scripts WITHOUT
@@ -370,6 +412,7 @@ async function run(block) {
 }
 
 function stop(block) {
+  clearSilence(block);
   const frame = block.querySelector(".k-artifact-frame");
   if (!frame) return;
   frames.delete(frame.contentWindow);

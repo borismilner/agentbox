@@ -228,6 +228,20 @@ react-dom/cjs/react-dom-client.production.js:
   };
   const fail = (message) => post({ type: "error", message: String(message).slice(0, 400) });
   window.addEventListener("error", (e) => fail(e.message || e.error || "error"));
+  // U-18. A resource that fails to load does NOT bubble, so the listener above
+  // never sees it: an import the browser has to fetch, or a <script src> the CSP
+  // refuses, left the bar's error slot empty and the stage blank. Measured in
+  // Chrome against this document shape - of the three ways an artifact can fail
+  // to start, the bubble phase reported none and the capture phase reports two.
+  // The third (a MODULE import blocked by the policy) reports nowhere at all, and
+  // is what the parent's silent-stage deadline is for.
+  window.addEventListener("error", (e) => {
+    const el = e.target;
+    if (!el || el === window || !el.tagName) return; // an exception, already reported
+    const src = el.getAttribute && (el.getAttribute("src") || el.getAttribute("href"));
+    fail(el.tagName.toLowerCase() + " failed to load" + (src ? ": " + src : "") +
+      " - agentbox artifacts have no network, so nothing can be fetched");
+  }, true);
   window.addEventListener("unhandledrejection", (e) => {
     const r = e.reason;
     fail("unhandled rejection: " + ((r && r.message) || r));

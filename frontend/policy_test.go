@@ -420,3 +420,27 @@ func TestTheShippedBundleHonoursReducedMotion(t *testing.T) {
 		t.Errorf(`the reduced rule touches transition as well: %q; then "reduced" and "none" are the same setting`, got)
 	}
 }
+
+// U-18's two halves, in the bundle rather than the source: an artifact that fails to
+// start has to say so. The capture-phase listener catches a resource that could not
+// load; the silent-stage deadline covers the one failure that reports to nobody (a
+// module import the policy blocks). Both are one line each and both are easy to lose
+// in a refactor that "tidies" a duplicate listener.
+func TestTheShippedArtifactRuntimeReportsAFailureToStart(t *testing.T) {
+	chunks := distJS(t)
+	var boot, parent bool
+	for _, js := range chunks {
+		if strings.Contains(js, "failed to load") && strings.Contains(js, `getAttribute("src")`) {
+			boot = true
+		}
+		if strings.Contains(js, "did not start") {
+			parent = true
+		}
+	}
+	if !boot {
+		t.Error("the shipped bootstrap does not report a resource that failed to load; a blocked import would leave the error slot empty")
+	}
+	if !parent {
+		t.Error("the shipped surface has no silent-stage message; an artifact that renders nothing would look like one still starting")
+	}
+}

@@ -122,3 +122,43 @@ describe("the inlining cannot be broken out of", () => {
     expect(out.notes.length).toBe(1);
   });
 });
+
+// U-18. An artifact that does not run used to look exactly like one that has not
+// finished: the bar rendered, the badge rendered, the stage was blank and the error
+// slot was empty. The cause is that a resource failure does not BUBBLE, so the
+// bootstrap's `window.addEventListener("error", ...)` never saw it. Measured in
+// Chrome against this document shape: of the three ways an artifact can fail to
+// start, the bubble phase reported none of them, the capture phase reports two, and
+// the third (a module import the policy blocks) reports to no listener at all,
+// which is what the parent's silent-stage deadline covers.
+//
+// The bootstrap cannot be executed here - it is a string that runs inside a
+// sandboxed opaque origin - so what this asserts is that the document ships with
+// both listeners and that the capture one is the one taking a third argument.
+describe("the bootstrap reports a resource that fails to load (U-18)", () => {
+  const bootstrapOf = (html) => {
+    const doc = parse(html);
+    const first = doc.querySelector("script");
+    expect(first, "the document carries no bootstrap").toBeTruthy();
+    return first.textContent;
+  };
+
+  test("both phases are listened for, and the capture one reads the element", () => {
+    const { html } = build("<p>hello</p>");
+    const boot = bootstrapOf(html);
+
+    const listeners = boot.match(/addEventListener\("error"/g) ?? [];
+    expect(listeners.length, "one error listener only catches what bubbles").toBe(2);
+    expect(boot, "the capture phase is what sees a resource error").toMatch(/addEventListener\("error"[\s\S]*?\}, true\)/);
+    // The detail that makes the message worth reading rather than just present.
+    expect(boot).toContain("failed to load");
+    expect(boot).toMatch(/getAttribute\("src"\)/);
+  });
+
+  test("an exception is still reported once, not twice", () => {
+    const boot = bootstrapOf(build("<p>hello</p>").html);
+    // The capture handler returns early for anything that is not an element, so a
+    // thrown error is reported by the bubble handler alone.
+    expect(boot).toMatch(/if \(!el \|\| el === window \|\| !el\.tagName\) return/);
+  });
+});
