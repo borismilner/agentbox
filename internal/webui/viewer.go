@@ -11,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/borismilner/agentbox/internal/proto"
+	"github.com/borismilner/agentbox/internal/readsource"
 )
 
 // The viewer (FR36-38): `agentbox show FILE|-` and the show_document MCP tool, a
@@ -92,13 +93,11 @@ func (v *viewer) load(req proto.ShowRequest) {
 	var mod time.Time
 
 	if req.Path != "" {
-		data, err := os.ReadFile(req.Path)
+		data, info, err := readsource.Read(req.Path)
 		switch {
 		case err == nil:
 			content = string(data)
-			if fi, err := os.Stat(req.Path); err == nil {
-				mod = fi.ModTime()
-			}
+			mod = info.ModTime()
 		case content == "":
 			errText = err.Error()
 			content = "# Cannot open\n\n`" + req.Path + "`\n\n" + err.Error()
@@ -170,7 +169,7 @@ func (v *viewer) watch(gen int) {
 		if err != nil || !fi.ModTime().After(mod) {
 			continue
 		}
-		data, err := os.ReadFile(path)
+		data, read, err := readsource.Read(path)
 		if err != nil {
 			continue
 		}
@@ -182,7 +181,7 @@ func (v *viewer) watch(gen int) {
 		}
 		v.html, v.artifact = renderShown(v.req, string(data), false)
 		v.errText = ""
-		v.modTime = fi.ModTime()
+		v.modTime = read.ModTime()
 		v.rev = time.Now()
 		v.mu.Unlock()
 

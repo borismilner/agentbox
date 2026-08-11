@@ -237,3 +237,23 @@ func TestViewerWatchLoopReloadsOnMtime(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+
+// The reader is where an agent points a path, so a path that is not a document
+// has to arrive as the document rather than as a dead daemon (R-16). os.ReadFile
+// on a device grows a buffer until the OOM killer takes the process, and this test
+// hangs to its own timeout when the guard is removed.
+func TestViewerRefusesADeviceInsteadOfReadingIt(t *testing.T) {
+	if _, err := os.Stat("/dev/zero"); err != nil {
+		t.Skip("no /dev/zero")
+	}
+	v := testViewer()
+	v.load(proto.ShowRequest{Path: "/dev/zero"})
+	got := v.snapshot()
+
+	if got.Error == "" {
+		t.Error("the refusal should reach the surface")
+	}
+	if !strings.Contains(got.HTML, "Cannot open") || !strings.Contains(got.HTML, "not a regular file") {
+		t.Errorf("html = %q, want an explanation naming the rule", got.HTML)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/borismilner/agentbox/internal/proto"
+	"github.com/borismilner/agentbox/internal/readsource"
 	"github.com/borismilner/agentbox/internal/store"
 	"github.com/borismilner/agentbox/internal/walkthrough"
 )
@@ -109,7 +110,10 @@ func readWorktreeLines(root, rel string) ([]string, error) {
 	if p != clean && !strings.HasPrefix(p, clean+string(os.PathSeparator)) {
 		return nil, fmt.Errorf("%s escapes the repository root", rel)
 	}
-	raw, err := os.ReadFile(p)
+	// Stat-guarded (R-16): the jail is lexical, so a symlink inside the root
+	// pointing at /dev/zero passes the prefix test and used to be read until the
+	// OOM killer arrived - in the daemon, with every parked agent inside it.
+	raw, _, err := readsource.Read(p)
 	if err != nil {
 		return nil, err
 	}

@@ -374,3 +374,24 @@ func TestDomainRowsDropAGroupWithNothingInIt(t *testing.T) {
 		t.Fatalf("domains = %+v, want the empty one dropped", got)
 	}
 }
+
+// The board reads a second caller-named path and its jail is lexical, so a symlink
+// inside the root passes the prefix test: /dev/zero is reachable there too (R-16).
+// R-30 owns the escape itself; this is only that the read ends.
+func TestFileCacheRefusesADeviceThroughASymlink(t *testing.T) {
+	if _, err := os.Stat("/dev/zero"); err != nil {
+		t.Skip("no /dev/zero")
+	}
+	root := t.TempDir()
+	if err := os.Symlink("/dev/zero", filepath.Join(root, "zero.go")); err != nil {
+		t.Skip(err)
+	}
+
+	_, err := newFileCache(root, nil).lines("zero.go")
+	if err == nil {
+		t.Fatal("the board read a device as source")
+	}
+	if !strings.Contains(err.Error(), "not a regular file") {
+		t.Errorf("error = %q, want the rule that refused it", err)
+	}
+}

@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -200,5 +201,27 @@ func TestFormToItem(t *testing.T) {
 	}
 	if it.Fields[1].Key != "tag" || it.Fields[1].Type != proto.FieldText {
 		t.Fatalf("text field: %+v", it.Fields[1])
+	}
+}
+
+// request_review reading a path is R-16's fourth door, in the child rather than
+// the daemon: /dev/zero here kills the process that owns every one of this agent's
+// tools. The refusal has to arrive before the daemon is dialled, which is what this
+// test relies on - the server it uses has no daemon to reach.
+func TestReviewRefusesAPathThatIsNotAFile(t *testing.T) {
+	if _, err := os.Stat("/dev/zero"); err != nil {
+		t.Skip("no /dev/zero")
+	}
+	s := &server{runtimeDir: filepath.Join(t.TempDir(), "no-daemon")}
+
+	res, _, err := s.review(context.Background(), nil, reviewIn{Title: "R-16", Path: "/dev/zero"})
+	if err != nil {
+		t.Fatalf("a refusal belongs in the result, not in the transport: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("/dev/zero was accepted as a diff")
+	}
+	if text := resultText(res); !strings.Contains(text, "not a regular file") {
+		t.Errorf("result = %q, want the rule that refused it", text)
 	}
 }

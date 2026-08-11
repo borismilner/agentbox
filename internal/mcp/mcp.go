@@ -20,6 +20,7 @@ import (
 
 	"github.com/borismilner/agentbox/internal/client"
 	"github.com/borismilner/agentbox/internal/proto"
+	"github.com/borismilner/agentbox/internal/readsource"
 )
 
 type server struct {
@@ -1101,7 +1102,13 @@ func (s *server) wtDelete(ctx context.Context, _ *sdk.CallToolRequest, in wtDele
 func (s *server) review(ctx context.Context, _ *sdk.CallToolRequest, in reviewIn) (*sdk.CallToolResult, reviewOut, error) {
 	diff := in.Diff
 	if diff == "" && in.Path != "" {
-		data, err := os.ReadFile(in.Path)
+		// R-16's fourth door. The consequence is milder than the daemon's - this
+		// read happens in the agent's own mcp child - but it is the same read: a
+		// path an agent chose, `/dev/zero` growing a buffer until the process that
+		// owns every one of its tools is killed. Capped at the diff ceiling rather
+		// than the document one, so the refusal names the limit the item would have
+		// been validated against anyway.
+		data, _, err := readsource.ReadCapped(in.Path, proto.MaxDiffBytes)
 		if err != nil {
 			return errResult[reviewOut](err)
 		}

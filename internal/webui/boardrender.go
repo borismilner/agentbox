@@ -22,6 +22,7 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 
 	"github.com/borismilner/agentbox/internal/change"
+	"github.com/borismilner/agentbox/internal/readsource"
 	"github.com/borismilner/agentbox/internal/store"
 	"github.com/borismilner/agentbox/internal/walkthrough"
 )
@@ -458,7 +459,9 @@ func (fc *fileCache) lines(rel string) ([]string, error) {
 	if p != fc.root && !strings.HasPrefix(p, fc.root+string(os.PathSeparator)) {
 		return nil, fmt.Errorf("%s escapes the repository root", rel)
 	}
-	raw, err := os.ReadFile(p)
+	// Stat-guarded like the reader's own source (R-16): a symlink inside the root
+	// pointing at /dev/zero is this bug again, one surface over.
+	raw, _, err := readsource.Read(p)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read %s at the pinned path: %v", rel, err)
 	}

@@ -220,3 +220,34 @@ func TestRepairSaysWhyWhenGitCannotHelp(t *testing.T) {
 		t.Errorf("no usable reason for the miss: %v", rows[0].Notes)
 	}
 }
+
+// The capture is the third reader of a path an agent chose, and the same lexical
+// jail lets a symlink out of the tree (R-16). A device must come back as the
+// warning the empty-tree case already produces, not as a daemon that never
+// returns from the create.
+func TestCaptureRefusesADeviceThroughASymlink(t *testing.T) {
+	if _, err := os.Stat("/dev/zero"); err != nil {
+		t.Skip("no /dev/zero")
+	}
+	d, _, _, _ := newTestDaemon(t, Config{})
+	root := t.TempDir()
+	if err := os.Symlink("/dev/zero", filepath.Join(root, "a.go")); err != nil {
+		t.Skip(err)
+	}
+
+	res, rpcErr := d.Handle(context.Background(), proto.MethodWalkthroughCreate, mustJSON(t, map[string]any{
+		"id": "w000000000019", "spec": captureSpec(root),
+	}))
+	if rpcErr != nil {
+		t.Fatalf("create: %v", rpcErr)
+	}
+	var found bool
+	for _, warn := range res.(proto.WalkthroughCreateResult).Warnings {
+		if strings.Contains(warn, "could not capture a.go") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("warnings = %v, want the capture refused", res.(proto.WalkthroughCreateResult).Warnings)
+	}
+}
