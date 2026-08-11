@@ -194,16 +194,16 @@ describe("a confirm card", () => {
   });
 });
 
-// U-06 in docs/backlog/ux.md. The ResizeObserver can only see the card grow, and
-// Card.svelte:186-193 compensates with a hand-written list of things that shrink
-// it. formValues is not on that list, so choosing a short option after a long one
-// removes the spelled-out line and leaves the window tall.
+// U-06, fixed on 2026-08-11. The ResizeObserver can only see the card GROW, and the
+// card used to compensate with a hand-written list of the things that shrink it -
+// formValues was not on it, so choosing a short option after a long one removed the
+// spelled-out line and left the window tall.
 //
-// test.fails is not a workaround: it records that this is what should happen and
-// today does not. Fixing U-06 turns it red, which is the prompt to delete this
-// comment and the marker with it.
+// This test spent time as `test.fails`, which is how the fix announced itself: the
+// marker went red the moment the MutationObserver replaced the list, and dropping it
+// was the last step of the fix rather than a tidy-up afterwards.
 describe("a form card that gets shorter", () => {
-  test.fails("asks to be re-measured when a long choice is replaced by a short one", async () => {
+  test("asks to be re-measured when a long choice is replaced by a short one", async () => {
     show(
       view({
         kind: "form",

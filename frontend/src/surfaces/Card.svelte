@@ -201,34 +201,51 @@
       bridge.fit(h);
     };
     remeasure = report;
+    let queued = false;
+    const soon = () => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        report();
+      });
+    };
     const ro = new ResizeObserver(report);
     ro.observe(shell);
+
+    // U-06. The observer sees the card GROW and cannot see it shrink: past the
+    // window's height the content pushes the shell out and the observer fires, but
+    // under it min-height holds the shell at the window's size and there is nothing
+    // to observe. That used to be answered by a hand-kept list of every control that
+    // can make the card shorter - which was missing two of them (a shorter chosen
+    // option, a review note deleted back down) and was, by construction, an
+    // invitation to miss the next one.
+    //
+    // Watching for mutations removes the class rather than its members: anything that
+    // changes what is in the card is a mutation, and the measurement itself has always
+    // worked in both directions, because it turns min-height off to take it.
+    //
+    // The one mutation to ignore is our own: `report` writes `min-height` on the shell,
+    // so a callback that acted on it would wake the observer that made it.
+    const mo = new MutationObserver((records) => {
+      const ours = (r) => r.target === shell && r.type === "attributes" && r.attributeName === "style";
+      if (records.every(ours)) return;
+      soon();
+    });
+    mo.observe(shell, { childList: true, subtree: true, attributes: true, characterData: true });
+
     report();
     return () => {
       ro.disconnect();
+      mo.disconnect();
       remeasure = () => {};
     };
   });
 
-  // The observer sees the card GROW and cannot see it shrink: past the window's
-  // height the content pushes the shell out and the observer fires, but under it
-  // min-height holds the shell at the window's size and nothing changes to
-  // observe. So anything that can make the card shorter says so itself. Without
-  // this, folding the reasoning away left the window as tall as it had been with
-  // the reasoning open - which is the same defect from the other side, and the
-  // one that survived the first fix.
-  $effect(() => {
-    void proseOpen;
-    void stackOpen;
-    void replying;
-    void view?.item?.id;
-    void view?.graced;
-    // U-01's line is one of the things that changes the card's height, and a
-    // failure notice clipped off the bottom of a frameless window is the same
-    // defect it was written to fix.
-    void trouble.text;
-    queueMicrotask(() => remeasure());
-  });
+  // The list that used to live here - one `void` per control that can make the card
+  // shorter - is gone with U-06. It fixed the instances known on the day and missed
+  // two, which is what a list does. The MutationObserver above is the same guarantee
+  // without the maintenance.
 
   function choose(i) {
     const opt = item?.options?.[i];
