@@ -190,9 +190,17 @@
       transform: rotate(360deg);
     }
   }
-  /* Honour the motion knob: "reduced" means nothing loops on screen. */
+  /* Honour the motion knob: "reduced" means nothing loops on screen.
+     These two keep their own rule after app.css grew a global one (U-05), because
+     `animation: none` and a near-zero duration are not the same answer for a
+     sweep: a duration leaves it at its LAST frame, which for this one is swept off
+     to the side, and an empty bar is a worse lie than a still one. "none" is
+     listed for the same reason - it was missing, so the strongest setting looped
+     where the middle one did not. */
   :global(html[data-motion="reduced"]) .sweep,
-  :global(html[data-motion="reduced"]) .spin {
+  :global(html[data-motion="reduced"]) .spin,
+  :global(html[data-motion="none"]) .sweep,
+  :global(html[data-motion="none"]) .spin {
     animation: none;
   }
 

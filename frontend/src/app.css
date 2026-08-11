@@ -990,13 +990,34 @@ button {
   overflow: auto;
 }
 
+/* The three motion settings, in one place so their difference is readable.
+ *
+ * The iteration count is not decoration. A 0.01ms duration on its own leaves an
+ * infinite animation restarting for ever - invisibly, at a rate no eye can follow
+ * and a CPU still pays for - so every one of these caps the count as well. */
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
 :root[data-motion="none"] * {
   animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
+}
+/* theme.motion = "reduced" (U-05). This rule is the whole of the setting: before
+ * it, the middle value reached the page and was read by five rules in four
+ * components, so nine of the thirteen files that animate moved at "reduced"
+ * exactly as they did at "full" - including the breathing "?" on a session
+ * waiting for an answer, which is the loop most likely to be the actual complaint.
+ *
+ * What "reduced" means: nothing animates, and transitions stay. A state change may
+ * still take its 120ms; nothing on screen moves on its own. Killing `animation`
+ * and deliberately not `transition` is the entire difference between this and
+ * "none" above. */
+:root[data-motion="reduced"] * {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
 }

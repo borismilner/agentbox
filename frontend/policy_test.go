@@ -364,3 +364,59 @@ func TestEveryBridgeMethodTheSurfacesCallReachesTheBundle(t *testing.T) {
 		}
 	}
 }
+
+// distCSS is every stylesheet in the bundle, joined - the surfaces compile their
+// scoped rules into it alongside app.css, so a component's own motion rule is here
+// too.
+func distCSS(t *testing.T) string {
+	t.Helper()
+	names, err := fs.Glob(Dist, "dist/assets/*.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) == 0 {
+		t.Fatal("dist/assets holds no stylesheet; the bundle looks unbuilt and the check below would pass vacuously")
+	}
+	var b strings.Builder
+	for _, n := range names {
+		data, err := fs.ReadFile(Dist, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.Write(data)
+	}
+	return b.String()
+}
+
+// theme.motion has three values and the middle one used to be nearly inert (U-05):
+// it reached the page, five rules in four components read it, and the other nine
+// files that animate did not. The knob is a promise, so what ships has to keep it.
+//
+// This is a text check on the bundle rather than a rendering one, which is what the
+// rest of this file is too - but it is the shipped bytes, so an edit that removes
+// the rule fails here even though nothing in Svelte would warn.
+func TestTheShippedBundleHonoursReducedMotion(t *testing.T) {
+	css := distCSS(t)
+
+	// Not vacuous: there is something to disable.
+	if n := strings.Count(css, "@keyframes"); n < 10 {
+		t.Fatalf("the bundle holds %d @keyframes blocks; this check assumes the surfaces animate", n)
+	}
+
+	// The global rule, matched loosely because a minifier is entitled to reorder
+	// declarations and drop the space after a colon.
+	rule := regexp.MustCompile(`\[data-motion=["']?reduced["']?\][^{]*\*?[^{]*\{[^}]*animation-duration[^}]*\}`)
+	got := rule.FindString(css)
+	if got == "" {
+		t.Fatal(`the bundle has no global [data-motion="reduced"] rule killing animation; "reduced" would leave every loop running`)
+	}
+	if !strings.Contains(got, "animation-iteration-count") {
+		t.Errorf("the reduced rule caps no iteration count: %q\nan infinite animation at a 0.01ms duration restarts for ever", got)
+	}
+	// And it leaves transitions alone, which is the entire difference between
+	// "reduced" and "none". A rule that killed both would make the middle setting a
+	// synonym for the strongest one.
+	if strings.Contains(got, "transition") {
+		t.Errorf(`the reduced rule touches transition as well: %q; then "reduced" and "none" are the same setting`, got)
+	}
+}
