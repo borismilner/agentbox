@@ -41,10 +41,18 @@ import (
 	"github.com/borismilner/agentbox/internal/logging"
 )
 
+// A note on the fourth: the whole pipeline is an engine writing raw PCM into a
+// player's stdin, and sox's `play` is the only ONE of these that exists outside
+// Linux (Homebrew, MacPorts, and the Windows sox build). macOS's own afplay cannot
+// read raw PCM from a pipe at all, which is why it is a good earcon player and no
+// use here. So on a Mac or a Windows box, speech works if sox is installed and is
+// silent if it is not - the same fail-soft the whole feature already has, and
+// docs/04-platform.md says so beside the other per-desktop differences.
+//
 // players in preference order, the same three the earcons use (ADR-0006):
 // PipeWire native, Pulse compat, bare ALSA. All three read raw PCM on stdin,
 // which is verified in speech_test.go against the flags below.
-var players = []string{"pw-play", "paplay", "aplay"}
+var players = []string{"pw-play", "paplay", "aplay", "play"}
 
 var ErrNoPlayer = errors.New("no audio player found (tried pw-play, paplay, aplay)")
 
@@ -843,7 +851,14 @@ func (p *pipeline) written() int64 {
 func playerArgs(bin string, opt Options) []string {
 	rate := strconv.Itoa(opt.Rate)
 	channels := strconv.Itoa(opt.Channels)
-	switch filepath.Base(bin) {
+	// Cut on both separators: filepath.Base only knows the one it was compiled for,
+	// so a Windows path resolved on a Windows build is fine and the same string in a
+	// test on Linux came back whole and silently matched the aplay branch.
+	name := bin
+	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
+		name = name[i+1:]
+	}
+	switch strings.TrimSuffix(name, ".exe") {
 	case "pw-play":
 		return []string{
 			"--rate=" + rate, "--channels=" + channels, "--format=s16",
@@ -860,6 +875,14 @@ func playerArgs(bin string, opt Options) []string {
 		return []string{
 			"--raw", "--rate=" + rate, "--channels=" + channels, "--format=s16le",
 			fmt.Sprintf("--volume=%d", int(opt.Volume*65536)),
+		}
+	case "play":
+		// sox. -q or it prints a progress meter over the caller's stderr for every
+		// sentence, and the input spec has to be complete because raw carries no
+		// header for sox to read it from.
+		return []string{
+			"-q", "-t", "raw", "-r", rate, "-e", "signed", "-b", "16", "-c", channels,
+			"-v", fmt.Sprintf("%.2f", opt.Volume), "-",
 		}
 	default: // aplay
 		return []string{"-q", "-t", "raw", "-f", "S16_LE", "-r", rate, "-c", channels}

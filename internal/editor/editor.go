@@ -93,7 +93,11 @@ var (
 // which loses the line. Losing the line is worth saying out loud - Resolve
 // reports it as the source so a caller can tell the human why they landed at
 // the top of the file.
-const fallback = "xdg-open"
+//
+// One name per desktop, picked at build time (fallback_*.go). It is deliberately
+// the SOURCE string too, so what the human is told names the thing that actually
+// ran: "xdg-open" on Linux, "open" on macOS, "cmd" on Windows. A shared label
+// would have been a small lie on two platforms out of three.
 
 // ErrNoFile is a template that never names the file. It compiles and runs and
 // raises an editor on nothing, which reads as a broken button rather than as a
@@ -118,10 +122,11 @@ func Resolve(configured []string) (tmpl []string, source string, err error) {
 		t[0] = c.bin // the family templates share one slice; argv[0] is per binary
 		return t, c.bin, nil
 	}
-	if _, err := exec.LookPath(fallback); err != nil {
+	argv := fallbackArgv()
+	if _, err := exec.LookPath(argv[0]); err != nil {
 		return nil, "", errors.New("no editor found; set editor.command in config.toml")
 	}
-	return []string{fallback, phFile}, fallback, nil
+	return append(argv, phFile), argv[0], nil
 }
 
 func names(tmpl []string, ph string) bool {

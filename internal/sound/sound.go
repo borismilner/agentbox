@@ -7,12 +7,12 @@ package sound
 
 import (
 	"embed"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,11 +56,21 @@ func ClassFor(it *proto.Item) Class {
 	}
 }
 
-// players in preference order (ADR-0006): PipeWire native, Pulse compat,
-// bare ALSA.
-var players = []string{"pw-play", "paplay", "aplay"}
+// players in preference order (ADR-0006): PipeWire native, Pulse compat, bare
+// ALSA, then the two that only exist elsewhere.
+//
+// One list rather than a build tag, because resolution is by LookPath and the
+// order does the work: on Linux pw-play still wins and nothing below it is ever
+// reached, and on a machine with none of the first three the next name that EXISTS
+// is the one that plays. A tag here would buy nothing and would have to be kept in
+// step with a comment saying what each platform does.
+//
+//   - afplay ships with macOS.
+//   - powershell is the Windows fallback: there is no bundled wav player on the
+//     PATH, so the earcon is played through Media.SoundPlayer (see playArgs).
+var players = []string{"pw-play", "paplay", "aplay", "afplay", "powershell"}
 
-var ErrNoPlayer = errors.New("no audio player found (tried pw-play, paplay, aplay)")
+var ErrNoPlayer = fmt.Errorf("no audio player found (tried %s)", strings.Join(players, ", "))
 
 // playing pairs the process with a channel the reaper closes; everyone
 // else waits on the channel because exec.Cmd.Wait must only be called
@@ -96,16 +106,43 @@ func (p *Player) Configure(enabled bool, volume float64, quiet func(time.Time) b
 	p.quiet = quiet
 }
 
-// volumeArgs translates the volume knob for the resolved player; aplay has
-// no volume control, so it plays at asset level.
-func volumeArgs(bin string, volume float64) []string {
-	switch filepath.Base(bin) {
+// playerName is the player's bare name out of whatever LookPath answered. It cuts
+// on BOTH separators rather than using filepath.Base, which only knows the
+// separator of the machine it is compiled for - so a Windows path handed to a Linux
+// build (a test, a config file copied between machines) came back whole and matched
+// nothing. That was a silent fallthrough to "just play the file", which is the one
+// branch that looks like it worked.
+func playerName(bin string) string {
+	if i := strings.LastIndexAny(bin, `/\`); i >= 0 {
+		bin = bin[i+1:]
+	}
+	return strings.TrimSuffix(bin, ".exe")
+}
+
+// playArgs is everything after the binary: the volume knob in whatever dialect the
+// resolved player speaks, and the file. aplay has no volume control at all, so it
+// plays at asset level - the one player where the knob does nothing, and it is last
+// among the Linux three for exactly that reason.
+func playArgs(bin string, volume float64, path string) []string {
+	switch playerName(bin) {
 	case "pw-play":
-		return []string{fmt.Sprintf("--volume=%.2f", volume)}
+		return []string{fmt.Sprintf("--volume=%.2f", volume), path}
 	case "paplay":
-		return []string{fmt.Sprintf("--volume=%d", int(volume*65536))}
+		return []string{fmt.Sprintf("--volume=%d", int(volume*65536)), path}
+	case "afplay":
+		// -v is a linear gain where 1 is the file's own level, which is the same
+		// meaning pw-play's --volume has.
+		return []string{"-v", fmt.Sprintf("%.2f", volume), path}
+	case "powershell":
+		// Media.SoundPlayer has no volume of its own, so the knob is not honoured
+		// here - the same gap aplay has, and for the same reason it is acceptable:
+		// an earcon at asset level is still an earcon. PlaySync because the process
+		// exiting early would cut the sound, and the reaper is already waiting on it.
+		// -NoProfile so a user's profile script cannot slow down or break a chime.
+		return []string{"-NoProfile", "-NonInteractive", "-Command",
+			fmt.Sprintf("(New-Object Media.SoundPlayer '%s').PlaySync()", path)}
 	default:
-		return nil
+		return []string{path}
 	}
 }
 
@@ -170,7 +207,7 @@ func (p *Player) Play(class Class) {
 		p.current.cmd.Process.Kill()
 		p.current = nil
 	}
-	args := append(volumeArgs(p.bin, p.volume), filepath.Join(p.dir, string(class)+".wav"))
+	args := playArgs(p.bin, p.volume, filepath.Join(p.dir, string(class)+".wav"))
 	cmd := exec.Command(p.bin, args...)
 	if err := cmd.Start(); err != nil {
 		p.log.Error(logging.EvSoundFailed, "component", "sound", "class", string(class), "err", err.Error())

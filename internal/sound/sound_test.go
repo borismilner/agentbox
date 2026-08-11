@@ -121,6 +121,49 @@ func TestUrgentReplacesPlayingSound(t *testing.T) {
 	}
 }
 
+// The exact argv per player. This exists because the volume knob was folded into
+// playArgs when the two non-Linux players were added, and the three Linux dialects
+// had to come out of that byte-identical: a chime that plays at the wrong level is
+// not a thing anybody notices until it is the urgent one.
+func TestPlayArgsSpeakEachPlayersDialect(t *testing.T) {
+	const wav = "/run/agentbox/sounds/urgent.wav"
+	for _, c := range []struct {
+		bin  string
+		want []string
+	}{
+		{"/usr/bin/pw-play", []string{"--volume=0.40", wav}},
+		{"/usr/bin/paplay", []string{"--volume=26214", wav}},
+		// No volume control at all, which is why it is last of the three.
+		{"/usr/bin/aplay", []string{wav}},
+		{"/usr/bin/afplay", []string{"-v", "0.40", wav}},
+		// Unknown player: the file and nothing else, so a name somebody adds to the
+		// list still plays instead of being handed a flag it does not know.
+		{"/usr/bin/mystery", []string{wav}},
+	} {
+		got := playArgs(c.bin, 0.4, wav)
+		if len(got) != len(c.want) {
+			t.Errorf("%s: %v, want %v", c.bin, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("%s: %v, want %v", c.bin, got, c.want)
+				break
+			}
+		}
+	}
+
+	// Windows names the file inside a -Command script rather than as an argument,
+	// so the assertion is that the path arrives at all and that the profile is off.
+	ps := playArgs("C:\\Windows\\System32\\powershell.exe", 0.4, wav)
+	joined := strings.Join(ps, " ")
+	for _, want := range []string{"-NoProfile", "PlaySync", wav} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("powershell args %v do not carry %q", ps, want)
+		}
+	}
+}
+
 func TestClassFor(t *testing.T) {
 	cases := []struct {
 		kind  proto.Kind
