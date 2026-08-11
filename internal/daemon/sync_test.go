@@ -372,7 +372,7 @@ func TestTheRiderTellsASessionWhatItHasNotBeenTold(t *testing.T) {
 
 	// Alone, and told nothing: "you are alone" is a claim the roster does not make
 	// on this path, so silence.
-	if got := r.riderFor("mine"); got != "" {
+	if got, _ := r.riderFor("mine"); got != "" {
 		t.Errorf("a session alone in its area was told %q", got)
 	}
 
@@ -381,7 +381,7 @@ func TestTheRiderTellsASessionWhatItHasNotBeenTold(t *testing.T) {
 	r.Announce(proto.SyncAnnounceParams{
 		Identity: id("codex", "agentbox", "peer"), Purpose: "FR85: one separator for identity colours",
 	})
-	got := r.riderFor("mine")
+	got, _ := r.riderFor("mine")
 	for _, want := range []string{"1 agent", "repo:agentbox", "codex", "FR85", "Coordinate"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the rider %q does not mention %q", got, want)
@@ -389,13 +389,13 @@ func TestTheRiderTellsASessionWhatItHasNotBeenTold(t *testing.T) {
 	}
 
 	// Said once. An agent told twice about the same peer learns to ignore riders.
-	if again := r.riderFor("mine"); again != "" {
+	if again, _ := r.riderFor("mine"); again != "" {
 		t.Errorf("the same arrival was reported twice: %q", again)
 	}
 
 	// Another area is not this session's business.
 	defer attached(t, r, id("aider", "elsewhere", "far"), "/other", "repo:elsewhere")()
-	if got := r.riderFor("mine"); got != "" {
+	if got, _ := r.riderFor("mine"); got != "" {
 		t.Errorf("an agent in another area was reported as company: %q", got)
 	}
 }
@@ -405,12 +405,12 @@ func TestTheRiderReportsADepartureOnceAndNamesNobodyElse(t *testing.T) {
 	defer attached(t, r, id("claude", "agentbox", "mine"), "/repo", "repo:agentbox")()
 	stopPeer := attached(t, r, id("codex", "agentbox", "peer"), "/repo", "repo:agentbox")
 
-	if got := r.riderFor("mine"); !strings.Contains(got, "codex") {
+	if got, _ := r.riderFor("mine"); !strings.Contains(got, "codex") {
 		t.Fatalf("setup: the arrival was not reported (%q)", got)
 	}
 	stopPeer()
 
-	got := r.riderFor("mine")
+	got, _ := r.riderFor("mine")
 	if !strings.Contains(got, "left") || !strings.Contains(got, "codex") {
 		// Named, not keyed: the row is gone by now, so the name has to have been
 		// remembered when the arrival was reported.
@@ -420,8 +420,95 @@ func TestTheRiderReportsADepartureOnceAndNamesNobodyElse(t *testing.T) {
 	if strings.Contains(got, "Coordinate") {
 		t.Errorf("a departure told the agent to coordinate: %q", got)
 	}
-	if again := r.riderFor("mine"); again != "" {
+	if again, _ := r.riderFor("mine"); again != "" {
 		t.Errorf("the same departure was reported twice: %q", again)
+	}
+}
+
+// R-13. The cursor moves when the line is COMPUTED, which is before the answer
+// carrying it has been written to anybody. A send that fails after that point used
+// to lose the line for good: each arrival is reported exactly once and nothing
+// persists it, so this is the one message in the product with neither a retry nor a
+// store behind it - and it is the warning the whole two-agents-in-one-checkout rule
+// rests on.
+func TestNewsThatWasNeverSentIsStillOwed(t *testing.T) {
+	r := newTestRoster()
+	defer attached(t, r, id("claude", "agentbox", "mine"), "/repo", "repo:agentbox")()
+	defer attached(t, r, id("codex", "agentbox", "peer"), "/repo", "repo:agentbox")()
+
+	got, keep := r.riderFor("mine")
+	if !strings.Contains(got, "codex") {
+		t.Fatalf("setup: the arrival was not reported (%q)", got)
+	}
+	if keep == nil {
+		t.Fatal("no way to put the news back, so a failed send loses it")
+	}
+
+	// The envelope never left. Nothing was told, so everything is still owed.
+	keep()
+
+	again, _ := r.riderFor("mine")
+	if !strings.Contains(again, "codex") {
+		t.Errorf("the peer went unreported after a send that failed: %q", again)
+	}
+
+	// And the retry is spent like any other: told once, not once per attempt.
+	if third, _ := r.riderFor("mine"); third != "" {
+		t.Errorf("the put-back news was reported twice: %q", third)
+	}
+}
+
+// A departure has to survive the same way, and it is the harder half: the row it
+// names is already gone, so the name only exists in the cursor being restored.
+func TestADepartureThatWasNeverSentIsStillOwed(t *testing.T) {
+	r := newTestRoster()
+	defer attached(t, r, id("claude", "agentbox", "mine"), "/repo", "repo:agentbox")()
+	stopPeer := attached(t, r, id("codex", "agentbox", "peer"), "/repo", "repo:agentbox")
+
+	if got, _ := r.riderFor("mine"); !strings.Contains(got, "codex") {
+		t.Fatalf("setup: the arrival was not reported (%q)", got)
+	}
+	stopPeer()
+
+	got, keep := r.riderFor("mine")
+	if !strings.Contains(got, "left") {
+		t.Fatalf("setup: the departure was not reported (%q)", got)
+	}
+	keep()
+
+	again, _ := r.riderFor("mine")
+	if !strings.Contains(again, "left") || !strings.Contains(again, "codex") {
+		t.Errorf("the departure was lost with the failed send: %q", again)
+	}
+}
+
+// A rider assembled from a broken lock AND a peer puts both halves back, or the
+// next call carries half a line and the other half is gone.
+func TestAFailedSendPutsBackTheLockNoticeAndThePeers(t *testing.T) {
+	d := &Daemon{
+		roster: newRoster(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		locks:  newLocks(slog.New(slog.NewTextHandler(io.Discard, nil))),
+	}
+	defer attached(t, d.roster, id("claude", "agentbox", "mine"), "/repo", "repo:agentbox")()
+	defer attached(t, d.roster, id("codex", "agentbox", "peer"), "/repo", "repo:agentbox")()
+	d.locks.keepNotices("mine", []string{"sync: the human broke your lock on deploy."})
+
+	// Via the mcp child: only that caller has anywhere to show the line, and the
+	// rider refuses to spend news on a shell call.
+	params := paramsFor(t, proto.Identity{Agent: "claude", Project: "agentbox", Key: "mine", Via: proto.ViaMCP})
+	line, keep := d.SyncRider(proto.MethodSyncActivity, params)
+	for _, want := range []string{"broke your lock", "codex"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("setup: the rider %q does not mention %q", line, want)
+		}
+	}
+	keep()
+
+	again, _ := d.SyncRider(proto.MethodSyncActivity, params)
+	for _, want := range []string{"broke your lock", "codex"} {
+		if !strings.Contains(again, want) {
+			t.Errorf("after a failed send the rider %q lost %q", again, want)
+		}
 	}
 }
 
@@ -437,11 +524,11 @@ func TestAHooksShellCallDoesNotEatTheChildsNews(t *testing.T) {
 	defer attached(t, r, id("codex", "agentbox", "peer"), "/repo", "repo:agentbox")()
 
 	shell := paramsFor(t, proto.Identity{Agent: "zsh", Key: "mine", Via: proto.ViaCLI})
-	if got := d.SyncRider(proto.MethodSyncActivity, shell); got != "" {
+	if got, _ := d.SyncRider(proto.MethodSyncActivity, shell); got != "" {
 		t.Errorf("a shell was handed the rider: %q", got)
 	}
 	child := paramsFor(t, proto.Identity{Agent: "claude", Key: "mine", Via: proto.ViaMCP})
-	if got := d.SyncRider(proto.MethodSyncActivity, child); !strings.Contains(got, "codex") {
+	if got, _ := d.SyncRider(proto.MethodSyncActivity, child); !strings.Contains(got, "codex") {
 		t.Errorf("the child got %q, so the hook had already spent the news", got)
 	}
 }
@@ -463,10 +550,10 @@ func TestASessionWithNoRowIsToldNothing(t *testing.T) {
 	// none of them has news, and the rider must not invent any.
 	r := newTestRoster()
 	defer attached(t, r, id("claude", "agentbox", "mine"), "/repo", "repo:agentbox")()
-	if got := r.riderFor("nosuchkey"); got != "" {
+	if got, _ := r.riderFor("nosuchkey"); got != "" {
 		t.Errorf("a key with no row was told %q", got)
 	}
-	if got := r.riderFor(""); got != "" {
+	if got, _ := r.riderFor(""); got != "" {
 		t.Errorf("an empty key was told %q", got)
 	}
 }
@@ -737,15 +824,15 @@ func TestAnnounceDerivesItsAreaFromTheCwd(t *testing.T) {
 	// The announce's own rider pass moves the cursor and says nothing, because the
 	// announce result already listed the peers. Without an area that pass was a
 	// no-op, and the next call dumped the whole area as news.
-	if line := d.SyncRider(proto.MethodSyncAnnounce, paramsFor(t, p.Identity)); line != "" {
+	if line, _ := d.SyncRider(proto.MethodSyncAnnounce, paramsFor(t, p.Identity)); line != "" {
 		t.Fatalf("the announce should say nothing beyond its own result, got %q", line)
 	}
-	if line := d.SyncRider(proto.MethodSyncActivity, paramsFor(t, p.Identity)); line != "" {
+	if line, _ := d.SyncRider(proto.MethodSyncActivity, paramsFor(t, p.Identity)); line != "" {
 		t.Fatalf("the next call repeated what the announce already showed: %q", line)
 	}
 	// And the session already there is told about the arrival.
 	here := proto.Identity{Agent: "claude", Key: "here", Via: proto.ViaMCP}
-	if line := d.SyncRider(proto.MethodSyncActivity, paramsFor(t, here)); !strings.Contains(line, "codex") {
+	if line, _ := d.SyncRider(proto.MethodSyncActivity, paramsFor(t, here)); !strings.Contains(line, "codex") {
 		t.Fatalf("the existing session was not told about the arrival: %q", line)
 	}
 }

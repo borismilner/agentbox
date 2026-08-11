@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -53,18 +52,18 @@ type Listener struct {
 	log  *slog.Logger
 
 	mu    sync.Mutex
-	rider func(method string, params json.RawMessage) string
+	rider proto.RiderFunc
 }
 
 // SetRider installs FR83's discovery rider on every connection accepted from now
 // on. Set it before Serve; a listener without one behaves exactly as before.
-func (l *Listener) SetRider(f func(method string, params json.RawMessage) string) {
+func (l *Listener) SetRider(f proto.RiderFunc) {
 	l.mu.Lock()
 	l.rider = f
 	l.mu.Unlock()
 }
 
-func (l *Listener) riderFn() func(string, json.RawMessage) string {
+func (l *Listener) riderFn() proto.RiderFunc {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.rider

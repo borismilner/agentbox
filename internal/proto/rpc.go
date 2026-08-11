@@ -847,7 +847,7 @@ type Conn struct {
 	readErr error
 	connErr error // a refusal the peer sent with no id, preferred over a bare EOF
 	reading bool
-	rider   func(method string, params json.RawMessage) string
+	rider   RiderFunc
 }
 
 func NewConn(rwc io.ReadWriteCloser) *Conn {
@@ -860,17 +860,27 @@ func NewConn(rwc io.ReadWriteCloser) *Conn {
 
 func (c *Conn) Close() error { return c.rwc.Close() }
 
+// RiderFunc answers what rides back on one response envelope, and how to put it
+// back if it never gets there.
+//
+// The second half is the whole point (R-13). News is SPENT by being computed: a
+// cursor moves, a notice is deleted, and each arrival is reported exactly once. So
+// a send that fails after the rider was computed loses that line for good, and it
+// is the one message in the product with neither a retry nor a store behind it.
+// keep un-spends it, and may be nil when there was nothing to spend.
+type RiderFunc func(method string, params json.RawMessage) (line string, keep func())
+
 // SetRider installs the function that decides what rides back on each envelope.
 // Called after the handler, with the method and params of the request just
 // served, so a peer that arrived DURING the call is still reported by it. An
 // empty answer adds nothing. Set it before Serve.
-func (c *Conn) SetRider(f func(method string, params json.RawMessage) string) {
+func (c *Conn) SetRider(f RiderFunc) {
 	c.mu.Lock()
 	c.rider = f
 	c.mu.Unlock()
 }
 
-func (c *Conn) riderFn() func(string, json.RawMessage) string {
+func (c *Conn) riderFn() RiderFunc {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.rider
@@ -1051,6 +1061,9 @@ func (c *Conn) Serve(ctx context.Context, h Handler) error {
 				return // notification semantics: no response
 			}
 			resp := response{JSONRPC: "2.0", ID: req.ID}
+			// Un-spends the rider when the envelope carrying it never left. See
+			// RiderFunc: computing the news is what consumes it.
+			var keepRider func()
 			if rpcErr != nil {
 				resp.Error = rpcErr
 			} else {
@@ -1063,11 +1076,16 @@ func (c *Conn) Serve(ctx context.Context, h Handler) error {
 					// after the handler, so a peer who arrived during the call is
 					// still in it.
 					if rider := c.riderFn(); rider != nil {
-						resp.Sync = rider(req.Method, req.Params)
+						resp.Sync, keepRider = rider(req.Method, req.Params)
 					}
 				}
 			}
-			_ = c.send(resp)
+			if err := c.send(resp); err != nil && keepRider != nil {
+				// The news is owed again: the client got nothing, so nothing was
+				// told. Without this the one message with no retry behind it is
+				// also the one a broken pipe silently eats.
+				keepRider()
+			}
 		}(req)
 	}
 	if err := sc.Err(); err != nil {

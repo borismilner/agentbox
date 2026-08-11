@@ -589,9 +589,15 @@ func (r *roster) Activity(p proto.SyncActivityParams) (proto.SyncResult, *proto.
 // peers it has been told about, and this moves that cursor. A session that has
 // never been told anything gets the peers already present, because from its point
 // of view they are all news.
-func (r *roster) riderFor(key string) string {
+//
+// The cursor moves HERE, before the answer has been sent, so the second return
+// value puts it back (R-13). Exactly-once is a promise about the cursor, not about
+// the wire: a rolled-back cursor can repeat news a later call already carried,
+// which is a duplicate warning about company - much cheaper than the silence that
+// the un-rolled-back version produced.
+func (r *roster) riderFor(key string) (string, func()) {
 	if key == "" {
-		return ""
+		return "", nil
 	}
 	now := time.Now()
 
@@ -600,7 +606,7 @@ func (r *roster) riderFor(key string) string {
 
 	row := r.rows[key]
 	if row == nil || row.area == "" {
-		return ""
+		return "", nil
 	}
 	current := map[string]string{}
 	for k, other := range r.rows {
@@ -614,6 +620,18 @@ func (r *roster) riderFor(key string) string {
 	}
 	known := row.knownPeers
 	row.knownPeers = current
+	// The cursor's undo. It restores the set this call was told about rather than
+	// re-deriving one, so news that was computed and never sent is owed again on
+	// the next call. Takes r.mu itself, so it may only be called after this
+	// function has returned - which is the point: the send has to have failed
+	// first. A row that has gone in the meantime is owed nothing.
+	keep := func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if again := r.rows[key]; again != nil {
+			again.knownPeers = known
+		}
+	}
 
 	var joined, left []string
 	for k := range current {
@@ -632,11 +650,11 @@ func (r *roster) riderFor(key string) string {
 		// a claim, and the roster only makes it where it can be sure (see partial).
 		left = nil
 		if len(joined) == 0 {
-			return ""
+			return "", keep
 		}
 	}
 	if len(joined) == 0 && len(left) == 0 {
-		return ""
+		return "", keep
 	}
 	// Stable wording for a stable event, so two identical situations read the same.
 	sort.Strings(joined)
@@ -701,7 +719,7 @@ func (r *roster) riderFor(key string) string {
 	if len(joined) > 0 {
 		line += " Coordinate before you edit a shared file: split the work or wait."
 	}
-	return line
+	return line, keep
 }
 
 // List answers the roster read, filtered. It is deliberately ungated: the human
@@ -1143,14 +1161,18 @@ func (d *Daemon) LockSnapshot() []proto.SyncLockState { return d.locks.Snapshot(
 // so a rider would say it twice; the cursor still moves, so the next call does
 // not repeat what they just showed. attach is excluded because it returns once,
 // at the end of the session.
-func (d *Daemon) SyncRider(method string, params json.RawMessage) string {
+//
+// Both halves of the line are spent by being computed - a notice is deleted, a
+// cursor moves - so the second return value hands both of them back for a send
+// that fails (R-13, and see proto.RiderFunc).
+func (d *Daemon) SyncRider(method string, params json.RawMessage) (string, func()) {
 	id := identityOf(params)
 	if id.Via != proto.ViaMCP {
 		// A shell cannot show the line, and spending the news on it would lose it:
 		// a session's hooks call the CLI with that session's own key several times
 		// a minute, so this is the difference between the rider working and the
 		// rider being eaten before the model ever sees it.
-		return ""
+		return "", nil
 	}
 	key := strings.TrimSpace(id.Key)
 	// A lost lock rides the same envelope, and it goes first: "the human broke
@@ -1161,27 +1183,53 @@ func (d *Daemon) SyncRider(method string, params json.RawMessage) string {
 	// A daemon assembled by hand (the roster's own tests) has no lock table, and
 	// the rider is still expected to work: presence never depends on the rest of
 	// the daemon being there.
-	var lines []string
+	var notices []string
 	if d.locks != nil {
-		lines = d.locks.TakeNotices(key)
+		notices = d.locks.TakeNotices(key)
+	}
+	// keepNotices is the existing put-back, already used by the attach case below
+	// for a caller with nowhere to show them. A failed send is the same situation
+	// arrived at differently.
+	keepNotices := func() {
+		if d.locks != nil {
+			d.locks.keepNotices(key, notices)
+		}
 	}
 	switch method {
 	case proto.MethodSyncAttach:
 		// The attach returns once, at the end of a session. Anything put on it
 		// would arrive as the agent stops existing, so a notice is kept for the
 		// next real call instead of being spent here.
-		d.locks.keepNotices(key, lines)
-		return ""
+		d.locks.keepNotices(key, notices)
+		return "", nil
 	case proto.MethodSyncAnnounce, proto.MethodSyncList:
 		// Move the cursor and say nothing about peers: whatever is here was in that
-		// result. A broken lock was not, so it still rides.
-		d.roster.riderFor(key)
-		return strings.Join(lines, " ")
+		// result. A broken lock was not, so it still rides. If the result never
+		// lands the peers are unsaid too, so the cursor comes back with the notices.
+		_, keepPeers := d.roster.riderFor(key)
+		return strings.Join(notices, " "), bothKept(keepNotices, keepPeers)
 	}
-	if peers := d.roster.riderFor(key); peers != "" {
+	// notices keeps its own length, so the closure above still puts back only what
+	// came out of the lock table and never the peers line appended here.
+	lines := notices
+	peers, keepPeers := d.roster.riderFor(key)
+	if peers != "" {
 		lines = append(lines, peers)
 	}
-	return strings.Join(lines, " ")
+	return strings.Join(lines, " "), bothKept(keepNotices, keepPeers)
+}
+
+// bothKept is the put-back for a rider assembled from two sources: neither of them
+// was told anything, so both go back or the survivor is a half-line.
+func bothKept(a, b func()) func() {
+	return func() {
+		if a != nil {
+			a()
+		}
+		if b != nil {
+			b()
+		}
+	}
 }
 
 // identityOf reads the caller identity out of any params object. Every method's
