@@ -17,6 +17,21 @@
   window.addEventListener("error", (e) => note("card error: " + e.message));
   window.addEventListener("unhandledrejection", (e) => note("card error: " + e.reason));
 
+  // TEMPORARY (U-16/R-48). Every measurement so far stopped at the window
+  // boundary: fifteen of sixteen cards ignored the key they advertise, and
+  // "ignored" could equally mean the keystroke never arrived or that it arrived
+  // and onKey did nothing with it. These four lines are the difference. Capture
+  // phase, on window, so a handler that swallows the event cannot hide it from
+  // the log. Removed with the diagnosis.
+  bridge.probe(`mount hasFocus=${document.hasFocus()}`);
+  window.addEventListener("focus", () => bridge.probe(`focus hasFocus=${document.hasFocus()}`));
+  window.addEventListener("blur", () => bridge.probe(`blur hasFocus=${document.hasFocus()}`));
+  window.addEventListener(
+    "keydown",
+    (e) => bridge.probe(`keydown key=${e.key} active=${document.activeElement?.tagName} hasFocus=${document.hasFocus()}`),
+    true,
+  );
+
   let view = $state(null);
   let draft = $state("");
   let replying = $state(false);

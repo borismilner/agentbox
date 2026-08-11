@@ -437,3 +437,19 @@ func (b *Bridge) MinimiseApp() {
 }
 
 func (b *Bridge) HideApp() { b.ui.ShutdownApp() }
+
+// --- TEMPORARY: U-16/R-48 focus probe ---------------------------------------
+//
+// The card's advertised keymap does not work by any route a human has, and
+// nothing measured so far can see past the window boundary: "dead" has only ever
+// meant the item did not resolve. Probe is the one hole through that. The card
+// reports document.hasFocus() on mount and on every focus change, and every
+// keydown it is handed, so the log says whether a keystroke reaches the web
+// content at all - which is what decides between the GTK focus chain, the WM and
+// the surface itself.
+//
+// Info, not Debug: the default log level is info, and a probe nobody can read is
+// not a probe. Comes out again with the diagnosis.
+func (b *Bridge) Probe(line string) {
+	b.ui.log.Info("webui.probe", "component", "webui", "line", trim(line, 200))
+}

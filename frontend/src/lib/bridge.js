@@ -197,6 +197,10 @@ export const bridge = {
   theme: () => Call.ByName(svc("Theme")),
   ready: (surface) => Call.ByName(svc("Ready"), surface),
   fit: (height) => Call.ByName(svc("Fit"), height),
+  // TEMPORARY (U-16/R-48): one line into the daemon log from inside the webview,
+  // so a keystroke that never arrives can be told apart from one that arrives and
+  // does nothing. Removed with the diagnosis.
+  probe: (line) => Call.ByName(svc("Probe"), line),
   closeSelf: () => Window.Close(),
   // Window buttons for the frameless surfaces, which have no title bar of
   // their own. These act on the calling window (the runtime's Window is this
