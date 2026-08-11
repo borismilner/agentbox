@@ -180,6 +180,13 @@ type Config struct {
 	VetoWindow    time.Duration // FR22 default countdown when a veto omits timeout_s
 	IdleAfter     time.Duration // FR44/FR29 presence.idle_after_s; 0 disables the missed-while-away marker
 	CallerGone    time.Duration // FR45 grace before a disconnected card auto-dismisses
+	// SurfaceGrace is how long a self-closing toast waits for its window to
+	// report itself before the daemon gives up and warns (R-06). Not a user
+	// knob: it is a bound on a handshake, and the only reason to change it is a
+	// test that does not want to wait. It must stay comfortably above the
+	// webui's own two-second wait for the bundle to mount, or a slow-but-healthy
+	// surface would be warned about.
+	SurfaceGrace time.Duration
 
 	HoldWhenIdle      bool // FR29: hold chimes and pause escalation while idle, one summary chime on return
 	FullscreenAutoDnd bool // FR29: a focused fullscreen app counts as DND
@@ -229,6 +236,12 @@ type Config struct {
 func (c *Config) fill() {
 	if c.ToastDuration == 0 {
 		c.ToastDuration = 6 * time.Second
+	}
+	if c.SurfaceGrace == 0 {
+		// Five, against the webui's two-second wait for the bundle to say it is
+		// listening (webui.armCard). Enough headroom that a loaded machine is not
+		// accused of losing a window it merely opened slowly.
+		c.SurfaceGrace = 5 * time.Second
 	}
 	if c.RetentionAge == 0 {
 		c.RetentionAge = 30 * 24 * time.Hour
@@ -327,6 +340,14 @@ type Daemon struct {
 	dismissAt time.Time       // auto-dismiss deadline of the current toast
 	escTimer  *time.Timer     // escalation for the current item (FR9)
 	escCount  int
+
+	// R-06. A self-closing toast's clock is a promise about the screen, so it
+	// does not start here - it starts when the surface says it is up
+	// (SurfaceShown). These two hold the gap: which item is waiting for its
+	// window, and the bounded fallback that gives up waiting and says so.
+	// Both are nil/empty whenever no toast is waiting.
+	surfaceWait    *time.Timer
+	surfaceWaitFor string
 
 	// FR29 presence state, refreshed from the monitor (never queried under
 	// d.mu). idle gates chimes/escalation; autoDnd (a focused fullscreen app
@@ -1544,21 +1565,32 @@ func (d *Daemon) advanceLocked() {
 			return
 		}
 	}
+	// Nothing displayable left, so nothing is waiting for a window either (R-06).
+	d.clearSurfaceWaitLocked()
 	d.current = nil
 }
 
 func (d *Daemon) setCurrentLocked(it *proto.Item) {
 	d.cancelEscalationLocked()
+	// Whatever the last item was waiting for, it is not current now (R-06).
+	d.clearSurfaceWaitLocked()
 	d.dismissAt = time.Time{}
 	d.current = it
 	d.log.Info(logging.EvItemDisplayed, "component", "daemon", "item_id", it.ID, "waiting", len(d.queue))
 	if it.Kind == proto.KindNotify {
 		lvl := it.EffectiveLevel()
 		if lvl == proto.LevelInfo || lvl == proto.LevelSuccess {
+			// R-06. The clock does NOT start here. Six seconds is a promise about
+			// how long the human had to read the thing, and this line runs under
+			// the daemon lock before Present has reached the UI at all - so a
+			// window that never appeared used to be retired on schedule, with a
+			// history row saying dismissed and nothing anywhere saying it was
+			// never seen. The surface now says when it is up (SurfaceShown), and
+			// surfaceMissing is the bound on waiting for it.
 			id := it.ID
-			d.dismissAt = time.Now().Add(d.cfg.ToastDuration)
-			d.timers[id] = time.AfterFunc(d.cfg.ToastDuration, d.safely("toast.expire", func() {
-				d.toastExpired(id)
+			d.surfaceWaitFor = id
+			d.surfaceWait = time.AfterFunc(d.cfg.SurfaceGrace, d.safely("toast.surface_missing", func() {
+				d.surfaceMissing(id)
 			}))
 			return
 		}
@@ -1731,6 +1763,15 @@ func (d *Daemon) stopTimerLocked(id string) {
 		t.Stop()
 		delete(d.timers, id)
 	}
+	// A toast can be torn down while it is still waiting for its window - answered
+	// from the inbox, preempted by an urgent, swept into a stack, or resolved by a
+	// shutdown. Clearing the wait here rather than at each of those seven call
+	// sites is deliberate: this function is already the one thing they all call,
+	// and a fallback left armed for a retired item would warn about a window
+	// nobody is waiting for any more (R-06).
+	if d.surfaceWaitFor == id {
+		d.clearSurfaceWaitLocked()
+	}
 }
 
 func (d *Daemon) viewLocked() View {
@@ -1761,6 +1802,71 @@ func (d *Daemon) callerStateLocked(it *proto.Item) CallerState {
 	default:
 		return CallerAwaiting
 	}
+}
+
+// SurfaceShown is the surface reporting that it is on screen, which is what
+// starts a self-closing toast's clock (R-06). Called from the UI on its own
+// goroutine once the window's bundle says it is listening; anything else it is
+// told about is a no-op, so the UI has one call site and needs to know nothing
+// about kinds or levels.
+//
+// Idempotent, and it has to be: the toast window is reused between items, so a
+// second report for the same item must not extend a countdown the human is
+// already watching.
+func (d *Daemon) SurfaceShown(id string) {
+	d.mu.Lock()
+	if d.surfaceWaitFor != id || d.current == nil || d.current.ID != id {
+		d.mu.Unlock()
+		return
+	}
+	d.clearSurfaceWaitLocked()
+	d.startToastClockLocked(id)
+	view := d.viewLocked()
+	d.mu.Unlock()
+	d.log.Info("item.surface_shown", "component", "daemon", "item_id", id)
+	// The card renders its countdown from the view, and the view it has says
+	// there is no deadline yet, so this is not decoration: without it the strip
+	// would sit there and then vanish without ever having counted.
+	d.ui.Present(view)
+}
+
+// surfaceMissing gives up waiting for a window that never reported itself. The
+// item is not abandoned silently, which is the whole of R-06: the warning names
+// it, and the clock then runs as it always did so the queue behind it still
+// drains. What this build does NOT yet do is mark the history row, so a toast
+// retired down this path still reads as dismissed rather than as never seen -
+// see R-06 for why that half needs a store migration and what it costs to leave
+// undone.
+func (d *Daemon) surfaceMissing(id string) {
+	d.mu.Lock()
+	if d.surfaceWaitFor != id || d.current == nil || d.current.ID != id {
+		d.mu.Unlock()
+		return
+	}
+	d.clearSurfaceWaitLocked()
+	d.startToastClockLocked(id)
+	view := d.viewLocked()
+	waited := d.cfg.SurfaceGrace
+	d.mu.Unlock()
+	d.log.Warn("item.surface_missing", "component", "daemon", "item_id", id,
+		"waited_ms", waited.Milliseconds())
+	d.ui.Present(view)
+}
+
+// startToastClockLocked arms the auto-dismiss the two callers above share.
+func (d *Daemon) startToastClockLocked(id string) {
+	d.dismissAt = time.Now().Add(d.cfg.ToastDuration)
+	d.timers[id] = time.AfterFunc(d.cfg.ToastDuration, d.safely("toast.expire", func() {
+		d.toastExpired(id)
+	}))
+}
+
+func (d *Daemon) clearSurfaceWaitLocked() {
+	if d.surfaceWait != nil {
+		d.surfaceWait.Stop()
+		d.surfaceWait = nil
+	}
+	d.surfaceWaitFor = ""
 }
 
 // toastExpired auto-dismisses a self-closing info/success toast. If the user

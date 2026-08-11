@@ -31,6 +31,14 @@ type fakeUI struct {
 	boards      []string // walkthrough ids passed to ShowBoard, in call order
 	assignPokes int      // AssignmentsChanged calls
 	panicOn     int      // 1-based Present call that panics; 0 never
+
+	// R-06. d is the daemon to report a shown surface back to, wired by
+	// newTestDaemon after construction (the daemon needs its Presenter first).
+	// noWindow makes this fake stand for a window that never appeared: it keeps
+	// taking views and never reports one on screen, which is the failure no test
+	// could express while the fake had no notion of a window.
+	d        *Daemon
+	noWindow bool
 }
 
 func (f *fakeUI) ShowBoard(id string) {
@@ -103,12 +111,27 @@ func (f *fakeUI) Present(v View) {
 	f.mu.Lock()
 	f.views = append(f.views, v)
 	blow := f.panicOn > 0 && len(f.views) == f.panicOn
+	ack := !f.noWindow && f.d != nil && v.Item != nil
+	d, id := f.d, ""
+	if ack {
+		id = v.Item.ID
+	}
 	f.mu.Unlock()
 	if blow {
 		// Outside the lock deliberately: a fake that panics while holding its own
 		// mutex deadlocks every later assertion, and the test would then blame the
 		// guard for the fake.
 		panic("the surface blew up")
+	}
+	// R-06. Until this existed the fake had no notion of a window at all, so a
+	// toast's clock could start from the daemon's own decision to display and no
+	// test could tell the difference. A healthy surface reports itself, and it does
+	// so on its own goroutine because the Presenter contract forbids calling back
+	// into the daemon synchronously - Present runs on the caller's stack, sometimes
+	// a timer's. Set noWindow to get the failure this models: a window that never
+	// appeared and therefore never reported.
+	if ack {
+		go d.SurfaceShown(id)
 	}
 }
 
@@ -293,6 +316,23 @@ func newTestDaemon(t *testing.T, cfg Config) (*Daemon, *fakeUI, *fakeSound, *sto
 	if err != nil {
 		t.Fatal(err)
 	}
+	// R-06: the fake reports a shown surface, the way a real one does. Wired here
+	// rather than in the literal above because New needs the Presenter to exist
+	// first; the same cycle cmd/agentbox's lateResolver breaks.
+	ui.mu.Lock()
+	ui.d = d
+	ui.mu.Unlock()
+	return d, ui, snd, st
+}
+
+// newBlindTestDaemon is newTestDaemon with a surface that never appears: every
+// view is taken and none is ever reported on screen (R-06).
+func newBlindTestDaemon(t *testing.T, cfg Config) (*Daemon, *fakeUI, *fakeSound, *store.Store) {
+	t.Helper()
+	d, ui, snd, st := newTestDaemon(t, cfg)
+	ui.mu.Lock()
+	ui.noWindow = true
+	ui.mu.Unlock()
 	return d, ui, snd, st
 }
 
@@ -386,6 +426,10 @@ func TestAPanicOnATimersGoroutineDoesNotTakeTheDaemonDown(t *testing.T) {
 	d, ui, _, _ := newTestDaemon(t, Config{ToastDuration: 400 * time.Millisecond})
 	callNotify(t, d, notifyItem(proto.LevelInfo))
 	waitForItem(t, ui)
+	// Wait for the clock to start before arming, or the paint that panics is the
+	// surface reporting itself (R-06) rather than the timer firing - and that one
+	// runs on the UI's goroutine, where this guard is not what is being tested.
+	waitForToastClock(t, ui)
 	ui.panicOnNextPresent() // the next paint is the toast expiring on its timer
 
 	// The toast's timer fires, panics inside the guard, and the daemon is still
@@ -430,6 +474,25 @@ func waitForItem(t *testing.T, ui *fakeUI) *proto.Item {
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("nothing presented")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// waitForToastClock waits until a presented view carries a dismiss deadline,
+// which since R-06 means the surface has reported itself on screen and only then
+// did the countdown start. Before R-06 the deadline was already on the first view,
+// set from the daemon's own decision to display, so a test asserting it needed no
+// wait - and a window that never appeared was indistinguishable from one that did.
+func waitForToastClock(t *testing.T, ui *fakeUI) View {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if v := ui.last(); !v.DismissAt.IsZero() {
+			return v
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the toast's clock never started; no view carried a dismiss deadline")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -1145,8 +1208,13 @@ func TestViewCarriesWaitingIdentities(t *testing.T) {
 func TestToastViewCarriesDismissDeadline(t *testing.T) {
 	d, ui, _, _ := newTestDaemon(t, Config{ToastDuration: time.Minute})
 	callNotify(t, d, notifyItem(proto.LevelInfo))
-	v := ui.last()
-	if v.DismissAt.IsZero() || time.Until(v.DismissAt) > time.Minute {
+	// The first view has no deadline on purpose (R-06): the countdown belongs to
+	// the window, so it starts when the window says it is there.
+	if v := ui.last(); !v.DismissAt.IsZero() {
+		t.Fatalf("info toast had a deadline before its surface reported: %v", v.DismissAt)
+	}
+	v := waitForToastClock(t, ui)
+	if time.Until(v.DismissAt) > time.Minute {
 		t.Fatalf("info toast DismissAt = %v", v.DismissAt)
 	}
 
@@ -1154,6 +1222,117 @@ func TestToastViewCarriesDismissDeadline(t *testing.T) {
 	callNotify(t, d, notifyItem(proto.LevelWarning))
 	if v := ui.last(); !v.DismissAt.IsZero() {
 		t.Fatalf("sticky warning has DismissAt = %v, want zero", v.DismissAt)
+	}
+}
+
+// R-06's own "test that would have caught it", in the three parts the entry
+// separates: the clock is the screen's and not the daemon's, a window that never
+// appears is not retired on the old schedule, and the wait for it is bounded so
+// the queue behind it still drains.
+func TestToastClockWaitsForTheWindow(t *testing.T) {
+	// A surface that never reports itself. Long grace, short toast: if the clock
+	// were still started from the daemon's decision to display, the item would be
+	// gone within 60ms and this would fail on the first check.
+	d, ui, _, _ := newBlindTestDaemon(t, Config{
+		ToastDuration: 50 * time.Millisecond,
+		SurfaceGrace:  10 * time.Second,
+	})
+	callNotify(t, d, notifyItem(proto.LevelInfo))
+	waitForItem(t, ui)
+
+	time.Sleep(300 * time.Millisecond) // six toast durations
+	if v := ui.last(); v.Item == nil {
+		t.Fatal("a toast whose window never appeared was retired anyway, which is R-06")
+	}
+	if v := ui.last(); !v.DismissAt.IsZero() {
+		t.Fatalf("the clock started without the window: DismissAt = %v", v.DismissAt)
+	}
+}
+
+func TestToastClockStartsWhenTheWindowReports(t *testing.T) {
+	d, ui, _, _ := newTestDaemon(t, Config{
+		ToastDuration: 80 * time.Millisecond,
+		SurfaceGrace:  10 * time.Second,
+	})
+	callNotify(t, d, notifyItem(proto.LevelInfo))
+	// The healthy fake reports itself, so the clock starts and the toast goes. The
+	// long grace is what makes this an assertion about the report rather than about
+	// the fallback: nothing here can be explained by the daemon giving up waiting.
+	waitForToastClock(t, ui)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if ui.last().Item == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the toast never expired after its surface reported")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestAToastWhoseWindowNeverReportsStillDrains(t *testing.T) {
+	// The bound. Without it a surface that never reports would hold the current
+	// slot for ever and every notification behind it with it, which is a worse
+	// failure than the one R-06 describes - so the fallback starts the clock and
+	// warns rather than waiting indefinitely.
+	d, ui, _, _ := newBlindTestDaemon(t, Config{
+		ToastDuration: 50 * time.Millisecond,
+		SurfaceGrace:  120 * time.Millisecond,
+	})
+	callNotify(t, d, notifyItem(proto.LevelInfo))
+	waitForItem(t, ui)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if ui.last().Item == nil {
+			return // grace lapsed, clock ran, queue drained
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the fallback never fired; a missing window wedges the queue")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestASecondReportDoesNotExtendACountdown(t *testing.T) {
+	// The toast window is reused between items, so the same item can be reported
+	// twice. A second report must not restart the countdown the human is already
+	// watching.
+	d, ui, _, _ := newTestDaemon(t, Config{
+		ToastDuration: time.Minute,
+		SurfaceGrace:  10 * time.Second,
+	})
+	callNotify(t, d, notifyItem(proto.LevelInfo))
+	v := waitForToastClock(t, ui)
+	first := v.DismissAt
+
+	time.Sleep(30 * time.Millisecond)
+	d.SurfaceShown(v.Item.ID)
+	if got := ui.last().DismissAt; !got.Equal(first) {
+		t.Fatalf("a second report moved the deadline from %v to %v", first, got)
+	}
+}
+
+func TestAReportForSomethingElseIsIgnored(t *testing.T) {
+	// The surface reports the item it was given, and by the time the report lands
+	// the daemon may have moved on. A stale id must not start a clock on whatever
+	// happens to be current now.
+	d, ui, _, _ := newTestDaemon(t, Config{
+		ToastDuration: time.Minute,
+		SurfaceGrace:  10 * time.Second,
+	})
+	callNotify(t, d, notifyItem(proto.LevelWarning)) // sticky: no clock of its own
+	it := waitForItem(t, ui)
+
+	d.SurfaceShown("k-not-a-real-item")
+	if v := ui.last(); !v.DismissAt.IsZero() {
+		t.Fatalf("a report for an unknown item started a clock: %v", v.DismissAt)
+	}
+	// And the sticky warning still has none of its own, reported or not.
+	d.SurfaceShown(it.ID)
+	if v := ui.last(); !v.DismissAt.IsZero() {
+		t.Fatalf("a sticky warning got a dismiss deadline: %v", v.DismissAt)
 	}
 }
 

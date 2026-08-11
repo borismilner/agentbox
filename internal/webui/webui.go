@@ -55,6 +55,14 @@ type Resolver interface {
 	// ArtifactEvent is the human acting inside an artifact rather than on a card
 	// (M10): a click or a slider, on its way to whichever agent is waiting for it.
 	ArtifactEvent(ev proto.ArtifactEvent)
+	// SurfaceShown reports that the window for an item is up and its bundle is
+	// listening, which is what starts a self-closing toast's clock (R-06). It is
+	// the one method here that carries no human decision: the daemon used to time
+	// six seconds from its own decision to display, so a window that never
+	// appeared was retired on schedule. Sent for every prompt surface and ignored
+	// by the daemon for the kinds that have no clock, so this side needs to know
+	// nothing about kinds or levels.
+	SurfaceShown(id string)
 }
 
 // cardView is what a card or toast window renders. It is daemon.View flattened
@@ -462,6 +470,14 @@ func (u *UI) showCard(v daemon.View) {
 		if existing != nil {
 			if existingKind == kind {
 				u.emit("agentbox:view", payload)
+				// The reused window is already up and its bundle is already
+				// listening, so this item's surface is on screen the moment the
+				// view lands (R-06). Reporting here matters as much as reporting
+				// after a mount: a queue of three toasts is one window, so only
+				// the first of them goes through armCard, and without this the
+				// other two would each wait out the whole grace and be warned
+				// about while sitting on screen perfectly well.
+				u.reportShown(payload.Item)
 				return
 			}
 			u.closeCardNow()
@@ -536,15 +552,45 @@ func (u *UI) showCard(v daemon.View) {
 
 // armCard waits for the surface to say it is listening, then sends the view.
 // Emitting before the bundle has run would drop the first card of a session.
+//
+// The wait is also the acknowledgement R-06 needed, which is why nothing new had
+// to be measured to get it: a bundle that has called Ready has run, so the
+// window exists and its web process is alive. Only the ready path reports - the
+// timeout is precisely the case where the surface did NOT say it was up, and
+// reporting there would hand the daemon the same false confidence it had before.
 func (u *UI) armCard(payload cardView) {
 	go func() {
+		shown := false
 		select {
 		case <-u.ready:
+			shown = true
 		case <-time.After(2 * time.Second):
 			u.log.Warn("webui.card_ready_timeout", "component", "webui")
 		}
 		u.emit("agentbox:view", payload)
+		// After the emit, so the surface has its view before the clock it is
+		// about to count down starts. The daemon ignores this for every kind
+		// that has no clock.
+		if shown {
+			u.reportShown(payload.Item)
+		}
 	}()
+}
+
+// reportShown tells the daemon that this item's surface is on screen, which is
+// what starts a self-closing toast's countdown (R-06).
+//
+// On its own goroutine, always: the two callers are the UI thread and armCard's
+// wait, the daemon answers this by presenting again, and Present comes back
+// through onMain - so a synchronous call from the UI thread would be re-entering
+// the thread it is already on. Nil-safe for the same reason emit is: a test UI has
+// no resolver behind it, and what those tests exercise is the window decision.
+func (u *UI) reportShown(item *proto.Item) {
+	if u.res == nil || item == nil {
+		return
+	}
+	id := item.ID
+	go u.res.SurfaceShown(id)
 }
 
 // closeCard retires the prompt window. The close travels through the same

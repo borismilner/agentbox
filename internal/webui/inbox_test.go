@@ -220,6 +220,7 @@ type fakeResolver struct {
 	dismiss []string
 	opened  [][2]string // FR30: (stack id, item id) pairs the surface asked to open
 	events  []proto.ArtifactEvent
+	shown   []string // R-06: item ids the surface reported itself on screen for
 	// refuse is what every answer-path method hands back (U-02): empty for the
 	// normal case, a sentence to make the daemon say it did nothing.
 	refuse string
@@ -252,6 +253,7 @@ func (f *fakeResolver) OpenStacked(stackID, itemID string) string {
 	return f.refuse
 }
 func (f *fakeResolver) ArtifactEvent(ev proto.ArtifactEvent) { f.events = append(f.events, ev) }
+func (f *fakeResolver) SurfaceShown(id string)               { f.shown = append(f.shown, id) }
 
 // testUI is a UI with no webview behind it: enough for the encoders, the
 // snapshot and the dispatch, which is everything decided in Go.

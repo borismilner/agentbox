@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/borismilner/agentbox/internal/config"
 	"github.com/borismilner/agentbox/internal/daemon"
@@ -157,6 +158,49 @@ func TestShowCardDecidesReuseOnTheUIThread(t *testing.T) {
 	u.mu.Unlock()
 	if got != win {
 		t.Fatal("the closure replaced the open window instead of reusing it")
+	}
+}
+
+// shoutingResolver reports the ids it is told about down a channel, so a test can
+// wait for a report that arrives on its own goroutine without racing a slice.
+type shoutingResolver struct {
+	fakeResolver
+	shownCh chan string
+}
+
+func (s *shoutingResolver) SurfaceShown(id string) { s.shownCh <- id }
+
+// R-06. A queue of three toasts is one window: only the first goes through
+// armCard, and the rest arrive down the reuse branch. If that branch stays quiet
+// the daemon never learns their surfaces are up, so each waits out the whole
+// surface grace and is warned about while sitting on screen perfectly well - and
+// its six seconds then begin five seconds late.
+func TestAReusedWindowStillReportsItsSurface(t *testing.T) {
+	u := confUI()
+	res := &shoutingResolver{shownCh: make(chan string, 4)}
+	u.res = res
+	var q []func()
+	u.invoke = func(fn func()) { q = append(q, fn) }
+	u.up = true
+
+	// A window is already open in the treatment the next item wants.
+	u.mu.Lock()
+	u.prompt, u.promptKind = &application.WebviewWindow{}, "toast"
+	u.mu.Unlock()
+
+	u.showCard(daemon.View{Item: &proto.Item{ID: "b", Kind: proto.KindNotify, Level: proto.LevelInfo}})
+	if len(q) != 1 {
+		t.Fatalf("queued %d ops, want 1", len(q))
+	}
+	q[0]()
+
+	select {
+	case got := <-res.shownCh:
+		if got != "b" {
+			t.Fatalf("reported %q on screen, want the item that was just shown", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the reused window never reported its surface, so the toast's clock never starts")
 	}
 }
 

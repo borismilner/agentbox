@@ -68,6 +68,11 @@ func (d *demoResolver) ArtifactEvent(ev proto.ArtifactEvent) {
 	fmt.Printf("  \u2190 artifact %s emit %s %s\n", ev.ArtifactID, ev.Name, string(ev.Data))
 }
 
+// The demo has no clock to start, but printing the report is the point: it is how
+// somebody driving `webui-demo` can see that a surface announces itself at all,
+// which is the handshake R-06 turns the toast's countdown into.
+func (d *demoResolver) SurfaceShown(id string) { d.log("surface-shown", id) }
+
 // demoSource stands in for the daemon behind the inbox and history surfaces, so
 // they can be built and judged without a store. It satisfies webui.Source, which
 // means the surfaces run the same code path they will in the daemon - there is

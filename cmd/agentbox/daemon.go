@@ -141,6 +141,15 @@ func (l *lateResolver) ArtifactEvent(ev proto.ArtifactEvent) {
 	}
 }
 
+// SurfaceShown carries no refusal, so unlike the methods above it has nothing to
+// say when the daemon is not up yet. A window reporting itself before the daemon
+// exists is a window for an item the daemon cannot have created (R-06).
+func (l *lateResolver) SurfaceShown(id string) {
+	if d := l.get(); d != nil {
+		d.SurfaceShown(id)
+	}
+}
+
 func daemonConfig(cfg config.Config) daemon.Config {
 	return daemon.Config{
 		ToastDuration:      time.Duration(cfg.Toast.DurationS) * time.Second,
