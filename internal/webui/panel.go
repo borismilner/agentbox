@@ -305,7 +305,18 @@ func (p *panel) openWindow() {
 		// itself cannot flash the panel at full height: it is one line tall until
 		// the slide grows it. The mapping is slide's, not this function's.
 		if p.ui.x != nil {
-			if xid := xidOf(win.NativeWindow()); xid != 0 {
+			xid := xidOf(win.NativeWindow())
+			if xid == 0 {
+				// Wails makes the native window lazily, so around startup
+				// NativeWindow can still answer nil and the hints would be lost.
+				// Run makes it now - a no-op once it exists, and Hidden in the
+				// options keeps it unmapped - which is the same recovery showCard
+				// takes. It has to happen here, on the UI thread: slide runs off
+				// it and may not call Run at all.
+				win.Run()
+				xid = xidOf(win.NativeWindow())
+			}
+			if xid != 0 {
 				p.ui.x.prepare(xid, false)
 				p.ui.x.moveTo(xid, ox, oy)
 				p.ui.x.setName(xid, "agentbox · panel")
@@ -343,20 +354,53 @@ func (p *panel) slide(down bool) {
 	p.animating = true
 	p.mu.Unlock()
 
+	// open records what actually got on screen, not what was asked for. It is one
+	// of the two inputs to ask routing (webui.go, routeAsk with AppOpen ||
+	// PanelOpen), so a panel that claims to be down while nothing mapped sends the
+	// question to a surface nobody can see and the card that would have carried it
+	// is never made: the earcon plays and there is nothing to answer. Only the
+	// paths that really show a window set shown.
+	shown := false
 	defer func() {
 		p.mu.Lock()
 		p.animating = false
-		p.open = down
+		p.open = down && shown
 		p.mu.Unlock()
 	}()
 
-	if x == nil || win == nil {
-		return // no X11: the window is simply there, which is still usable
-	}
-	xid := xidOf(win.NativeWindow())
-	if xid == 0 {
+	if win == nil {
+		// Show creates the window before anything reaches here, so this is the
+		// window having gone away underneath the roll - there is nothing to show
+		// and nothing may claim to be showing.
+		p.ui.log.Warn("webui.panel_unwindowed", "component", "webui", "down", down)
 		return
 	}
+
+	// Asked of the window, not of the connection: xidOf reads the GtkWindow and
+	// answers 0 without an X11 handle of its own.
+	xid := xidOf(win.NativeWindow())
+	if x == nil || xid == 0 {
+		// No X11 surface to roll: a Wayland session, or a native window Wails
+		// never made. Show is the designed degrade and the one every sibling
+		// surface already has (webui.go warns card_unprepared and shows anyway) -
+		// the panel arrives at full height with none of the placement, the
+		// stacking or the keyboard, which is worth a line in the log and is still
+		// a composer you can type in. Roll or no roll, there is no X11 to animate
+		// against, so it goes straight to its height.
+		p.ui.log.Warn("webui.panel_unprepared", "component", "webui", "down", down, "x11", x != nil)
+		if down {
+			p.ui.onMain("panel.show", func() {
+				win.SetSize(w, h)
+				win.Show()
+			})
+			shown = true
+			p.ui.emit("agentbox:panel", true)
+		} else {
+			p.ui.emit("agentbox:panel", false)
+		}
+		return
+	}
+	shown = true
 
 	// The map. Shut first when there is a roll to run, so it has somewhere to grow
 	// from; straight to full height when there is not, so nothing flashes a
