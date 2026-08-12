@@ -10,7 +10,7 @@ ICONDIR    ?= $(HOME)/.local/share/icons/hicolor/256x256/apps
 UNITDIR    ?= $(HOME)/.config/systemd/user
 
 .PHONY: help build frontend test check fmt vet generate run stop logs deploy deployed \
-	test-js test-svelte test-nox11 cross \
+	test-js test-svelte test-nox11 cross check-dist dist release \
 	restart-daemon rollback rollback-check clean install install-bin install-desktop install-service uninstall \
 	bootstrap deps deps-build deps-desktop deps-speech config doctor deck
 
@@ -219,7 +219,114 @@ cross: ## compile for macOS and Windows from here (catches a platform-locked cal
 	@GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build $(CROSS_DARWIN)
 	@echo "ok: no platform-locked call outside a tagged file"
 
-check: vet test test-js test-svelte test-nox11 cross ## everything CI would run
+check: vet test test-js test-svelte test-nox11 cross ## the gate: everything CI runs on every push
+
+# The one trap in this project a gate could never catch from here. frontend/dist is
+# committed on purpose (go:embed, so a machine without npm still builds), which means
+# an edited .svelte plus a plain `go build` embeds the OLD ui with no warning at all.
+#
+# Whether the committed bundle matches the committed sources is only answerable on a
+# CLEAN checkout - in a working tree the diff is indistinguishable from an edit in
+# progress - so this refuses a dirty tree instead of reporting a diff it cannot
+# attribute. That makes it a CI target, not a step in `check`: putting it there would
+# fail the gate for every uncommitted .svelte edit, which is most of a frontend session.
+check-dist: ## verify the committed frontend/dist matches its committed sources (clean tree only)
+	@command -v npm >/dev/null 2>&1 || { echo "npm absent: cannot verify the committed bundle"; exit 1; }
+	@test -z "$$(git status --porcelain)" \
+		|| { echo "check-dist needs a clean tree (it compares against HEAD); commit or stash first"; exit 1; }
+	@cd frontend && { [ -d node_modules ] || npm ci; } && npm run build
+	@git diff --exit-code frontend/dist >/dev/null \
+		|| { echo "frontend/dist is STALE - it does not match its sources."; \
+		     echo "  rebuild and commit it:  make frontend && git add frontend/dist"; \
+		     git diff --stat frontend/dist; exit 1; }
+	@echo "ok: the committed frontend/dist matches its sources"
+
+# ------------------------------------------------------------------- release
+#
+# What a download has to contain, which is more than the binary: the desktop entry
+# and the unit file (they are not in the binary), the icon, and an installer that
+# does NOT need this repo, since somebody with a tarball does not have the Makefile.
+#
+# The asset name carries no version ON PURPOSE. GitHub serves the newest release at
+# /releases/latest/download/<name>, and that URL is only stable while the name is -
+# so the version lives in the tag, in the directory inside the tarball, and in
+# `agentbox version`, and the download link in the README never has to be edited.
+VERSION  ?= $(shell git describe --tags --exact-match 2>/dev/null || git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+DISTDIR   = dist
+DISTNAME  = agentbox-linux-amd64
+STAGEDIR  = $(DISTDIR)/agentbox-$(VERSION)
+
+# The tag is stamped into the binary, and ONLY when it really is a tag. A commit
+# hash in this variable is the default, meaning "not a release", and stamping that
+# would make every local `make dist` claim to be a version - precisely what the
+# update check must never mistake for one. See internal/version.
+#
+# `v%` is an exact test, not an approximation: VERSION is either a tag (which this
+# project starts with v) or a hex sha, and no hex sha begins with a v. Written in
+# Make rather than with a shell `case` because a case pattern's own `)` closes
+# $(shell ...) early, which silently passes the pattern text to the compiler.
+#
+# It has to be ONE token with no spaces in it. GOFLAGS is split on whitespace, so
+# the usual `-X path.Var=v` spelling arrives as two flags and go rejects the second
+# as a non-flag.
+TAGSTAMP = $(if $(filter v%,$(VERSION)),-ldflags=-X=github.com/borismilner/agentbox/internal/version.Tag=$(VERSION))
+
+dist: ## package dist/agentbox-linux-amd64.tar.gz and its checksum
+	$(MAKE) --no-print-directory build GOFLAGS="$(GOFLAGS) $(TAGSTAMP)"
+	rm -rf $(STAGEDIR) $(DISTDIR)/$(DISTNAME).tar.gz
+	install -d $(STAGEDIR)/packaging
+	install -m 0755 $(BIN) $(STAGEDIR)/$(BIN)
+	@./$(BIN) version
+	install -m 0755 packaging/install.sh $(STAGEDIR)/install.sh
+	install -m 0644 README.md LICENSE $(STAGEDIR)/
+	install -m 0644 packaging/agentbox.desktop packaging/agentbox.service $(STAGEDIR)/packaging/
+	install -m 0644 internal/tray/icons/app-256.png $(STAGEDIR)/packaging/agentbox.png
+	tar -C $(DISTDIR) -czf $(DISTDIR)/$(DISTNAME).tar.gz agentbox-$(VERSION)
+	rm -rf $(STAGEDIR)
+	cd $(DISTDIR) && sha256sum $(DISTNAME).tar.gz > SHA256SUMS
+	@echo "packaged $(DISTDIR)/$(DISTNAME).tar.gz ($(VERSION))"
+	@cat $(DISTDIR)/SHA256SUMS
+
+# Cutting a release is one command, and it is a command rather than a note in a doc
+# because two things about it are easy to get wrong and invisible when you do.
+#
+#   * The tag has to reach GITLAB FIRST. GitHub builds the release and then asks
+#     GitLab's API to create a matching one, and that call fails if the tag is not
+#     there yet. Mirroring is gitlab-to-github, so origin-then-github is also the
+#     order the mirror wants.
+#   * The tag has to point at a commit BOTH remotes already have. A tag on an
+#     unpushed commit builds something nobody can check out.
+#
+# docs/releasing.md is the same procedure in prose, plus what to do when it fails
+# halfway. `make release VERSION=v0.2.0`.
+release: ## cut a release: check, tag VERSION, push to gitlab then github
+	@case "$(VERSION)" in \
+		v[0-9]*.[0-9]*.[0-9]*) ;; \
+		*) echo "release: VERSION must look like v0.2.0, got '$(VERSION)'"; \
+		   echo "usage: make release VERSION=v0.2.0"; exit 1 ;; \
+	esac
+	@test -z "$$(git status --porcelain)" || { echo "release: commit or stash first"; exit 1; }
+	@test "$$(git rev-parse --abbrev-ref HEAD)" = main || { echo "release: cut releases from main"; exit 1; }
+	@git rev-parse -q --verify "refs/tags/$(VERSION)" >/dev/null \
+		&& { echo "release: tag $(VERSION) already exists"; exit 1; } || true
+	@head=$$(git rev-parse HEAD); \
+	for r in origin github; do \
+		remote=$$(git ls-remote $$r main 2>/dev/null | cut -f1); \
+		test "$$remote" = "$$head" \
+			|| { echo "release: $$r/main is at $${remote:-nothing}, HEAD is $$head - push first"; exit 1; }; \
+	done
+	@echo "--> gate"
+	@$(MAKE) --no-print-directory check
+	@$(MAKE) --no-print-directory check-dist
+	@echo "--> tagging $(VERSION)"
+	git tag -a $(VERSION) -m "agentbox $(VERSION)"
+	@echo "--> gitlab first: the release job needs the tag to be there already"
+	git push origin refs/tags/$(VERSION)
+	@echo "--> github: this is what starts the build"
+	git push github refs/tags/$(VERSION)
+	@echo
+	@echo "watch it:   gh run watch --repo borismilner/agentbox"
+	@echo "then:       https://github.com/borismilner/agentbox/releases/latest"
 
 generate: ## regenerate earcon WAVs
 	go run ./tools/genearcons internal/sound/assets
