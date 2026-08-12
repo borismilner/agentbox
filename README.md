@@ -215,7 +215,7 @@ switch is on.
 
 ### Download a build
 
-x86-64 Linux, built on Ubuntu 24.04. The windows are a webview, so it needs
+**Linux, x86-64**, built on Ubuntu 24.04. The windows are a webview, so it needs
 `libgtk-4-1` and `libwebkitgtk-6.0-4`; `install.sh` checks for them and installs
 them through your package manager, asking once before it uses `sudo`. Everything
 else it does goes under `$HOME` and needs no root at all.
@@ -231,6 +231,17 @@ That URL always resolves to the newest
 are on [GitLab](https://gitlab.com/fu-bar/agentbox/-/releases), which is the
 canonical remote. Only the newest release is kept; older tags stay, so any
 version can still be checked out and built.
+
+**Windows, x86-64, experimental:** `agentbox-windows-amd64.zip`. Every published
+build has been started on a Windows runner before release - daemon up, status
+answered, an item taken, clean stop - but nobody has used it for real work yet,
+and `WINDOWS.md` inside the zip names two known defects (no tray icon, and
+`agentbox secret` cannot apply `0600` to the file it writes). It needs the
+WebView2 runtime.
+
+**macOS: build from source.** Every package compiles on a Mac, but the binary
+does not link - `fyne.io/systray` and Wails both define an Objective-C class
+called `MenuItem`, and the runtime has one namespace for class names.
 
 Releases are cut deliberately - a push to `main` is not one. See
 [docs/releasing.md](docs/releasing.md).

@@ -11,11 +11,24 @@
 
 ## Download
 
+On x86-64 Linux:
+
 ```sh
 curl -fsSLO https://github.com/borismilner/agentbox/releases/latest/download/agentbox-linux-amd64.tar.gz
 tar xzf agentbox-linux-amd64.tar.gz && cd agentbox-* && ./install.sh
 claude mcp add --scope user agentbox -- ~/.local/bin/agentbox mcp
 ```
+
+There is a **Windows** build too, `agentbox-windows-amd64.zip`, and it is marked
+experimental for a reason worth reading before you rely on it. Every published
+build is started on a Windows runner first - the daemon comes up, `status`
+answers, an item is taken and it stops cleanly - so it is not a guess. But no
+person has used it for real work, the tray icon does not load, and
+`agentbox secret` cannot apply `0600` to the file it writes, so a secret written
+on Windows should be treated as readable by any account on the machine.
+`WINDOWS.md` in the zip is the full account. On **macOS**, build from source:
+every package compiles there, but the binary does not link, because `systray` and
+Wails both define an Objective-C class called `MenuItem`.
 
 That URL always resolves to the newest release, on
 [GitHub](https://github.com/borismilner/agentbox/releases/latest) or

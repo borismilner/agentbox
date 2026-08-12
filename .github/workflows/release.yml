@@ -19,8 +19,85 @@ permissions:
   contents: write
 
 jobs:
+  # Windows is built on Windows and RUN before it is allowed into a release. It could
+  # be cross-compiled from the Linux job in one line (CGO_ENABLED=0 reaches the whole
+  # tree), and that is what `make cross` already proves compiles - but "it compiles"
+  # is not what a download promises. The probe on 2026-08-12 was the first time
+  # anything executed this binary, so from here on every published .exe has started a
+  # daemon, answered a status call, taken an item and stopped.
+  windows:
+    name: build and smoke-test windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # No npm anywhere near this job: frontend/dist is committed, so the embedded UI
+      # comes with the checkout.
+      - name: build
+        env:
+          TAG: ${{ github.ref_name }}
+        run: go build "-ldflags=-X=github.com/borismilner/agentbox/internal/version.Tag=$env:TAG" -o agentbox.exe ./cmd/agentbox
+
+      # The gate for shipping it. Anything here failing means no Windows asset, which
+      # is the right outcome: better no download than one nobody has started.
+      - name: smoke-test the binary
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $block) {
+            $out = & $block 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "$label failed (exit $LASTEXITCODE):`n$out" }
+            "ok: $label`n$out"
+          }
+
+          Check 'version'  { ./agentbox.exe version }
+          Check 'schema'   { ./agentbox.exe schema }
+
+          $p = Start-Process -FilePath ./agentbox.exe -ArgumentList 'daemon' -PassThru `
+                 -RedirectStandardOutput d.out -RedirectStandardError d.err
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) { Get-Content d.err | Out-String; throw "the daemon exited immediately (code $($p.ExitCode))" }
+
+          try {
+            Check 'status' { ./agentbox.exe status }
+            Check 'notify' { ./agentbox.exe notify --title "release smoke test" --body "built on a windows runner" }
+            Check 'pending' { ./agentbox.exe pending }
+            Check 'quit'   { ./agentbox.exe quit }
+          } finally {
+            Start-Sleep -Seconds 2
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+            "--- daemon stderr ---"
+            if (Test-Path d.err) { Get-Content d.err -Tail 30 | Out-String }
+          }
+
+      - name: package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $stage = "dist/agentbox-$env:TAG"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item agentbox.exe          $stage/
+          Copy-Item README.md             $stage/
+          Copy-Item LICENSE               $stage/
+          Copy-Item packaging/WINDOWS.md  $stage/
+          Compress-Archive -Path $stage -DestinationPath dist/agentbox-windows-amd64.zip -Force
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-zip
+          path: dist/agentbox-windows-amd64.zip
+          if-no-files-found: error
+          retention-days: 1
+
   release:
     name: build and publish
+    needs: [windows]
     runs-on: ubuntu-24.04
     steps:
       # Full history: the release notes are the commits since the previous tag, and
@@ -61,6 +138,20 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: make dist VERSION="$TAG"
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-zip
+          path: dist
+
+      # Both assets in one list, so the file a user checks covers everything they can
+      # download. make dist wrote this for the tarball alone; the windows zip only
+      # exists here, after the artifact lands.
+      - name: checksums over both assets
+        working-directory: dist
+        run: |
+          sha256sum agentbox-linux-amd64.tar.gz agentbox-windows-amd64.zip > SHA256SUMS
+          cat SHA256SUMS
+
       # A tag name can legally contain shell metacharacters, so it stays in the
       # environment and never reaches a command line.
       - name: release notes
@@ -69,30 +160,36 @@ jobs:
         run: |
           prev=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
           {
-            echo "## Install"
+            echo "## Install on Linux (x86-64)"
             echo
             echo '```sh'
             echo "curl -fsSLO https://github.com/${{ github.repository }}/releases/latest/download/agentbox-linux-amd64.tar.gz"
             echo "tar xzf agentbox-linux-amd64.tar.gz"
             echo "cd agentbox-$TAG && ./install.sh"
+            echo "claude mcp add --scope user agentbox -- ~/.local/bin/agentbox mcp"
             echo '```'
             echo
-            echo "Then register it with Claude Code:"
+            echo "Built on Ubuntu 24.04 (glibc 2.39 or newer). The windows are a GTK4 +"
+            echo "WebKitGTK webview linked dynamically, so it needs \`libgtk-4-1\` and"
+            echo "\`libwebkitgtk-6.0-4\`: \`install.sh\` checks and installs them with your"
+            echo "package manager after asking once. \`--yes\` skips the question,"
+            echo "\`--no-deps\` leaves system packages alone."
             echo
-            echo '```sh'
-            echo 'claude mcp add --scope user agentbox -- ~/.local/bin/agentbox mcp'
-            echo '```'
+            echo "## Install on Windows (x86-64, experimental)"
             echo
-            echo "## What this binary needs"
+            echo "\`agentbox-windows-amd64.zip\`. Every published build has been started"
+            echo "on a Windows runner - daemon up, status answered, an item taken, clean"
+            echo "stop - but nobody has used it for real work, and it has **two known"
+            echo "defects**: the tray icon does not load, and \`agentbox secret\` cannot"
+            echo "apply \`0600\` to the file it writes, so treat a secret written on"
+            echo "Windows as readable by any account on the machine. \`WINDOWS.md\` in the"
+            echo "zip has the details and the setup. Needs the WebView2 runtime."
             echo
-            echo "Built on Ubuntu 24.04, x86-64 (glibc 2.39 or newer). The windows are"
-            echo "a GTK4 + WebKitGTK webview linked dynamically, so it needs"
-            echo "\`libgtk-4-1\` and \`libwebkitgtk-6.0-4\`: \`install.sh\` checks, and"
-            echo "installs them for you with your package manager after asking once."
-            echo "\`--yes\` skips the question, \`--no-deps\` leaves packages alone."
+            echo "## macOS"
             echo
-            echo "On another distribution, or on macOS, build from source:"
-            echo "\`make bootstrap && make install\`."
+            echo "No download. Every package compiles on a Mac, but the binary does not"
+            echo "link: systray and Wails both define an ObjC class called MenuItem."
+            echo "Build from source elsewhere: \`make bootstrap && make install\`."
             echo
             echo "## Changes"
             echo
@@ -121,6 +218,7 @@ jobs:
             --notes-file dist/NOTES.md \
             --verify-tag \
             dist/agentbox-linux-amd64.tar.gz \
+            dist/agentbox-windows-amd64.zip \
             dist/SHA256SUMS
           echo "published: $(gh release view "$TAG" --json url --jq .url)"
 
@@ -158,6 +256,7 @@ jobs:
           TAG: ${{ github.ref_name }}
           PROJECT: fu-bar%2Fagentbox
           ASSET: agentbox-linux-amd64.tar.gz
+          WINASSET: agentbox-windows-amd64.zip
         run: |
           if [ -z "${GITLAB_TOKEN:-}" ]; then
             echo "::warning::GITLAB_TOKEN is not set - skipping the GitLab release."
@@ -170,7 +269,7 @@ jobs:
           api="https://gitlab.com/api/v4/projects/${PROJECT}"
           pkg="${api}/packages/generic/agentbox/${TAG}"
 
-          for f in "$ASSET" SHA256SUMS; do
+          for f in "$ASSET" "$WINASSET" SHA256SUMS; do
             echo "uploading $f"
             curl --fail-with-body -sS \
               -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
@@ -204,10 +303,13 @@ jobs:
               --rawfile desc dist/NOTES.gitlab.md \
               --arg asset "$ASSET" \
               --arg url "${pkg}/${ASSET}" \
+              --arg win "$WINASSET" \
+              --arg winurl "${pkg}/${WINASSET}" \
               --arg sums "${pkg}/SHA256SUMS" \
               '{tag_name: $tag, name: $tag, description: $desc,
                 assets: {links: [
                   {name: $asset, url: $url, link_type: "package"},
+                  {name: $win, url: $winurl, link_type: "package"},
                   {name: "SHA256SUMS", url: $sums, link_type: "other"}
                 ]}}' > dist/gitlab-release.json
             method=POST; url="${api}/releases"
