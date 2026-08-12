@@ -241,12 +241,24 @@ func TestAnOpenStackKeepsCollectingPastTheWindow(t *testing.T) {
 	// refills underneath an open stack card, so a loop that keeps going gets a
 	// fresh budget every window - three cards per ten seconds on the shipped
 	// defaults, which is eighteen a minute and not "calm survives buggy callers".
-	d, _, _, _ := newTestDaemon(t, Config{FloodBurst: 2, FloodWindow: 30 * time.Millisecond})
+	d, _, _, _ := newTestDaemon(t, floodCfg())
 	callNotify(t, d, floodNotify("one"))
 	callNotify(t, d, floodNotify("two"))
 	callNotify(t, d, floodNotify("three")) // over: opens the stack
 
-	time.Sleep(60 * time.Millisecond) // the whole window has passed
+	// Backdating every arrival on record IS "the whole window has passed", and it
+	// is what this used to sleep for. The sleep made the test a race it could
+	// lose: with a 30ms window, the three calls above have to land inside 30ms,
+	// and on a two-core CI runner under -race they did not - the burst never
+	// opened a stack, and the failure read as a product bug rather than a clock.
+	d.mu.Lock()
+	for _, f := range d.flood {
+		for i := range f.recent {
+			f.recent[i] = f.recent[i].Add(-2 * time.Minute)
+		}
+	}
+	d.mu.Unlock()
+
 	callNotify(t, d, floodNotify("four"))
 	callNotify(t, d, floodNotify("five"))
 
