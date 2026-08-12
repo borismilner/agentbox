@@ -85,11 +85,14 @@ jobs:
             echo
             echo "## What this binary needs"
             echo
-            echo "Built on Ubuntu 24.04, x86-64. The windows are a GTK4 + WebKitGTK"
-            echo "webview linked dynamically, so it needs \`libgtk-4-1\` and"
-            echo "\`libwebkitgtk-6.0-4\` present (glibc 2.39 or newer). \`install.sh\`"
-            echo "checks and names the package to install. On another distribution or"
-            echo "on macOS, build from source: \`make bootstrap && make install\`."
+            echo "Built on Ubuntu 24.04, x86-64 (glibc 2.39 or newer). The windows are"
+            echo "a GTK4 + WebKitGTK webview linked dynamically, so it needs"
+            echo "\`libgtk-4-1\` and \`libwebkitgtk-6.0-4\`: \`install.sh\` checks, and"
+            echo "installs them for you with your package manager after asking once."
+            echo "\`--yes\` skips the question, \`--no-deps\` leaves packages alone."
+            echo
+            echo "On another distribution, or on macOS, build from source:"
+            echo "\`make bootstrap && make install\`."
             echo
             echo "## Changes"
             echo

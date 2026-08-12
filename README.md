@@ -215,9 +215,10 @@ switch is on.
 
 ### Download a build
 
-x86-64 Linux, built on Ubuntu 24.04. Needs `libgtk-4-1` and `libwebkitgtk-6.0-4`
-present, since the windows are a webview; `install.sh` checks and names the
-package if they are missing.
+x86-64 Linux, built on Ubuntu 24.04. The windows are a webview, so it needs
+`libgtk-4-1` and `libwebkitgtk-6.0-4`; `install.sh` checks for them and installs
+them through your package manager, asking once before it uses `sudo`. Everything
+else it does goes under `$HOME` and needs no root at all.
 
 ```sh
 curl -fsSLO https://github.com/borismilner/agentbox/releases/latest/download/agentbox-linux-amd64.tar.gz

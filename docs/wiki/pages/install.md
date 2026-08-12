@@ -26,9 +26,14 @@ download lags the tip of the tree on purpose.
 
 The archive is one binary plus the desktop entry, the icon and the systemd unit,
 which are not in the binary and are what a launcher and autostart need.
-`install.sh` puts all four under `$HOME`, asks for no root, and starts nothing:
-the first CLI call spawns the daemon anyway. It checks for the two shared
-libraries below first and names the package to install if they are absent.
+`install.sh` puts all four under `$HOME` and starts nothing: the first CLI call
+spawns the daemon anyway.
+
+It also checks for the two shared libraries in the table below and installs them
+through your package manager (apt, dnf, pacman or zypper), which is the one part
+that needs root - so it is the one part that asks, showing the exact command
+first. `--yes` answers it in advance, `--no-deps` leaves system packages alone,
+and with no terminal to ask it declines rather than hanging.
 
 ## Or build it
 
