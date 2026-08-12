@@ -84,6 +84,30 @@ func waitForFile(t *testing.T, path, want string, d time.Duration) string {
 	return ""
 }
 
+// waitForBytes waits for a file to be non-empty, which is NOT what
+// waitForFile(path, "") does: every string contains the empty substring, so that
+// call returns the moment the file exists, however empty it is. On a fast machine
+// the writer has always got there first and the difference never shows; on a
+// two-core CI runner it showed as "no audio reached the player" with a stat that
+// found the file perfectly well.
+func waitForBytes(t *testing.T, path string, d time.Duration) int64 {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+			return info.Size()
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	info, err := os.Stat(path)
+	size := int64(-1)
+	if err == nil {
+		size = info.Size()
+	}
+	t.Fatalf("waited %v for bytes in %s; stat err=%v size=%d", d, path, err, size)
+	return 0
+}
+
 func newTestSpeaker(t *testing.T, opt Options) (*Speaker, string, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -112,10 +136,11 @@ func TestSpeakGoesThroughTheEngineAndThePlayer(t *testing.T) {
 
 	s.Speak("The staging migration failed. Rolled back.")
 	waitForFile(t, transcript, "The staging migration failed. Rolled back.", 5*time.Second)
-	waitForFile(t, audio, "", time.Second) // any bytes at all: the PCM reached a player
 
-	if info, err := os.Stat(audio); err != nil || info.Size() == 0 {
-		t.Errorf("no audio reached the player (err=%v)", err)
+	// Any bytes at all is the claim: the PCM reached a player. The wait and the
+	// assertion are now the same question, which they were not before.
+	if n := waitForBytes(t, audio, 5*time.Second); n == 0 {
+		t.Error("no audio reached the player")
 	}
 }
 
