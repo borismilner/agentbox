@@ -1,18 +1,44 @@
 # From nothing to a card on your screen
 
-> **In short.** AgentBox builds from source: one target installs the system
-> packages, one puts the binary in `~/.local/bin` with a systemd user unit, and
-> one line registers it with your coding agent. From a clean machine to a card on
-> your screen is four commands.
+> **In short.** On x86-64 Linux, download the release and run its `install.sh`.
+> Anywhere else it builds from source: one target installs the system packages,
+> one puts the binary in `~/.local/bin` with a systemd user unit, and one line
+> registers it with your coding agent. From a clean machine to a card on your
+> screen is four commands either way.
 >
 > **Read on if** you are putting it on a machine today. **Skip to**
 > [[Safe on a work machine?|is-it-safe]], or [[Limits and non-goals|limits]].
 
-Everything below runs in the root of a checkout. There is no package and no
-release archive to download: the binary carries no version number, because no
-tags exist and nothing is stamped into it. What identifies a build is the
-toolchain's own record of the commit it came from, which `agentbox status` reports
-back to you.
+## Download
+
+```sh
+curl -fsSLO https://github.com/borismilner/agentbox/releases/latest/download/agentbox-linux-amd64.tar.gz
+tar xzf agentbox-linux-amd64.tar.gz && cd agentbox-* && ./install.sh
+claude mcp add --scope user agentbox -- ~/.local/bin/agentbox mcp
+```
+
+That URL always resolves to the newest release, on
+[GitHub](https://github.com/borismilner/agentbox/releases/latest) or
+[GitLab](https://gitlab.com/fu-bar/agentbox/-/releases). Only the newest one is
+kept, so there is exactly one download and it is the current one. A release is
+cut deliberately - a commit landing on `main` does not produce one - so the
+download lags the tip of the tree on purpose.
+
+The archive is one binary plus the desktop entry, the icon and the systemd unit,
+which are not in the binary and are what a launcher and autostart need.
+`install.sh` puts all four under `$HOME`, asks for no root, and starts nothing:
+the first CLI call spawns the daemon anyway. It checks for the two shared
+libraries below first and names the package to install if they are absent.
+
+## Or build it
+
+Required on macOS, on Windows, and on any Linux whose GTK4 and WebKitGTK differ
+from the ones the release was built against (Ubuntu 24.04). Everything below runs
+in the root of a checkout.
+
+A build carries no version number of its own: what identifies it is the
+toolchain's record of the commit it came from, which `agentbox status` reports
+back to you. A downloaded release is that same stamp plus the tag it was cut at.
 
 ## Two shared libraries, a display server it can do without, and sound too
 

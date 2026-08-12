@@ -130,11 +130,19 @@ yourself.
 
 ## Build identity
 
-There is no version number. No git tags exist, and the binary carries no
-ldflags. Identity is the toolchain's VCS stamp: revision, build time, dirty flag
-(`internal/version/version.go:19-47`). `agentbox status` reports the daemon's
-build and then the client's if they differ (`cmd/agentbox/main.go:648-663`),
-which is the check `make deploy` relies on (`Makefile:295`).
+A build from source carries no version constant. Identity is the toolchain's VCS
+stamp: revision, build time, dirty flag (`internal/version/version.go`).
+`agentbox status` reports the daemon's build and then the client's if they differ
+(`cmd/agentbox/main.go:648-663`), which is the check `make deploy` relies on
+(`Makefile:295`).
+
+A RELEASE carries one thing more: `make dist` stamps the tag with `-X` when, and
+only when, `VERSION` is a `vX.Y.Z` tag, so `Released()` distinguishes a downloaded
+release from somebody's own build. A dirty tree revokes it. Releases start at
+`v0.1.0` (2026-08-12); before that date there were no tags and no downloads,
+which several older pages still assume. `.github/workflows/release.yml` turns a
+`v*` tag into the download on GitHub and GitLab, and keeps only the newest
+release; nothing publishes on a push to `main`.
 
 ## Runtime requirements
 

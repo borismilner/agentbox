@@ -8,6 +8,11 @@
 >
 > **Read on if** you are not yet convinced an agent can be left alone.
 > **Skip to** [[Safe on a work machine?|is-it-safe]], or [[Install|install]].
+>
+> **Download the latest release:**
+> [GitHub](https://github.com/borismilner/agentbox/releases/latest) ·
+> [GitLab](https://gitlab.com/fu-bar/agentbox/-/releases). x86-64 Linux, or
+> [[build from source|install]] on macOS, Windows and other distributions.
 
 ## An agent with nowhere to put the question
 
@@ -23,8 +28,6 @@ That is the problem. Not the model, not the prompt. The last meter.
 ## This is what arrives
 
 ![A card from release-bot on project checkout-api asking where release 2026.7.30 should go first, with three numbered options and a countdown reading expires in 1:57](img/card.png)
-
-<sub>Every option carries its number. The whole exchange is one keystroke.</sub>
 
 <sub>Every option carries its number. The whole exchange is one keystroke.</sub>
 

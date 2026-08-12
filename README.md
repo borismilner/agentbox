@@ -5,6 +5,7 @@
 <h3 align="center">AgentBox &nbsp;·&nbsp; stop babysitting your agents</h3>
 
 <p align="center">
+  <a href="https://github.com/borismilner/agentbox/releases/latest"><img src="https://img.shields.io/github/v/release/borismilner/agentbox?style=flat-square&color=4fb286&label=download" alt="latest release"></a>
   <img src="https://img.shields.io/badge/MCP-20%20tools-7c8cf8?style=flat-square" alt="20 MCP tools">
   <img src="https://img.shields.io/badge/Go-1.26-4fa3e3?style=flat-square" alt="Go 1.26">
   <img src="https://img.shields.io/badge/Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-one%20binary-4fb286?style=flat-square" alt="Linux, macOS, Windows">
@@ -13,6 +14,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/borismilner/agentbox/releases/latest">Download</a> &nbsp;·&nbsp;
   <a href="#install">Install</a> &nbsp;·&nbsp;
   <a href="#the-tools">The tools</a> &nbsp;·&nbsp;
   <a href="docs/agent-manual.md">Agent manual</a>
@@ -211,6 +213,31 @@ switch is on.
 
 ## Install
 
+### Download a build
+
+x86-64 Linux, built on Ubuntu 24.04. Needs `libgtk-4-1` and `libwebkitgtk-6.0-4`
+present, since the windows are a webview; `install.sh` checks and names the
+package if they are missing.
+
+```sh
+curl -fsSLO https://github.com/borismilner/agentbox/releases/latest/download/agentbox-linux-amd64.tar.gz
+tar xzf agentbox-linux-amd64.tar.gz && cd agentbox-* && ./install.sh
+claude mcp add --scope user agentbox -- ~/.local/bin/agentbox mcp
+```
+
+That URL always resolves to the newest
+[release](https://github.com/borismilner/agentbox/releases), and the same files
+are on [GitLab](https://gitlab.com/fu-bar/agentbox/-/releases), which is the
+canonical remote. Only the newest release is kept; older tags stay, so any
+version can still be checked out and built.
+
+Releases are cut deliberately - a push to `main` is not one. See
+[docs/releasing.md](docs/releasing.md).
+
+### Build from source
+
+Required on any other distribution, and on macOS or Windows.
+
 ```sh
 make bootstrap    # compiler, pkg-config, GTK4 + WebKitGTK headers, node, a voice, a config
 make install      # binary to ~/.local/bin, desktop launcher, systemd user unit
@@ -234,7 +261,9 @@ For an agent, the whole manual is in the binary: `agentbox docs agent`.
 message depends on a display server: the daemon, the socket, the CLI, all 20 MCP
 tools, and every surface that asks a human something work the same everywhere.
 `make check` compiles macOS and Windows on every run, so that is a checked claim
-rather than a hopeful one.
+rather than a hopeful one - and CI adds the half a Linux box cannot reach, building
+the native macOS webview on a Mac. Compiled, not exercised: nobody has run the
+macOS or Windows binary yet.
 
 GNOME/mutter on X11 is what it is developed against, and that desktop gets more -
 not because the others get less of the product, but because X11 lets AgentBox
