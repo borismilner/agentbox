@@ -10,7 +10,7 @@ ICONDIR    ?= $(HOME)/.local/share/icons/hicolor/256x256/apps
 UNITDIR    ?= $(HOME)/.config/systemd/user
 
 .PHONY: help build frontend test check fmt vet generate run stop logs deploy deployed \
-	test-js test-svelte test-nox11 cross check-dist dist release \
+	test-js test-svelte test-nox11 cross check-dist check-workflows dist release \
 	restart-daemon rollback rollback-check clean install install-bin install-desktop install-service uninstall \
 	bootstrap deps deps-build deps-desktop deps-speech config doctor deck
 
@@ -219,7 +219,17 @@ cross: ## compile for macOS and Windows from here (catches a platform-locked cal
 	@GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build $(CROSS_DARWIN)
 	@echo "ok: no platform-locked call outside a tagged file"
 
-check: vet test test-js test-svelte test-nox11 cross ## the gate: everything CI runs on every push
+check: vet test test-js test-svelte test-nox11 cross check-workflows ## the gate: everything CI runs on every push
+
+# A workflow file that does not parse fails in the most confusing way available:
+# GitHub names the run after the file instead of the workflow, reports failure with
+# ZERO jobs, and attaches no annotation saying why. An unquoted `: ` in a step name
+# cost a push to find out. This is in `check` because the answer has to arrive
+# before the push, not after it.
+check-workflows: ## parse the CI workflow files (skipped without python yaml)
+	@python3 -c "import yaml" 2>/dev/null || { echo "python yaml absent: skipping the workflow parse"; exit 0; }
+	@python3 -c "import sys,yaml; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" \
+		.github/workflows/*.yml && echo "ok: workflow files parse"
 
 # The one trap in this project a gate could never catch from here. frontend/dist is
 # committed on purpose (go:embed, so a machine without npm still builds), which means

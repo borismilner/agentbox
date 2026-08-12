@@ -99,7 +99,7 @@ jobs:
       # continue-on-error keeps main green while leaving the failure on the run where
       # nobody can pretend it is not there. Delete it the day the clash is gone; if
       # this step starts PASSING, that is the news, and the flag should go.
-      - name: link the binary (known broken: MenuItem clash)
+      - name: "link the binary (known broken: MenuItem clash)"
         continue-on-error: true
         run: go build ./cmd/agentbox
 
