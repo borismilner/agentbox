@@ -1,0 +1,80 @@
+#!/bin/sh
+# The gate, before the push instead of after it.
+#
+# This project pushes `main` directly and has no PRs, so GitHub's "require status
+# checks" is not available to it: those checks run AFTER a commit lands, and a rule
+# demanding them would reject every first push of a new commit. Worse, GitLab
+# push-mirrors to GitHub, so a rule enforced against admins would break the mirror,
+# and one that is not enforced against admins would not apply to Boris either. The
+# only place a test gate can sit in this workflow is here, on the machine, before the
+# bytes leave.
+#
+# What it does NOT do: replace CI. `check.yml` still runs on every push, and it
+# reaches two things this cannot (a clean checkout for `check-dist`, and a Mac). This
+# only stops the obvious breakage from becoming a commit on main that somebody else
+# pulls.
+#
+# Installed by `make hooks`, which sets core.hooksPath to this directory. To push
+# past it once: `git push --no-verify`.
+
+set -eu
+
+ZERO=0000000000000000000000000000000000000000
+
+# Only `main` is gated. A side branch is somewhere to put work in progress, and
+# gating one would make the escape hatch the normal path.
+gated=no
+while read -r local_ref local_sha remote_ref remote_sha; do
+	# A deletion pushes the zero sha; there is nothing to test.
+	[ "$local_sha" = "$ZERO" ] && continue
+	case "$remote_ref" in
+	refs/heads/main) gated=yes ;;
+	esac
+done
+
+[ "$gated" = yes ] || exit 0
+
+if ! command -v make >/dev/null 2>&1; then
+	echo "pre-push: make is not on PATH, so the gate cannot run." >&2
+	echo "          push with --no-verify if that is really what you want." >&2
+	exit 1
+fi
+
+head=$(git rev-parse HEAD)
+stamp="$(git rev-parse --git-dir)/last-checked"
+
+# `make check` tests the WORKING TREE, not the commits being pushed. Those are the
+# same thing only when the tree is clean, and saying so is cheaper than a green gate
+# that tested something else. It warns rather than refuses: the deploy target already
+# takes this line on a dirty build (NFR14), and refusing here would block a push of a
+# finished commit just because an unrelated file is open.
+dirty=no
+if [ -n "$(git status --porcelain)" ]; then
+	dirty=yes
+	echo "pre-push: the tree is DIRTY - what follows tests your working tree," >&2
+	echo "          not the commit you are pushing." >&2
+fi
+
+# The usual push is two of them (origin then github) over the same commit, and the
+# second one has nothing new to learn. A recorded pass counts only for the exact
+# commit that passed, and only from a clean tree - an uncommitted edit means the run
+# proved nothing about $head in the first place.
+if [ "$dirty" = no ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$head" ]; then
+	echo "pre-push: $(git rev-parse --short HEAD) already passed the gate; not re-running it."
+	exit 0
+fi
+
+echo "pre-push: running make check on $(git rev-parse --short HEAD) before pushing main"
+echo "          (--no-verify skips this)"
+
+# </dev/null: git hands the hook the ref list on stdin, and a test that reads stdin
+# would otherwise inherit whatever is left of it.
+if ! make check </dev/null; then
+	echo >&2
+	echo "pre-push: make check FAILED - nothing was pushed." >&2
+	exit 1
+fi
+
+[ "$dirty" = no ] && printf '%s' "$head" >"$stamp"
+
+echo "pre-push: gate passed."

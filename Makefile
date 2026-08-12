@@ -10,7 +10,7 @@ ICONDIR    ?= $(HOME)/.local/share/icons/hicolor/256x256/apps
 UNITDIR    ?= $(HOME)/.config/systemd/user
 
 .PHONY: help build frontend test check fmt vet generate run stop logs deploy deployed \
-	test-js test-svelte test-nox11 cross check-dist check-workflows dist release \
+	test-js test-svelte test-nox11 cross check-dist check-workflows hooks dist release \
 	restart-daemon rollback rollback-check clean install install-bin install-desktop install-service uninstall \
 	bootstrap deps deps-build deps-desktop deps-speech config doctor deck
 
@@ -45,7 +45,7 @@ help: ## list targets
 # in the recipe, and `make doctor` tells you what is missing without installing
 # anything at all.
 
-bootstrap: deps config ## everything a fresh machine needs: packages, speech engine, config
+bootstrap: deps config hooks ## everything a fresh machine needs: packages, speech engine, config, hooks
 	@echo
 	@$(MAKE) --no-print-directory doctor
 	@echo
@@ -230,6 +230,21 @@ check-workflows: ## parse the CI workflow files (skipped without python yaml)
 	@python3 -c "import yaml" 2>/dev/null || { echo "python yaml absent: skipping the workflow parse"; exit 0; }
 	@python3 -c "import sys,yaml; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" \
 		.github/workflows/*.yml && echo "ok: workflow files parse"
+
+# The gate again, this time before the push rather than after it. GitHub cannot do
+# this for us: "require status checks" only passes a commit whose checks have already
+# run, which no first push of a new commit ever has, and enforcing it against admins
+# would break the GitLab-to-GitHub mirror (it pushes with Boris's own PAT). So the
+# only place a test gate fits a direct-push-to-main workflow is a local hook.
+#
+# core.hooksPath rather than copying into .git/hooks, so the hook is version
+# controlled and an edit to it is a commit rather than a change on one machine. It
+# points at the whole directory, so anything else added there is live too.
+hooks: ## install the pre-push gate (sets core.hooksPath to tools/hooks)
+	@chmod +x tools/hooks/*
+	@git config core.hooksPath tools/hooks
+	@echo "ok: core.hooksPath = $$(git config core.hooksPath)"
+	@echo "    a push of main now runs make check first; --no-verify skips it"
 
 # The one trap in this project a gate could never catch from here. frontend/dist is
 # committed on purpose (go:embed, so a machine without npm still builds), which means
