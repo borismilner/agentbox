@@ -1,0 +1,112 @@
+# The gate, on every push. `make check` is the same target a session runs by hand
+# (gofmt, vet, race tests, the frontend suites, the no-X11 path, two cross-compiles),
+# so CI cannot drift from the local ritual: there is one definition of green.
+#
+# Two things here are NOT reachable from a working copy, which is the whole reason
+# this file earns its keep:
+#
+#   * `check-dist` needs a clean checkout to tell a stale committed bundle from an
+#     edit in progress. Only CI ever has one.
+#   * the macos job compiles internal/webui with CGO against the native WebKit. The
+#     Makefile's `cross` target explicitly cannot ("a darwin webui needs clang and is
+#     verified by building on a Mac, not here"), so that claim was untested until now.
+#
+# Public repo, standard runners: unmetered, so nothing here is rationed.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A second push supersedes the first; no reason to finish a run for a commit that
+# has already been replaced. Tags are excluded - release runs must never be cancelled.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate (linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # The same set `make deps-build` installs, minus the toolchains setup-go and
+      # setup-node just provided. The webview IS GTK4 + WebKitGTK, so these are
+      # build dependencies, not extras.
+      - name: system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # No display and no session bus on a runner. The suite passes headless by
+      # design; if that ever stops being true, this is where it surfaces.
+      - name: make check
+        run: make check
+
+      - name: committed frontend/dist matches its sources
+        run: make check-dist
+
+  darwin:
+    name: build (macos, native webview)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # The whole tree with cgo on, internal/webui and internal/tray included. This
+      # is the half `make cross` has to leave out, so it is the only place the macOS
+      # port is more than a compilation claim about the packages that avoid the UI.
+      - name: go build ./...
+        run: go build ./...
+
+      - name: go vet ./...
+        run: go vet ./...
+
+  windows:
+    name: build (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # `cross` already cross-compiles this from Linux with CGO_ENABLED=0. What a
+      # real Windows host adds is the toolchain's own view of the tree - and the
+      # tests, which is where the path-separator bugs live (filepath.Base only knows
+      # the separator it was compiled for). Tests here have never been run, so they
+      # are not a required check yet; see docs/backlog.
+      - name: go build ./...
+        run: go build ./...
+
+  # There is deliberately no job here that publishes anything. A push to main proves
+  # the tree is good; it does not decide that the world should have a new download.
+  # That decision is `make release`, and it is a human one - see docs/releasing.md.

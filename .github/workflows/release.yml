@@ -1,0 +1,239 @@
+# A tag becomes a download. Push `v0.1.0` and this gates it, packages it, and
+# publishes a release whose asset lives at a URL that never changes:
+#
+#   https://github.com/borismilner/agentbox/releases/latest/download/agentbox-linux-amd64.tar.gz
+#
+# That is why `make dist` names the asset without a version in it - GitHub's
+# /latest/download/ redirect keys on the FILENAME, so a versioned name would mean a
+# README link that goes stale on every release.
+#
+# The gate runs here too rather than trusting that it passed on the commit: a tag can
+# be pushed at any commit, including one that never saw check.yml.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build and publish
+    runs-on: ubuntu-24.04
+    steps:
+      # Full history: the release notes are the commits since the previous tag, and
+      # a shallow clone cannot see them.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: make check
+        run: make check
+
+      # VERSION is passed explicitly. The Makefile would find the same string with
+      # `git describe --exact-match`, but a tag arriving on a detached HEAD is exactly
+      # the case where that quietly falls back to a commit hash instead.
+      - name: package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: make dist VERSION="$TAG"
+
+      # A tag name can legally contain shell metacharacters, so it stays in the
+      # environment and never reaches a command line.
+      - name: release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          prev=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          {
+            echo "## Install"
+            echo
+            echo '```sh'
+            echo "curl -fsSLO https://github.com/${{ github.repository }}/releases/latest/download/agentbox-linux-amd64.tar.gz"
+            echo "tar xzf agentbox-linux-amd64.tar.gz"
+            echo "cd agentbox-$TAG && ./install.sh"
+            echo '```'
+            echo
+            echo "Then register it with Claude Code:"
+            echo
+            echo '```sh'
+            echo 'claude mcp add --scope user agentbox -- ~/.local/bin/agentbox mcp'
+            echo '```'
+            echo
+            echo "## What this binary needs"
+            echo
+            echo "Built on Ubuntu 24.04, x86-64. The windows are a GTK4 + WebKitGTK"
+            echo "webview linked dynamically, so it needs \`libgtk-4-1\` and"
+            echo "\`libwebkitgtk-6.0-4\` present (glibc 2.39 or newer). \`install.sh\`"
+            echo "checks and names the package to install. On another distribution or"
+            echo "on macOS, build from source: \`make bootstrap && make install\`."
+            echo
+            echo "## Changes"
+            echo
+            if [ -n "$prev" ]; then
+              echo "Since \`$prev\`:"
+              echo
+              git log --no-merges --pretty='- %s' "$prev..$TAG"
+            else
+              echo "First tagged release."
+            fi
+            echo
+            echo "## Checksum"
+            echo
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } > dist/NOTES.md
+
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file dist/NOTES.md \
+            --verify-tag \
+            dist/agentbox-linux-amd64.tar.gz \
+            dist/SHA256SUMS
+          echo "published: $(gh release view "$TAG" --json url --jq .url)"
+
+      # Only the newest release is kept. Older ones are deleted, but their TAGS are
+      # not: a tag costs nothing, keeps `git checkout v0.1.0` working, and is what a
+      # deleted release can be rebuilt from. What goes away is the download and the
+      # notes, which is the clutter this is about.
+      #
+      # mapfile rather than a pipe into grep: these steps run under `set -o pipefail`,
+      # so a grep that matches nothing - the first release, every time - would fail the
+      # step for doing exactly what it should.
+      - name: keep only the newest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mapfile -t old < <(gh release list --limit 100 --json tagName --jq '.[].tagName')
+          for r in "${old[@]}"; do
+            [ "$r" = "$TAG" ] && continue
+            echo "pruning release $r (its tag stays)"
+            gh release delete "$r" --yes
+          done
+
+      # GitLab is the canonical remote and mirrors TO GitHub, so a visitor who never
+      # leaves gitlab.com should still find the download. It gets the identical bytes
+      # this job already built rather than a second build: GitLab Free meters CI at 400
+      # minutes a month, and an API upload from here costs none of them.
+      #
+      # Needs a GitLab personal access token with the `api` scope, stored as the
+      # GITLAB_TOKEN repository secret. Without it this step says so and stops - a
+      # missing mirror is not a reason to fail a release that is already published.
+      - name: mirror the release to GitLab
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          PROJECT: fu-bar%2Fagentbox
+          ASSET: agentbox-linux-amd64.tar.gz
+        run: |
+          if [ -z "${GITLAB_TOKEN:-}" ]; then
+            echo "::warning::GITLAB_TOKEN is not set - skipping the GitLab release."
+            echo "Create a token with the 'api' scope at"
+            echo "  https://gitlab.com/-/user_settings/personal_access_tokens"
+            echo "then: gh secret set GITLAB_TOKEN --repo ${GITHUB_REPOSITORY}"
+            exit 0
+          fi
+
+          api="https://gitlab.com/api/v4/projects/${PROJECT}"
+          pkg="${api}/packages/generic/agentbox/${TAG}"
+
+          for f in "$ASSET" SHA256SUMS; do
+            echo "uploading $f"
+            curl --fail-with-body -sS \
+              -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+              --upload-file "dist/${f}" \
+              "${pkg}/${f}"
+            echo
+          done
+
+          # The install snippet in the notes points at GitHub; on GitLab's own release
+          # page it should point at GitLab's copy.
+          sed "s|https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/${ASSET}|${pkg}/${ASSET}|" \
+            dist/NOTES.md > dist/NOTES.gitlab.md
+
+          # The tag already exists on GitLab - it is where it was pushed, and the mirror
+          # is what carried it here - so this only creates or updates the release object
+          # hanging off it. Create and update take DIFFERENT payloads: asset links are
+          # part of the create body, but the update endpoint has no `assets` field at
+          # all (links are their own sub-resource), so sending one there does nothing.
+          #
+          # jq builds both, so a release note containing quotes or newlines cannot break
+          # out of the JSON.
+          if curl -sSf -o /dev/null \
+               -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${api}/releases/${TAG}" 2>/dev/null; then
+            echo "the GitLab release for ${TAG} exists; updating its notes"
+            jq -n --arg tag "$TAG" --rawfile desc dist/NOTES.gitlab.md \
+              '{name: $tag, description: $desc}' > dist/gitlab-release.json
+            method=PUT; url="${api}/releases/${TAG}"
+          else
+            jq -n \
+              --arg tag "$TAG" \
+              --rawfile desc dist/NOTES.gitlab.md \
+              --arg asset "$ASSET" \
+              --arg url "${pkg}/${ASSET}" \
+              --arg sums "${pkg}/SHA256SUMS" \
+              '{tag_name: $tag, name: $tag, description: $desc,
+                assets: {links: [
+                  {name: $asset, url: $url, link_type: "package"},
+                  {name: "SHA256SUMS", url: $sums, link_type: "other"}
+                ]}}' > dist/gitlab-release.json
+            method=POST; url="${api}/releases"
+          fi
+
+          curl --fail-with-body -sS -X "$method" \
+            -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data @dist/gitlab-release.json \
+            "$url" | jq -r '"gitlab: " + (._links.self // "ok")'
+
+          # Same one-release policy as GitHub, and here it matters for a second reason:
+          # every release leaves a package version behind in the registry, and those
+          # count against GitLab's free storage. Tags stay.
+          mapfile -t old < <(curl -sS -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+            "${api}/releases?per_page=100" | jq -r '.[].tag_name')
+          for r in "${old[@]}"; do
+            [ "$r" = "$TAG" ] && continue
+            echo "pruning gitlab release $r (its tag stays)"
+            curl -sS -o /dev/null -X DELETE \
+              -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${api}/releases/${r}"
+          done
+
+          mapfile -t pkgs < <(curl -sS -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+            "${api}/packages?package_type=generic&package_name=agentbox&per_page=100" \
+            | jq -r --arg tag "$TAG" '.[] | select(.version != $tag) | .id')
+          for id in "${pkgs[@]}"; do
+            [ -n "$id" ] || continue
+            echo "pruning gitlab package $id"
+            curl -sS -o /dev/null -X DELETE \
+              -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${api}/packages/${id}"
+          done
