@@ -27,7 +27,7 @@
     "@tailwindcss/browser": "^4.3.3",
     "@wailsio/runtime": "^3.0.0-alpha.97",
     "katex": "^0.16.47",
-    "mermaid": "^11.16.0",
+    "mermaid": "^11.16.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
