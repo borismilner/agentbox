@@ -1,0 +1,63 @@
+# Dependency updates, opened as PRs. Note that this is the ONE place PRs exist here:
+# the project's own rule is that Boris pushes `main` directly and nothing goes through
+# review. Dependabot has no other way to propose a change, so its PRs are the
+# exception - read the diff, merge or close, and keep pushing main by hand.
+#
+# Three ecosystems, because three lockfiles can rot independently:
+#
+#   * gomod            - go.mod / go.sum
+#   * npm              - frontend/package-lock.json, which the committed frontend/dist
+#                        is built from. A bump here means `make frontend` and a
+#                        rebuilt bundle, so these are deliberately grouped into one PR
+#                        rather than arriving one at a time (see below).
+#   * github-actions   - the pinned `uses:` in .github/workflows. Nothing else watches
+#                        them, and an action that goes stale fails a release, not a
+#                        check.
+#
+# Monthly, not weekly. This is a one-person project with no dependency churn to speak
+# of; a weekly schedule on three ecosystems is a stream of PRs nobody asked for, and
+# a PR nobody reads is worse than no PR. Security fixes do NOT wait for this schedule
+# - `dependabot_security_updates` is enabled on the repo and opens those immediately.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      # The repo's convention is `type(scope): description`, and a commit message with
+      # a different shape stands out in `git log` for no reason.
+      prefix: "chore(deps)"
+    groups:
+      # Go's minor/patch bumps are almost never interesting on their own.
+      go-minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # ONE PR for the whole frontend, on purpose. Every npm bump needs the embedded
+      # bundle rebuilt and committed (`make frontend`), so five separate PRs mean five
+      # rebuilds of the same file and five conflicts in frontend/dist between them.
+      frontend:
+        applies-to: version-updates
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns: ["*"]
