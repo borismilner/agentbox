@@ -333,7 +333,21 @@ release: ## cut a release: check, tag VERSION, push to gitlab then github
 	@echo "--> gitlab first: the release job needs the tag to be there already"
 	git push origin refs/tags/$(VERSION)
 	@echo "--> github: this is what starts the build"
-	git push github refs/tags/$(VERSION)
+	@# The mirror often wins this race. gitlab-to-github mirroring fires on the push
+	@# above, so by the time this runs the tag can already be on github - and git
+	@# reports that as "cannot lock ref: reference already exists", which reads like a
+	@# failure and is not one. The only thing that matters is whether github's tag is
+	@# OUR tag; if it is, the mirror has done this step's job and the build is already
+	@# running. A DIFFERENT sha there is a real conflict and still stops everything.
+	@if git push github refs/tags/$(VERSION) 2>&1 | tee /dev/stderr | grep -q rejected; then \
+		mine=$$(git rev-parse refs/tags/$(VERSION)); \
+		theirs=$$(git ls-remote github refs/tags/$(VERSION) | cut -f1); \
+		if [ "$$mine" = "$$theirs" ]; then \
+			echo "   (the gitlab-to-github mirror pushed it first; same tag, so this is fine)"; \
+		else \
+			echo "release: github has $(VERSION) at $$theirs, not $$mine"; exit 1; \
+		fi; \
+	fi
 	@echo
 	@echo "watch it:   gh run watch --repo borismilner/agentbox"
 	@echo "then:       https://github.com/borismilner/agentbox/releases/latest"
