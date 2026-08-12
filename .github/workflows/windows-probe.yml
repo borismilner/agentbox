@@ -1,0 +1,102 @@
+# A throwaway workflow, run by hand, to answer a question nothing has ever answered:
+# does the Windows binary RUN? `cross` and check.yml both prove it compiles and
+# links, and the handoffs have carried "[assumed] whether the macOS and Windows
+# builds RUN" for weeks because nobody here has a Windows machine.
+#
+# A GitHub Windows runner is one, and it is free on a public repo. So this executes
+# the binary rather than reasoning about it, and every step reports instead of
+# gating - the point is to LEARN the answers, not to hold main to them. What
+# survives moves into check.yml as a required check and this file gets deleted.
+#
+# workflow_dispatch only: it never runs on a push.
+name: windows probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: does the windows binary run
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # No npm: frontend/dist is committed for exactly this reason, so the embedded
+      # UI comes along without a node toolchain anywhere near this runner.
+      - name: build
+        run: go build -o agentbox.exe ./cmd/agentbox
+
+      - name: what the OS and the runtime are
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          "AF_UNIX support needs Windows 10 1803+"
+          $wv = Get-ItemProperty -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue
+          if ($wv) { "WebView2 runtime: $($wv.pv)" } else { "WebView2 runtime: NOT FOUND" }
+
+      # The subcommands that touch no window and no daemon. If these do not work,
+      # nothing else will.
+      - name: the CLI answers
+        run: |
+          $ErrorActionPreference = 'Continue'
+          foreach ($args in @('version', '--help', 'schema', 'store schema')) {
+            "=== agentbox $args ==="
+            $out = & ./agentbox.exe $args.Split(' ') 2>&1 | Out-String
+            "exit=$LASTEXITCODE"
+            $out.Substring(0, [Math]::Min(400, $out.Length))
+          }
+
+      # The real question. A daemon means the AF_UNIX socket, the store, the state
+      # directory and the whole lifecycle - on Windows, for the first time. Timeouts
+      # everywhere so a hang costs a minute rather than the job.
+      - name: does a daemon start, answer and stop
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Continue'
+          "--- starting the daemon detached ---"
+          $p = Start-Process -FilePath ./agentbox.exe -ArgumentList 'daemon' -PassThru `
+                 -RedirectStandardOutput daemon.out -RedirectStandardError daemon.err
+          Start-Sleep -Seconds 5
+          "daemon process alive: $(-not $p.HasExited)"
+          if ($p.HasExited) { "exit code: $($p.ExitCode)" }
+
+          "--- agentbox status ---"
+          & ./agentbox.exe status 2>&1 | Out-String
+          "exit=$LASTEXITCODE"
+
+          "--- a non-blocking notify (no window should be needed to ACCEPT it) ---"
+          & ./agentbox.exe notify --title "probe" --body "from CI" 2>&1 | Out-String
+          "exit=$LASTEXITCODE"
+
+          "--- pending ---"
+          & ./agentbox.exe pending 2>&1 | Out-String
+
+          "--- quit ---"
+          & ./agentbox.exe quit 2>&1 | Out-String
+          "exit=$LASTEXITCODE"
+          Start-Sleep -Seconds 2
+
+          "--- daemon stdout ---"
+          if (Test-Path daemon.out) { Get-Content daemon.out -Tail 40 | Out-String }
+          "--- daemon stderr ---"
+          if (Test-Path daemon.err) { Get-Content daemon.err -Tail 40 | Out-String }
+          if (-not $p.HasExited) { "daemon still running; killing it"; Stop-Process -Id $p.Id -Force }
+
+      # The suite has never run on Windows either. This reports the per-package
+      # verdicts so the passing set is known, rather than asserting anything.
+      - name: which packages pass their tests here
+        timeout-minutes: 25
+        run: |
+          $ErrorActionPreference = 'Continue'
+          go test ./... -count=1 2>&1 | Tee-Object -FilePath test.log | Out-String
+          "===================== SUMMARY ====================="
+          Select-String -Path test.log -Pattern '^(ok|FAIL|---\s+FAIL|\?)' | ForEach-Object { $_.Line }
+          "exit was $LASTEXITCODE (not gating: this step reports)"
+          exit 0
