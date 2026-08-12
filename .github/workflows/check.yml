@@ -96,12 +96,29 @@ jobs:
       # day it was added, and it is not fixable here - one of the two dependencies has
       # to rename its class.
       #
-      # continue-on-error keeps main green while leaving the failure on the run where
-      # nobody can pretend it is not there. Delete it the day the clash is gone; if
-      # this step starts PASSING, that is the news, and the flag should go.
-      - name: "link the binary (known broken: MenuItem clash)"
-        continue-on-error: true
-        run: go build ./cmd/agentbox
+      # So this pins the KNOWN failure instead of tolerating any failure. Three states,
+      # three different answers: the clash unchanged is a warning, the clash gone is
+      # loud news, and a DIFFERENT link error fails the job, because that is a new bug
+      # wearing the old one's clothes.
+      #
+      # It is deliberately not `continue-on-error`. That flag reports a step that
+      # failed as conclusion=success over the API, so `gh run view --json` tells a
+      # later session the macOS binary links fine. A check nobody can query is worse
+      # than no check.
+      - name: "link the binary (pins a known macOS clash)"
+        run: |
+          if go build -o /dev/null ./cmd/agentbox 2>link.log; then
+            echo "::notice::the macOS binary LINKS now - the MenuItem clash is fixed."
+            echo "Make this step a plain 'go build ./...' and delete the special case."
+            exit 0
+          fi
+          if grep -q 'duplicate symbol .*_MenuItem' link.log; then
+            echo "::warning::known macOS link failure (systray/Wails MenuItem clash), unchanged."
+            exit 0
+          fi
+          echo "the macOS link failed for a DIFFERENT reason than the known clash:"
+          cat link.log
+          exit 1
 
   windows:
     name: build (windows)
