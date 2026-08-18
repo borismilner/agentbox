@@ -8,7 +8,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.26.1
 	github.com/jezek/xgb v1.3.1
 	github.com/modelcontextprotocol/go-sdk v1.6.1
-	github.com/wailsapp/wails/v3 v3.0.0-alpha2.117
+	github.com/wailsapp/wails/v3 v3.0.0-beta.8
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/sys v0.46.0
 	modernc.org/sqlite v1.52.0
