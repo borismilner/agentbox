@@ -313,6 +313,117 @@ const sessions = () => [
   },
 ];
 
+// S15. A step's body: a figure, a table and a callout (FR101).
+//
+// The frame the photographer must not take. A real review board is a live
+// walkthrough on Boris's own desktop, so photographing one puts a window over
+// whatever he is working on - which is exactly what happened while this feature
+// was being built, and it is why this fixture exists. It also draws BOTH themes,
+// which no single sitting at a screen can do.
+//
+// The fixture carries no tldr on purpose: the board opens in TL;DR and this frame
+// is about what is under it. A step with no TL;DR renders in full and the toggle
+// disappears, which is the shape a reader of this frame should see.
+function bodyReview() {
+  const diagram = `<svg viewBox="0 0 700 150">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L9 4.5L0 9z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <g stroke="var(--k-edge)" fill="var(--k-surface-2)" stroke-width="1">
+    <rect x="4" y="30" width="150" height="60" rx="10"/>
+    <rect x="206" y="30" width="150" height="60" rx="10"/>
+    <rect x="408" y="30" width="150" height="60" rx="10"/>
+    <rect x="610" y="30" width="86" height="60" rx="10"/>
+  </g>
+  <g stroke="var(--k-accent)" color="var(--k-accent)" stroke-width="1.6" fill="none">
+    <line x1="156" y1="60" x2="198" y2="60" marker-end="url(#a)"/>
+    <line x1="358" y1="60" x2="400" y2="60" marker-end="url(#a)"/>
+    <line x1="560" y1="60" x2="602" y2="60" marker-end="url(#a)"/>
+  </g>
+  <g font-size="15" text-anchor="middle">
+    <text x="79" y="58">the spec</text>
+    <text x="281" y="58">SafeSVG</text>
+    <text x="483" y="58">the wire</text>
+    <text x="653" y="58">the board</text>
+  </g>
+  <g fill="var(--k-ink-3)" font-size="12.5" text-anchor="middle">
+    <text x="79" y="78">figure.svg</text>
+    <text x="281" y="78">allow-list</text>
+    <text x="483" y="78">fig.svg</text>
+    <text x="653" y="78">one img</text>
+    <text x="79" y="112">what the agent wrote</text>
+    <text x="483" y="112">bytes Go wrote</text>
+    <text x="653" y="112">the theme sizes it</text>
+  </g>
+  <g fill="var(--k-warning)" font-size="12.5" text-anchor="middle">
+    <text x="281" y="112">a literal colour stops here</text>
+  </g>
+</svg>`;
+  return {
+    id: "w8db488ad6750",
+    title: "A walkthrough can draw, tabulate and warn",
+    repo: "~/me/projects/agentbox",
+    root: "/home/boris/me/projects/agentbox",
+    pinned: "3dbd94fa638c",
+    state: "open",
+    rev: 1,
+    pos: 0,
+    revMs: NOW,
+    marks: {},
+    comments: [],
+    steps: [
+      {
+        id: "shape",
+        kind: "ground",
+        title: "The path a picture takes",
+        purpose: "",
+        prose: [
+          { t: "A figure is the only place a walkthrough carries markup rather than text, so the second station below is where every rule lives." },
+        ],
+        body: [
+          {
+            kind: "figure",
+            lead: "The drawing takes its colours from the same tokens the page does, which is why it follows the theme rather than freezing in one.",
+            figure: {
+              svg: diagram,
+              alt: "the spec's svg goes through SafeSVG, then the wire, then the board",
+              caption: "Markup an agent writes is never filtered and passed on. It is refused, or re-composed element by element into bytes Go wrote itself.",
+              wide: true,
+            },
+          },
+          {
+            kind: "table",
+            lead: "The caps a body carries, so a step stays a step.",
+            table: {
+              head: ["what", "cap", "why that number"],
+              rows: [
+                ["blocks in one body", "14", "a diagram beside two citations needs the room"],
+                ["svg bytes", "98304", "past that it is a screenshot, and src takes one of those"],
+                ["table rows", "40", "past that it is data, and data belongs in a file the step cites"],
+                ["image pixels", "40000000", "bytes of RGBA are width x height x 4, and the webview pays it"],
+              ],
+              align: ["left", "right", "left"],
+              caption: "Each one is enforced in validation and stated in the error, so an author is told the number rather than guessing it.",
+            },
+          },
+          {
+            kind: "callout",
+            callout: {
+              tone: "warn",
+              title: "A figure never declares a colour of its own",
+              prose: [
+                { t: "fill and stroke must be currentColor, a gradient defined in the same figure, or a --k-* token. A literal is refused with the list of tokens to use instead, because a drawing that hard-codes a palette looks right in one theme and wrong in the other." },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export const FRAMES = {
   // S1. The choice card. home.md and the-card.md.
   //
@@ -320,6 +431,35 @@ export const FRAMES = {
   // proof that a second agent's question is visible while this one is up. The two
   // hues are what the daemon sends for the agents behind it - test-runner and
   // dependency-bot on checkout-api, the same fiction as S2.
+  // The dark one, and its sibling below is the same fixture in the light theme.
+  // Two frames rather than one because a theme is a fixture answer, and a drawing
+  // that only ever existed in dark mode is half the claim.
+  //
+  // No desk on either of them, and that is not a style choice. The board is the
+  // one LAZY surface (main.js imports it on demand), so data-drawn - which fires
+  // two animation frames after the module loads - is set before the board's chunk
+  // has painted. The readiness selector is what waits for the real thing, and
+  // draw.py only passes one to a frame that has no desk, because a selector
+  // cannot reach inside the desktop's iframe. A desk frame here photographs an
+  // empty window; that is what the first run of this frame produced.
+  s15: {
+    out: "review-body.png",
+    surface: "board",
+    width: 1180,
+    height: 900,
+    ready: "aside.callout",
+    calls: { Theme: {}, Ready: "", Board: bodyReview() },
+  },
+
+  s15l: {
+    out: "review-body-light.png",
+    surface: "board",
+    width: 1180,
+    height: 900,
+    ready: "aside.callout",
+    calls: { Theme: { mode: "light" }, Ready: "", Board: bodyReview() },
+  },
+
   s1: {
     out: "card.png",
     surface: "card",

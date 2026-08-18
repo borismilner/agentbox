@@ -42,9 +42,14 @@
      resolves to nothing takes its whole declaration with it, and a figure that
      has lost its background still reads as working to everything except the
      screen. */
+  /* The column, not a reading measure. 68ch of THIS font is about three quarters
+     of the width the prose beside it occupies, because the prose is set larger
+     and in the reading face - so a block capped that way arrives visibly
+     narrower than the paragraph above it, and a table with three columns in it
+     wraps every cell. Text wants a measure; evidence wants the column. */
   .fig {
     margin: 4px 0 26px;
-    max-width: 68ch;
+    max-width: 100%;
   }
   .fig.wide {
     max-width: none;

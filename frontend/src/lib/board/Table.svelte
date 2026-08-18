@@ -37,9 +37,14 @@
 </figure>
 
 <style>
+  /* The column, not a reading measure. 68ch of THIS font is about three quarters
+     of the width the prose beside it occupies, because the prose is set larger
+     and in the reading face - so a block capped that way arrives visibly
+     narrower than the paragraph above it, and a table with three columns in it
+     wraps every cell. Text wants a measure; evidence wants the column. */
   .tbl {
     margin: 4px 0 26px;
-    max-width: 68ch;
+    max-width: 100%;
   }
   /* The table scrolls inside its own box rather than widening the step: a review
      whose page scrolls sideways has lost its reading column, and the column is
@@ -50,6 +55,13 @@
     border-radius: 12px;
     background: var(--k-surface, #16181c);
   }
+  /* 100% of the reading column, which the step's grid sizes from its prose. Two
+     other widths were tried on screen and both were worse: 68ch of THIS font is
+     three quarters of the prose's width and leaves the table visibly inset, and
+     max-content pushes the table past the column so the last column is clipped
+     and has to be scrolled to. A cell that wraps inside the reading measure is
+     the better of the three, because the reader never has to scroll to finish a
+     row. A table too wide for the column still scrolls, in the box below. */
   table {
     width: 100%;
     border-collapse: collapse;
