@@ -20,10 +20,14 @@ import (
 // Caps. Sized so a spec (≤1 MB) plus its diff (≤2 MB) clear the 4 MB
 // wire-line limit in internal/proto with room to spare.
 const (
-	MaxSpecBytes  = 1 << 20
-	MaxDiffBytes  = 2 << 20
-	MaxSteps      = 64
-	MaxBlocks     = 8
+	MaxSpecBytes = 1 << 20
+	MaxDiffBytes = 2 << 20
+	MaxSteps     = 64
+	// MaxBlocks bounds one step's body. It was 8 when a block could only be code;
+	// a body that also carries figures, tables and callouts needs the room for a
+	// diagram beside the two citations it explains, and 14 is still a step a
+	// reader finishes.
+	MaxBlocks     = 14
 	MaxNotes      = 20
 	MaxChecks     = 6
 	MaxCmds       = 6
@@ -43,6 +47,14 @@ const (
 	// eight subjects in it is two reviews, and a rail with eight collapsed groups
 	// is the clutter the grouping was meant to remove.
 	MaxDomains = 6
+	// A table is for the handful of measurements that carry an argument, not for
+	// data. Past these it is a spreadsheet, and a spreadsheet belongs in a file
+	// the step cites.
+	MaxTableCols  = 8
+	MaxTableRows  = 40
+	MaxCellChars  = 240
+	MaxCaption    = 300
+	MaxCalloutSeg = 24
 )
 
 // Spec is the version-1 walkthrough: what is being reviewed, the change
@@ -123,13 +135,27 @@ type Step struct {
 	// field would come back as the paragraph it exists to replace.
 	//
 	// Required on the steps that carry substance, because the board opens in it.
-	TLDR   *TLDR           `json:"tldr,omitempty"`
-	Prose  []Seg           `json:"prose"`
+	TLDR  *TLDR `json:"tldr,omitempty"`
+	Prose []Seg `json:"prose"`
+	// Body is the step's ordered blocks: code citations, snippets, figures,
+	// tables and callouts, laid out in the order they are written. Code is the
+	// older name for the same array, from when a block could only be code, and it
+	// is still read because every stored walkthrough uses it. Write body.
+	Body   []Block         `json:"body,omitempty"`
 	Code   []Block         `json:"code,omitempty"`
 	Close  []Seg           `json:"close,omitempty"`
 	Binds  map[string]Bind `json:"binds,omitempty"`
 	Checks []Check         `json:"checks,omitempty"`
 	Cmds   []Cmd           `json:"cmds,omitempty"`
+}
+
+// Blocks is the step's body in reading order. One field or the other holds it,
+// never both (validation refuses that), so the read side never has to merge.
+func (st *Step) Blocks() []Block {
+	if len(st.Body) > 0 {
+		return st.Body
+	}
+	return st.Code
 }
 
 // TLDR is one step laid out for glancing. Bottom is the single sentence that has
@@ -174,6 +200,52 @@ type Block struct {
 	Label   string   `json:"label,omitempty"`
 	Lead    string   `json:"lead,omitempty"`
 	Notes   []Note   `json:"notes,omitempty"`
+	// The three blocks that are not code (FR101). A walkthrough used to be able
+	// to describe a picture and nothing else, so the arguments that needed one -
+	// a request path, a set of measurements, a warning that must not be read as
+	// prose - were written somewhere else entirely and lost the board with them.
+	// These are content, not presentation: each renders through the board's own
+	// tokens, so the human keeps one theme across everything they open.
+	Figure  *Figure  `json:"figure,omitempty"`
+	Table   *Table   `json:"table,omitempty"`
+	Callout *Callout `json:"callout,omitempty"`
+}
+
+// Figure is a drawing or an image. SVG is markup the author writes and agentbox
+// re-composes (see svg.go); Src is an image, either repo-relative or a data: URI,
+// read and re-encoded through the same budget every other image on the surface
+// passes. Exactly one of the two.
+//
+// Wide lets a figure use the annotation margin as well as the reading column,
+// which is what a wide flow diagram needs and what a portrait screenshot must
+// not have.
+type Figure struct {
+	SVG     string `json:"svg,omitempty"`
+	Src     string `json:"src,omitempty"`
+	Alt     string `json:"alt,omitempty"`
+	Caption string `json:"caption,omitempty"`
+	Wide    bool   `json:"wide,omitempty"`
+}
+
+// Table is the shape prose cannot hold: a header row, body rows, and the column
+// alignment that makes numbers comparable down a column. Cells are text - no
+// markup, no nested blocks - because a table in a review is measurements and
+// short labels, and anything longer is a paragraph pretending.
+type Table struct {
+	Head    []string   `json:"head"`
+	Rows    [][]string `json:"rows"`
+	Align   []string   `json:"align,omitempty"` // per column: left, right or center
+	Caption string     `json:"caption,omitempty"`
+}
+
+// Callout is one thing that must not be read as part of the flow: the trap, the
+// consequence, the thing that will be forgotten. Tone picks which of the board's
+// semantic colours it wears, and the four are the only four - a callout that
+// needs a fifth meaning is prose.
+type Callout struct {
+	Tone  string `json:"tone"` // note | good | warn | danger
+	Title string `json:"title,omitempty"`
+	Prose []Seg  `json:"prose"`
 }
 
 // Snippet is the no-file fallback. Because there is no manifest to derive
@@ -230,6 +302,9 @@ var (
 	// citations - file.go:12, "line 42" - not clock times ("14:02") or
 	// ratios ("13.8:1"), hence the letter required after the dot.
 	citationRe = regexp.MustCompile(`\.[a-zA-Z]\w{0,7}:\d|\blines? \d`)
+	// A figure's src is a repo path or a data: URI. Anything with another scheme,
+	// or a protocol-relative //host, is the network.
+	reFigureScheme = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9+.\-]*:|//)`)
 )
 
 // Parse decodes and validates a raw spec. It returns the spec, non-blocking
@@ -477,8 +552,16 @@ func (s *Spec) glossaryWarnings() []string {
 				}
 			}
 		}
-		for j := range st.Code {
-			mark(st.Code[j].Lead)
+		blocks := st.Blocks()
+		for j := range blocks {
+			mark(blocks[j].Lead)
+			if c := blocks[j].Callout; c != nil {
+				for _, seg := range c.Prose {
+					if seg.Bind == "" {
+						mark(seg.T)
+					}
+				}
+			}
 		}
 	}
 	var out []string
@@ -522,14 +605,27 @@ func (st *Step) validate() error {
 	if len(st.Prose) == 0 || len(st.Prose) > MaxProseSegs {
 		return fail("prose must hold 1-%d segments", MaxProseSegs)
 	}
-	if st.Kind == "code" && len(st.Code) == 0 {
-		return fail("a code step needs at least one code block")
+	if len(st.Body) > 0 && len(st.Code) > 0 {
+		return fail("the step has both body and code; they are the same array under two names - put every block in body, in the order it should be read")
 	}
-	if st.Kind != "code" && len(st.Code) > 0 {
-		return fail("code blocks belong on code steps only, not %q", st.Kind)
+	blocks := st.Blocks()
+	if len(blocks) > MaxBlocks {
+		return fail("%d blocks in the body; the cap is %d", len(blocks), MaxBlocks)
 	}
-	if len(st.Code) > MaxBlocks {
-		return fail("%d code blocks; the cap is %d", len(st.Code), MaxBlocks)
+	// Code is what the review's promise counts, so a code step has to show some.
+	// A figure or a table on such a step is welcome beside it and is not a
+	// substitute: a step that only draws a picture of code is a ground step.
+	cited := 0
+	for i := range blocks {
+		if blocks[i].isCode() {
+			cited++
+		}
+	}
+	if st.Kind == "code" && cited == 0 {
+		return fail("a code step needs at least one block citing code - a path with lines, or a snippet. A step whose body is only figures, tables or callouts is a ground step")
+	}
+	if st.Kind != "code" && cited > 0 {
+		return fail("code citations belong on code steps only, not %q; figures, tables and callouts may sit on any step", st.Kind)
 	}
 	checkSegs := func(field string, segs []Seg) error {
 		for i, seg := range segs {
@@ -560,22 +656,34 @@ func (st *Step) validate() error {
 	if len(st.Close) > MaxProseSegs {
 		return fail("close must hold at most %d segments", MaxProseSegs)
 	}
-	if len(st.Close) > 0 && len(st.Code) == 0 {
-		return fail("close is the paragraph after the code; a step with no code blocks has nothing to close - put it in prose")
+	if len(st.Close) > 0 && len(blocks) == 0 {
+		return fail("close is the paragraph under the last block; a step with an empty body has nothing to close - put it in prose")
 	}
 	if err := checkSegs("close", st.Close); err != nil {
 		return err
 	}
-	for i := range st.Code {
-		if err := st.Code[i].validate(); err != nil {
-			return fail("code[%d]: %s", i, err)
+	field := "body"
+	if len(st.Body) == 0 {
+		field = "code"
+	}
+	for i := range blocks {
+		if err := blocks[i].validate(); err != nil {
+			return fail("%s[%d]: %s", field, i, err)
+		}
+		if c := blocks[i].Callout; c != nil {
+			if err := checkSegs(fmt.Sprintf("%s[%d].callout.prose", field, i), c.Prose); err != nil {
+				return err
+			}
 		}
 	}
 	for name, b := range st.Binds {
-		if b.Block < 0 || b.Block >= len(st.Code) {
-			return fail("bind %q names block %d; the step has %d", name, b.Block, len(st.Code))
+		if b.Block < 0 || b.Block >= len(blocks) {
+			return fail("bind %q names block %d; the step has %d", name, b.Block, len(blocks))
 		}
-		lo, hi := st.Code[b.Block].lineBounds()
+		if !blocks[b.Block].isCode() {
+			return fail("bind %q names block %d, which is a %s; a bound phrase lights a region of code, so it can only point at a citation or a snippet", name, b.Block, blocks[b.Block].kindName())
+		}
+		lo, hi := blocks[b.Block].lineBounds()
 		if b.Lines[0] < lo || b.Lines[1] > hi || b.Lines[0] > b.Lines[1] {
 			return fail("bind %q lines [%d,%d] fall outside block %d's range [%d,%d]", name, b.Lines[0], b.Lines[1], b.Block, lo, hi)
 		}
@@ -634,19 +742,62 @@ func (st *Step) validateTLDR(fail func(string, ...any) error) error {
 	return nil
 }
 
-func (b *Block) validate() error {
-	file, snip := b.Path != "", b.Snippet != nil
-	if file == snip {
-		return fmt.Errorf("exactly one of path (a citation agentbox reads at render time) or snippet (inline content that lives in no file) is required")
+// isCode says whether this block cites or carries code, which is what binds,
+// notes and the coverage arithmetic all address.
+func (b *Block) isCode() bool { return b.Path != "" || b.Snippet != nil }
+
+// kindName names the form for an error message.
+func (b *Block) kindName() string {
+	switch {
+	case b.Path != "":
+		return "citation"
+	case b.Snippet != nil:
+		return "snippet"
+	case b.Figure != nil:
+		return "figure"
+	case b.Table != nil:
+		return "table"
+	case b.Callout != nil:
+		return "callout"
 	}
+	return "empty block"
+}
+
+func (b *Block) validate() error {
+	forms := 0
+	for _, present := range []bool{b.Path != "", b.Snippet != nil, b.Figure != nil, b.Table != nil, b.Callout != nil} {
+		if present {
+			forms++
+		}
+	}
+	if forms != 1 {
+		return fmt.Errorf("a block is exactly one of path (a citation agentbox reads at render time), snippet (code that lives in no file), figure (a drawing or an image), table or callout; this one is %d of them", forms)
+	}
+	if !b.isCode() {
+		if len(b.Notes) > 0 {
+			return fmt.Errorf("a %s takes no notes - notes are margin annotations anchored to code lines. Put the words in its caption, its title, or the lead above it", b.kindName())
+		}
+		if b.Lines != [2]int{} {
+			return fmt.Errorf("lines belong to a citation, not to a %s", b.kindName())
+		}
+		if err := b.validateLead(); err != nil {
+			return err
+		}
+		switch {
+		case b.Figure != nil:
+			return b.Figure.validate()
+		case b.Table != nil:
+			return b.Table.validate()
+		default:
+			return b.Callout.validate()
+		}
+	}
+	file := b.Path != ""
 	if len(b.Notes) > MaxNotes {
 		return fmt.Errorf("%d notes; the cap is %d", len(b.Notes), MaxNotes)
 	}
-	if len(b.Lead) > 600 {
-		return fmt.Errorf("lead is over 600 characters - it is the sentence or two that hands the reader into this block, not the explanation itself; that goes in notes")
-	}
-	if citationRe.MatchString(b.Lead) {
-		return fmt.Errorf("lead contains a literal line reference (%q); line numbers go stale silently - say what the block is, and let the notes point at lines", citationRe.FindString(b.Lead))
+	if err := b.validateLead(); err != nil {
+		return err
 	}
 	if file {
 		if filepath.IsAbs(b.Path) || strings.Contains(b.Path, "..") {
@@ -705,6 +856,119 @@ func (b *Block) lineBounds() (int, int) {
 		return b.Lines[0], b.Lines[1]
 	}
 	return 1, strings.Count(b.Snippet.Text, "\n") + 1
+}
+
+func (b *Block) validateLead() error {
+	if len(b.Lead) > 600 {
+		return fmt.Errorf("lead is over 600 characters - it is the sentence or two that hands the reader into this block, not the explanation itself; that goes in notes")
+	}
+	if citationRe.MatchString(b.Lead) {
+		return fmt.Errorf("lead contains a literal line reference (%q); line numbers go stale silently - say what the block is, and let the notes point at lines", citationRe.FindString(b.Lead))
+	}
+	return nil
+}
+
+func (f *Figure) validate() error {
+	svg, src := strings.TrimSpace(f.SVG) != "", strings.TrimSpace(f.Src) != ""
+	if svg == src {
+		return fmt.Errorf("a figure is exactly one of svg (markup agentbox re-composes, for a drawing) or src (an image: a repo-relative path, or a data: URI)")
+	}
+	if len(f.Caption) > MaxCaption {
+		return fmt.Errorf("caption is over %d characters - it says what the picture shows, and the argument goes in the prose around it", MaxCaption)
+	}
+	if len(f.Alt) > 300 {
+		return fmt.Errorf("alt is over 300 characters")
+	}
+	if svg {
+		if _, err := SafeSVG(f.SVG); err != nil {
+			return fmt.Errorf("svg: %w", err)
+		}
+		return nil
+	}
+	return validateFigureSrc(f.Src)
+}
+
+// validateFigureSrc refuses at authoring time what the renderer would refuse at
+// render time, so the author is told now rather than shipping a figure that
+// arrives on the board as a grey box. The repo root is the jail: the board reads
+// the file, the surface never learns a path (FR58).
+func validateFigureSrc(src string) error {
+	src = strings.TrimSpace(src)
+	if strings.HasPrefix(strings.ToLower(src), "data:") {
+		if !strings.Contains(strings.ToLower(src[:min(64, len(src))]), "base64") {
+			return fmt.Errorf("a data: URI must be base64 - percent-encoded pixels are not something to write by hand")
+		}
+		return nil
+	}
+	if reFigureScheme.MatchString(src) {
+		return fmt.Errorf("src %q is a URL; the board loads nothing over the network. Cite the image by its repo-relative path, or inline it as a base64 data: URI", src)
+	}
+	if filepath.IsAbs(src) || strings.Contains(src, "..") {
+		return fmt.Errorf("src %q must be repo-relative with no ..; the repo_root is the jail", src)
+	}
+	if src == "" {
+		return fmt.Errorf("src is empty")
+	}
+	return nil
+}
+
+func (t *Table) validate() error {
+	if len(t.Head) == 0 {
+		return fmt.Errorf("a table needs a head: the column labels, which is what makes its rows readable in any order")
+	}
+	if len(t.Head) > MaxTableCols {
+		return fmt.Errorf("%d columns; the cap is %d - past that the table is wider than the reading column and the reader scrolls sideways to compare", len(t.Head), MaxTableCols)
+	}
+	if len(t.Rows) == 0 {
+		return fmt.Errorf("a table needs rows")
+	}
+	if len(t.Rows) > MaxTableRows {
+		return fmt.Errorf("%d rows; the cap is %d - a table this long is data, and data belongs in a file the step cites", len(t.Rows), MaxTableRows)
+	}
+	if len(t.Align) > 0 && len(t.Align) != len(t.Head) {
+		return fmt.Errorf("align has %d entries for %d columns; give one per column or leave it out", len(t.Align), len(t.Head))
+	}
+	for i, a := range t.Align {
+		switch a {
+		case "", "left", "right", "center":
+		default:
+			return fmt.Errorf("align[%d] is %q; it is left, right or center", i, a)
+		}
+	}
+	if len(t.Caption) > MaxCaption {
+		return fmt.Errorf("caption is over %d characters", MaxCaption)
+	}
+	for _, h := range t.Head {
+		if len(h) > MaxCellChars {
+			return fmt.Errorf("a head cell is over %d characters", MaxCellChars)
+		}
+	}
+	for i, row := range t.Rows {
+		if len(row) != len(t.Head) {
+			return fmt.Errorf("row %d has %d cells for %d columns; a ragged table renders as one with a hole in it - pass an empty string for a cell with nothing in it", i, len(row), len(t.Head))
+		}
+		for j, c := range row {
+			if len(c) > MaxCellChars {
+				return fmt.Errorf("row %d column %d is %d characters; the cap is %d. A cell that long is a paragraph, and it belongs in the prose or a note", i, j, len(c), MaxCellChars)
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Callout) validate() error {
+	switch c.Tone {
+	case "note", "good", "warn", "danger":
+	default:
+		return fmt.Errorf("tone %q is not one of note, good, warn, danger - the four are the board's semantic colours, and a meaning that needs a fifth is prose", c.Tone)
+	}
+	if len(c.Title) > 120 {
+		return fmt.Errorf("title is over 120 characters - it is the one line the reader takes away from the callout")
+	}
+	if len(c.Prose) == 0 || len(c.Prose) > MaxCalloutSeg {
+		return fmt.Errorf("callout prose must hold 1-%d segments; a callout longer than that is the step, not an aside in it", MaxCalloutSeg)
+	}
+	return nil
 }
 
 // StepHash is the canonical fingerprint of a spec step, recorded on the

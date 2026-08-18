@@ -194,6 +194,12 @@ func TestNoSurfaceHTMLEverAutoFetches(t *testing.T) {
 		// hostile snippet text; the walkthrough spec is agent-authored and the
 		// files it cites are whatever sits in the repo.
 		"a board code line (renderSteps)": boardLineHTML(t, src),
+		// Board.svelte: fig.svg - a figure's drawing. The refusals live in
+		// internal/walkthrough/svg_test.go, because SafeSVG answers a hostile
+		// figure with an error rather than with markup; what belongs in THIS sweep
+		// is the accepted case, where the author's own words ride inside <text> and
+		// have to arrive escaped rather than parsed.
+		"a board figure (SafeSVG)": boardFigureSVG(t),
 	}
 	for label, html := range outputs {
 		if html == "" {

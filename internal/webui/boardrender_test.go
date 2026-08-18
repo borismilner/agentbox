@@ -87,7 +87,7 @@ func TestRenderStepsBasics(t *testing.T) {
 	if got := st.Binds["raw"]; len(got) != 3 || got[1] != 5 || got[2] != 6 {
 		t.Errorf("binds: %v", st.Binds)
 	}
-	c := st.Codes[0]
+	c := st.Body[0].Code
 	if c.Err != "" {
 		t.Fatalf("unexpected block error: %s", c.Err)
 	}
@@ -140,7 +140,7 @@ func TestRenderHonestErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := steps[0].Codes[0].Err; !strings.Contains(got, "has 8 lines") {
+	if got := steps[0].Body[0].Code.Err; !strings.Contains(got, "has 8 lines") {
 		t.Errorf("past-EOF error: %q", got)
 	}
 
@@ -155,7 +155,7 @@ func TestRenderHonestErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := steps[0].Codes[0].Err; !strings.Contains(got, "cannot read") {
+	if got := steps[0].Body[0].Code.Err; !strings.Contains(got, "cannot read") {
 		t.Errorf("missing-file error: %q", got)
 	}
 	if len(missed) != 1 {
@@ -169,7 +169,7 @@ func TestRenderHonestErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := steps[0].Codes[0].Err; !strings.Contains(got, "escapes") {
+	if got := steps[0].Body[0].Code.Err; !strings.Contains(got, "escapes") {
 		t.Errorf("jail error: %q", got)
 	}
 }
@@ -190,7 +190,7 @@ func TestRenderSnippetAndAllNew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := steps[0].Codes[0]
+	c := steps[0].Body[0].Code
 	if c.Path != "" || c.Label != "proposed" || c.Start != 1 {
 		t.Errorf("snippet header: %+v", c)
 	}
@@ -222,11 +222,11 @@ func boardLineHTML(t *testing.T, hostile string) string {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	for _, l := range steps[0].Codes[0].Lines {
+	for _, l := range steps[0].Body[0].Code.Lines {
 		b.WriteString(l.HTML)
 		b.WriteString("\n")
 	}
-	if e := steps[0].Codes[0].Err; e != "" {
+	if e := steps[0].Body[0].Code.Err; e != "" {
 		t.Fatalf("hostile fixture failed to render: %s", e)
 	}
 	return b.String()
@@ -248,7 +248,7 @@ func TestRenderEscapesHostileContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, l := range steps[0].Codes[0].Lines {
+	for _, l := range steps[0].Body[0].Code.Lines {
 		if strings.Contains(l.HTML, "<img") || strings.Contains(l.HTML, "<script") {
 			t.Fatalf("hostile content crossed unescaped: %q", l.HTML)
 		}
@@ -313,11 +313,11 @@ func TestRenderStepsLeadAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := steps[0]
-	if st.Codes[0].Lead == "" || st.Codes[0].LeadRuns == nil {
-		t.Fatalf("first lead should carry the mark: %+v", st.Codes[0])
+	if st.Body[0].Lead == "" || st.Body[0].LeadRuns == nil {
+		t.Fatalf("first lead should carry the mark: %+v", st.Body[0])
 	}
-	if st.Codes[1].LeadRuns != nil {
-		t.Errorf("second lead must stay plain: %+v", st.Codes[1].LeadRuns)
+	if st.Body[1].LeadRuns != nil {
+		t.Errorf("second lead must stay plain: %+v", st.Body[1].LeadRuns)
 	}
 	if len(st.Close) != 1 || st.Close[0].Runs != nil {
 		t.Errorf("close: %+v", st.Close)

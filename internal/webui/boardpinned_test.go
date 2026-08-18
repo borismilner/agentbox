@@ -63,7 +63,7 @@ func TestCapturedSourceWinsOverTheFileOnDisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code := steps[0].Codes[0]
+	code := steps[0].Body[0].Code
 	if code.Err != "" {
 		t.Fatalf("render failed: %s", code.Err)
 	}
@@ -86,7 +86,7 @@ func TestWithoutACaptureTheFileIsStillRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code := steps[0].Codes[0]
+	code := steps[0].Body[0].Code
 	if code.Err != "" {
 		t.Fatalf("render failed: %s", code.Err)
 	}
@@ -110,7 +110,7 @@ func TestACaptureSurvivesTheFileBeingDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code := steps[0].Codes[0]
+	code := steps[0].Body[0].Code
 	if code.Err != "" {
 		t.Fatalf("a deleted file still broke the block: %s", code.Err)
 	}
@@ -136,7 +136,7 @@ func TestAMissingCaptureAndAMissingFileStillReportsHonestly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if steps[0].Codes[0].Err == "" {
+	if steps[0].Body[0].Code.Err == "" {
 		t.Fatal("a block with neither a capture nor a file rendered as if it were fine")
 	}
 	if len(missed) != 1 {

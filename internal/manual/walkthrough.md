@@ -195,58 +195,106 @@ is long and its margin is empty, the step is written backwards.
     begins each paragraph, in `prose` and in `close` alike. Without it the step
     renders as one wall with sentences fused across the seam.
 
+## Pictures, tables and callouts
+
+A step's body is an ordered list of blocks, and only some of them are code.
+`body` takes five forms, one per block - a citation (`path` plus `lines`), a
+`snippet`, a `figure`, a `table`, a `callout` - and renders them in the order you
+write them, each with its own `lead`. Use them to say the things prose says
+badly: a shape, a set of numbers, a warning.
+
+37. **Draw what a paragraph describes badly.** A request path, a state machine,
+    who calls whom, what happens on failure. `{"figure": {"svg": "<svg
+    viewBox=...>...</svg>", "caption": "..."}}`. A reader who can see the shape
+    stops holding it in their head, and the prose beside it gets shorter.
+38. **A figure takes its colours from the human's theme, and this is validated.**
+    `fill` and `stroke` must be `currentColor`, `none`, a `url(#id)` gradient
+    defined in the same figure, or a token: `var(--k-ink)`, `var(--k-ink-2)`,
+    `var(--k-accent)`, `var(--k-edge)`, `var(--k-surface-2)`,
+    `var(--k-success)`, `var(--k-warning)`, `var(--k-error)`, `var(--k-info)`.
+    A literal `#0d6e75` looks right in one theme and wrong in the other, and it
+    is the human's window. `font-family` is refused for the same reason: size
+    with `font-size` and let the theme pick the face.
+39. **Always give the outer `<svg>` a `viewBox`,** and no fixed size. That is
+    what lets the board scale the drawing to the reader's column. Set `"wide":
+    true` on a figure that needs the annotation margin as well - a wide flow
+    diagram does, a portrait screenshot does not.
+40. **A screenshot is a `src`, not an `svg`.** Either a repo-relative path or a
+    base64 `data:` URI. AgentBox reads the file, re-encodes it and passes it to the
+    board as a data URI, through the same size and pixel budget every other
+    image on the surface goes through, so nothing loads over the network.
+    Anything else - a URL, an absolute path, a path with `..` - is refused.
+41. **A table is for the handful of measurements that carry an argument.**
+    `{"table": {"head": [...], "rows": [[...]], "align": [...], "caption":
+    "..."}}`. Right-align the number columns and the board sets them in tabular
+    figures, so they line up down the column and can be compared. Forty rows is
+    the cap: past that it is data, and data belongs in a file the step cites.
+42. **A callout is for the one thing that must not be read as part of the flow.**
+    The trap, the consequence, the thing the reader will otherwise carry away
+    wrong. `{"callout": {"tone": "note|good|warn|danger", "title": "...",
+    "prose": [...]}}`, and its prose is segments like any other, so it can bind a
+    phrase and mark a glossary term. Four tones, no fifth: a callout is a
+    meaning, not emphasis, and a step with four of them has none.
+43. **These three sit on any step; code citations do not.** A ground step can
+    open with a diagram, and a check step can end with a table of what was run.
+    A citation still belongs only on a code step, because code steps are what
+    the review's promise counts.
+44. **Notes and binds belong to code.** A figure has a caption, a callout has a
+    title, and neither takes margin notes or can be the target of a bound
+    phrase - both of those address line ranges, and a picture has none.
+
 ## The glossary
 
-37. **Define what this reader cannot guess.** `glossary: [{term, short, body?,
+45. **Define what this reader cannot guess.** `glossary: [{term, short, body?,
     also?}]`. The board marks the first occurrence of each term in each step
     with a quiet underline and opens the definition only when the reader asks -
     a click, or `g` for the whole list. Nothing pops on hover.
-38. **Judge by the reader, not by the field.** An acronym from the domain the
+46. **Judge by the reader, not by the field.** An acronym from the domain the
     change touches (NVD, SSVC, KEV), a house term with a local meaning, a
     library idiom that looks like something else. Not words they use daily. A
     glossary of forty obvious words is the same as no glossary.
-39. **`short` is one sentence that stands alone.** It is all most readers will
+47. **`short` is one sentence that stands alone.** It is all most readers will
     open. Expand the "so what" in `body`: where it comes from, why it is in
     this change, what it is often confused with.
-40. **Spell it in the prose the way the entry spells it**, or list the other
+48. **Spell it in the prose the way the entry spells it**, or list the other
     spelling in `also`. A term nothing says is effort no reader can reach, and
     agentbox warns about it. Terms inside a bound phrase or an inline code chip are
     never marked, so do not rely on those to introduce one.
 
 ## Hunt for the aha
 
-41. **Find the thing a careful reader would still miss.** Every change has one
+49. **Find the thing a careful reader would still miss.** Every change has one
     or two: the reason two guards are not redundant, the ordering that makes a
     race impossible, the one call that makes an expensive-looking loop cheap,
     the failure this design quietly removes. Finding these is most of the value
     you add over the diff.
-42. **Give it its own beat.** Set it up ("this looks like it does the work
+50. **Give it its own beat.** Set it up ("this looks like it does the work
     twice"), then land it ("it cannot: the second call only ever sees rows the
     first one skipped"). Do not bury it in a list.
-43. **Explain mechanisms, not labels.** "We cannot name the key in advance" is
+51. **Explain mechanisms, not labels.** "We cannot name the key in advance" is
     an assertion the reader must take on trust. "A struct tag is a string
     literal fixed at compile time, and this key's name carries a version the
     publisher changes on its own schedule" is an explanation they can
     reconstruct. If the text does not let a reader rebuild the reasoning, it
     has not explained anything.
-44. **Answer the obvious objection in place.** When code does something
+52. **Answer the obvious objection in place.** When code does something
     unusual, the reader is already thinking of the neighbouring code that does
     not. Say it for them and answer it, in a note on those lines.
-45. **Show code in any panel that makes a claim about code.** A step describing
+53. **Show code in any panel that makes a claim about code.** A step describing
     what a test proves, with no test code in it, is a summary standing in for
     evidence. Cite the two or three lines that carry the point.
 
 ## Pointing at code
 
-46. **Every code reference is a full repo-relative path.** Never a basename.
+54. **Every code reference is a full repo-relative path.** Never a basename.
     Two files called `client.go` in one review is normal, and an ambiguous
     reference sends the reader to the wrong package.
-47. **Never write a line number into a sentence.** Bind the phrase instead:
+55. **Never write a line number into a sentence.** Bind the phrase instead:
     `{"t": "the guard", "bind": "guard"}` plus `"binds": {"guard": {"block": 0,
     "lines": [77, 79]}}`. The phrase then lights that region when the reader is
     on it. Every literal number in prose is a claim that expires at the next
     edit, silently. The validator refuses them, with directions.
-48. **Give the reader something to run.** `cmds: [{cmd, expect, recorded}]` -
+56. **Give the reader something to run.** `cmds: [{cmd, expect, recorded}]` -
     the command, the result to expect, and the date that expectation last held.
     Best of all is a way to break it on purpose and watch a specific thing fail;
     that turns a claim about the code into an observation. Run every one of them
@@ -256,7 +304,7 @@ is long and its margin is empty, the step is written backwards.
 
 ## Coverage, and honesty about it
 
-49. **Give a complete route, not only the interesting parts.** Thematic steps
+57. **Give a complete route, not only the interesting parts.** Thematic steps
     explain a change; they do not account for it. Include one traversal that
     covers every changed line, in commit order, say plainly that it is
     complete, and annotate whatever the thematic steps never stood on. A reader
@@ -271,15 +319,15 @@ is long and its margin is empty, the step is written backwards.
     warning, never a refusal. Two things follow: a deleted file is not counted
     either way (there is nothing left to cite - say what went, in prose), and a
     walkthrough with no diff reports nothing rather than reporting clean.
-50. **Name what you deliberately left out.** `out_of_scope` takes a glob and a
+58. **Name what you deliberately left out.** `out_of_scope` takes a glob and a
     reason. An unexplained exclusion is a hole; a stated one is a decision.
     This is also where an absence goes: no tests, no migration, no wiring.
-51. **End with a check step.** The last station is the gate: the exact build,
+59. **End with a check step.** The last station is the gate: the exact build,
     lint and test commands, so "I reviewed it" resolves to something that
     either passed or did not. Finishing is an observation, not a feeling.
     Doubts are their own step and come before it, so the review ends with two
     check steps in a row - that is the intended shape, not a duplicate.
-52. **Say what you did not verify.** State plainly what was never exercised - a
+60. **Say what you did not verify.** State plainly what was never exercised - a
     path you could not run, an environment you did not have. Silence reads as
     approval. It goes in the gate step's `prose`, above the commands: a step
     with no code blocks is refused a `close`, because `close` is the paragraph
@@ -287,23 +335,23 @@ is long and its margin is empty, the step is written backwards.
 
 ## Before you call create_walkthrough
 
-53. **Verify every citation against the tree, and again after any amend or
+61. **Verify every citation against the tree, and again after any amend or
     rebase.** A walkthrough citing the wrong lines is worse than none, because
     the reader trusts it and loses the time twice. Keep the check one command,
     and keep each range in exactly one place so the check cannot disagree with
     the page it checks.
-54. **Pin the sha the citations are true against**, and pass the change's diff.
+62. **Pin the sha the citations are true against**, and pass the change's diff.
     The diff is the only carrier of added/removed knowledge - never state diff
     status on a file-backed block; agentbox derives every marking from the manifest.
     Citations are captured from git AT that sha, not from the working tree, so a
     review of an older commit cites that commit's line numbers and stays right
     when the tree moves on.
-55. **Keep generated files out of the diff you pass.** A committed bundle can be
+63. **Keep generated files out of the diff you pass.** A committed bundle can be
     an order of magnitude larger than the change, and passing it buys nothing:
     nobody reads it and it can push the payload past the cap. Exclude it from
     the diff, and name it in `out_of_scope` so the exclusion is a decision
     rather than a hole.
-56. **Read the warnings.** They are teaching notes, not noise, and they are the
+64. **Read the warnings.** They are teaching notes, not noise, and they are the
     cheapest review you will get.
 
 ## Handing it back

@@ -1,10 +1,14 @@
 <script>
-  // One step of the walk: title, purpose, prose, its code blocks, the
+  // One step of the walk: title, purpose, prose, the body's blocks, the
   // comments already left here, comprehension checks with reversible
   // reveal, and the verdict box. Everything agent-authored renders as text
-  // nodes; the only injected HTML on the whole board is a code line's
-  // chroma spans, inside CodeBlock.
+  // nodes; the board injects HTML in exactly two places, both of them Go's
+  // own output - a code line's chroma spans in CodeBlock, and a figure's
+  // re-composed SVG in Figure.
   import CodeBlock from "./CodeBlock.svelte";
+  import Figure from "./Figure.svelte";
+  import Table from "./Table.svelte";
+  import Callout from "./Callout.svelte";
   import Composer from "./Composer.svelte";
   import VerdictBox from "./VerdictBox.svelte";
   import CopyBtn from "./CopyBtn.svelte";
@@ -46,6 +50,18 @@
   // is about rather than three blocks above it (FR69).
   const paras = $derived(group(step.prose));
   const closingParas = $derived(group(step.close));
+
+  // A step's body is a mixed sequence now: citations, snippets, figures, tables
+  // and callouts in the order the author wrote them. Two things still need to
+  // know about the code in particular - the notes margin behaves differently
+  // under the LAST code block, and the add/remove legend only belongs on a step
+  // that shows a diff at all.
+  const codeBlocks = $derived((step.body ?? []).filter((b) => b.kind === "code" && b.code));
+  const lastCode = $derived.by(() => {
+    const body = step.body ?? [];
+    for (let i = body.length - 1; i >= 0; i--) if (body[i].kind === "code" && body[i].code) return i;
+    return -1;
+  });
 
   // The region a bound phrase points at, while the reader is on it. Held here
   // rather than in CodeBlock because the phrase and the code are in different
@@ -184,7 +200,7 @@
   {#if !short}
   {#each paras as segs, pi (pi)}{@render paragraph(segs, "")}{/each}
 
-  {#each step.codes ?? [] as blk, bi (bi)}
+  {#each step.body ?? [] as blk, bi (bi)}
     <!-- The lead hands the reader into this block. Without it a step with two
          blocks stacks all its text above the first one and the seam between
          them is a wall of code with nothing to hold (FR69). -->
@@ -198,18 +214,32 @@
           />{/if}{#if blk.leadRuns}{@render marked(blk.leadRuns)}{:else}{blk.lead}{/if}
       </p>
     {/if}
-    <CodeBlock
-      {blk}
-      {root}
-      stepId={step.id}
-      comments={comments.filter((c) => c.path === blk.path && blk.path !== "")}
-      bind:pend
-      blockIndex={bi}
-      lit={lit && lit.block === bi ? lit : null}
-      last={bi === (step.codes ?? []).length - 1}
-      {onComment}
-      {onOpen}
-    />
+    {#if blk.kind === "figure" && blk.figure}
+      <Figure fig={blk.figure} />
+    {:else if blk.kind === "table" && blk.table}
+      <Table tbl={blk.table} />
+    {:else if blk.kind === "callout" && blk.callout}
+      <Callout callout={blk.callout}>
+        {#snippet body()}
+          {#each group(blk.callout.prose) as segs, ci (ci)}
+            <p>{@render segments(segs)}</p>
+          {/each}
+        {/snippet}
+      </Callout>
+    {:else if blk.code}
+      <CodeBlock
+        blk={blk.code}
+        {root}
+        stepId={step.id}
+        comments={comments.filter((c) => c.path === blk.code.path && blk.code.path !== "")}
+        bind:pend
+        blockIndex={bi}
+        lit={lit && lit.block === bi ? lit : null}
+        last={bi === lastCode}
+        {onComment}
+        {onOpen}
+      />
+    {/if}
   {/each}
 
   <!-- The takeaway under the last block. It carries its own control because it is
@@ -229,7 +259,7 @@
     {#each closingParas as segs, pi (pi)}{@render paragraph(segs, "close")}{/each}
   {/if}
 
-  {#if (step.codes ?? []).length > 0}
+  {#if codeBlocks.length > 0}
     <div class="legend" data-agentbox-find-exclude>
       <span><span class="bar add"></span> added in this diff</span>
       <span><span class="bar del"></span> removed (old line numbers)</span>
@@ -337,6 +367,13 @@
   article > :global(*) {
     grid-column: 1;
     min-width: 0;
+  }
+  /* A wide figure is the one thing that may cross into the annotation margin: a
+     flow diagram squeezed into the reading column stops being readable, and
+     nothing is annotated beside a picture. Declared after the rule above and
+     with a class, so it wins on specificity rather than on order alone. */
+  article > :global(.fig.wide) {
+    grid-column: 1 / -1;
   }
   @media (max-width: 1180px) {
     article {

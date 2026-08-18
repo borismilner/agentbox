@@ -95,7 +95,7 @@ func TestTeachingErrors(t *testing.T) {
 		{"code on ground", func(m map[string]any) {
 			m["steps"].([]map[string]any)[0]["kind"] = "ground"
 			delete(m["steps"].([]map[string]any)[0], "purpose")
-		}, "code blocks belong on code steps"},
+		}, "code citations belong on code steps only"},
 		{"missing purpose", func(m map[string]any) {
 			delete(m["steps"].([]map[string]any)[0], "purpose")
 		}, "purpose is required"},

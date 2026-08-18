@@ -98,7 +98,7 @@ func TestBridgeBoardSnapshot(t *testing.T) {
 	if m := wb.Marks["s1"]; m.Verdict != "unclear" || m.Note != "why?" {
 		t.Errorf("marks lost: %+v", wb.Marks)
 	}
-	if len(wb.Steps[0].Codes[0].Lines) == 0 {
+	if len(wb.Steps[0].Body[0].Code.Lines) == 0 {
 		t.Error("code lines missing")
 	}
 }

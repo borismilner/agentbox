@@ -490,17 +490,18 @@ ordered steps with prose, citations `{path, lines:[from,to]}` pinned to a
 commit, and the change's unified diff as the manifest - and opens the review
 board. The human marks each step understood or unclear, writes notes and
 anchors comments to lines; everything persists across sessions.
-`await_walkthrough` returns the whole review in one turn. Five spec rules,
+`await_walkthrough` returns the whole review in one turn. Six spec rules,
 all validated with directions: never state added/removed on a file-backed
 block (the diff is the only carrier); never put literal line numbers in
 prose (bind a phrase to a code region instead); end a diff-carrying review
 with a check step; every code and check step carries a `tldr`; a domain's
-steps must be consecutive. CLI:
+steps must be consecutive; a figure's colours come from the theme's tokens
+and never from a literal. CLI:
 `agentbox walkthrough create --spec review.json | await ID | read ID --ack | list | delete ID`.
 
 **Read the standard before you write one.** How to structure the steps, where
 the explanation goes versus the annotations, what coverage has to account for:
-MCP resource `agentbox://standards/walkthrough`, or `agentbox docs walkthrough`. Seven
+MCP resource `agentbox://standards/walkthrough`, or `agentbox docs walkthrough`. Eight
 things it will tell you that are easy to miss:
 
 - **The TL;DR is what most readers get.** `tldr: {bottom, points}` on every code
@@ -524,6 +525,15 @@ things it will tell you that are easy to miss:
 - **Binds are how prose points at code.** `{"t": "the guard", "bind": "guard"}`
   with `binds: {guard: {block: 0, lines: [77,79]}}` lights those lines when the
   reader is on the phrase. It is also the answer to the no-line-numbers rule.
+- **A step's body is not only code.** `body: [...]` holds the step's blocks in
+  reading order, and a block is one of five things: a citation, a `snippet`, a
+  `figure` (`{svg}` for a drawing, `{src}` for an image - repo-relative or a
+  base64 `data:` URI), a `table` (`{head, rows, align?, caption?}`) or a
+  `callout` (`{tone: note|good|warn|danger, title?, prose}`). Those last three
+  may sit on any step, a citation only on a code step. A figure's colours must be
+  `currentColor` or a `--k-*` token and its outer `<svg>` needs a `viewBox`; both
+  are validated, because the theme is the human's and the drawing has to scale to
+  their column. `code` is the older name for the same array and still works.
 - **The glossary keeps definitions out of the prose.** `glossary: [{term,
   short, body?, also?}]` on the spec. AgentBox marks the first occurrence of each
   term in each step and opens the entry only when the reader asks for it

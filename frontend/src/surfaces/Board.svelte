@@ -256,7 +256,7 @@
     if (region === "close") return paragraphs(s.close).join("\n\n");
     if (region === "checks") return (s.checks ?? []).map((c) => c.q).join("\n\n");
     if (region.startsWith("lead:")) {
-      const blk = (s.codes ?? [])[Number(region.slice(5))];
+      const blk = (s.body ?? [])[Number(region.slice(5))];
       return blk?.lead ?? "";
     }
     return "";

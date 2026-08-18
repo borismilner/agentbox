@@ -227,6 +227,9 @@ func TestEveryHTMLInjectionComesFromGo(t *testing.T) {
 	//   doc.html       the viewer       (a document, or an artifact block)
 	//   l.html/dl.html boardrender      (one code line's chroma spans on the
 	//                                    review board; dl is a removed line)
+	//   fig.svg        renderFigure     (a figure's drawing, re-composed element
+	//                                    by element from the author's markup by
+	//                                    walkthrough.SafeSVG - FR101)
 	allowed := map[string]bool{
 		"seg.html":      true,
 		"seg.toolHtml":  true,
@@ -241,6 +244,7 @@ func TestEveryHTMLInjectionComesFromGo(t *testing.T) {
 		"doc.html":        true,
 		"l.html":          true,
 		"dl.html":         true,
+		"fig.svg":         true,
 	}
 
 	files, err := svelteAndJS()

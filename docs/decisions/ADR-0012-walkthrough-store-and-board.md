@@ -57,3 +57,42 @@ window, and rendering improvements reach every stored review (FR59's whole
 point). The deferred halves - submission payload, coverage/drift
 computation, amendment, the library surface - build on these tables without
 another migration unless they need new columns.
+
+## Amendment, 2026-08-18: the body of a step (FR101)
+
+A step's blocks were code and nothing else, so an argument that needed a
+picture - a request path, a set of measurements, a warning that must not read
+as prose - was written outside AgentBox as standalone HTML and lost the board
+with it: the rail, the per-step verdicts, the durable store, the one-turn
+handback. The step's body is now an ordered array of five block forms - a
+citation, a snippet, a `figure`, a `table`, a `callout` - under the name
+`body`; `code` is the same array's older name and is still read, because every
+stored walkthrough uses it.
+
+What did NOT change is the split this ADR is built on. The chrome stays
+AgentBox's: the rail, domains, verdicts, comments, the keyboard path, the
+submit modal, the marks. Only the body of a step is the author's, and it is
+still typed data rather than markup - a figure is a drawing or an image, not a
+document. Three decisions carry that:
+
+- **A figure's colours come from the `--k-*` tokens, and it is validated, not
+  requested.** `fill`, `stroke`, `stop-color` and `color` must be
+  `currentColor`, `none`, a local `url(#id)` gradient, or a token;
+  `font-family` is refused outright. A figure that hard-codes a palette looks
+  right in one theme and wrong in the other, and the theme is the human's.
+- **Inline SVG is re-composed, never filtered.** `walkthrough.SafeSVG` walks
+  the markup against an element and attribute allow-list and emits bytes it
+  wrote itself, so the board's rule - the only HTML a surface injects is HTML
+  Go produced - still holds with a second field (`fig.svg`) added to it.
+  Refusals are teaching errors, so an author is told what to write instead
+  rather than losing an attribute silently.
+- **An image never travels as a path.** A repo-relative `src` is read
+  daemon-side, jailed to `repo_root`, and re-encoded as a `data:` URI through
+  the same byte and pixel budgets every other image on the surface passes. The
+  surface learns no filesystem and fetches nothing, which is the same bargain
+  the citations keep.
+
+Notes and binds still address line ranges, so they stay on code blocks only; a
+figure has a caption and a callout has a title. FR101's later increments - an
+`html` block in the sandbox `show_artifact` uses, and a fully agent-authored
+step body - are not part of this amendment.

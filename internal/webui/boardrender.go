@@ -80,7 +80,7 @@ type wireStep struct {
 	TLDR   *wireTLDR        `json:"tldr,omitempty"`
 	Prose  []wireProse      `json:"prose"`
 	AllNew bool             `json:"allNew,omitempty"`
-	Codes  []wireCode       `json:"codes,omitempty"`
+	Body   []wireBlock      `json:"body,omitempty"`
 	Close  []wireProse      `json:"close,omitempty"`
 	Binds  map[string][]int `json:"binds,omitempty"` // name -> [block, from, to]
 	Checks []wireCheck      `json:"checks,omitempty"`
@@ -162,20 +162,62 @@ type wireTerm struct {
 	Body  string `json:"body,omitempty"`
 }
 
-type wireCode struct {
-	Path  string `json:"path,omitempty"`  // repo-relative display; empty for snippets
-	Label string `json:"label,omitempty"` // stands in for the path header on snippets
-	// Lead is the handover paragraph above this block, with its glossary
-	// marks already cut the way prose segments are.
+// wireBlock is one block of a step's body, in reading order: the lead paragraph
+// that hands the reader into it, and exactly one of the four payloads. Kind is
+// carried explicitly rather than left to be inferred from which field is set -
+// the surface switches on it once, and a payload that failed to render still has
+// a kind, so the layout never has to guess what a hole used to be.
+type wireBlock struct {
+	Kind string `json:"kind"` // code | figure | table | callout
+	// Lead is the handover paragraph above this block, with its glossary marks
+	// already cut the way prose segments are.
 	Lead     string            `json:"lead,omitempty"`
 	LeadRuns []walkthrough.Run `json:"leadRuns,omitempty"`
-	Lang     string            `json:"lang,omitempty"`
-	Start    int               `json:"start"`
-	New      bool              `json:"new,omitempty"` // every line in the range was added
-	Lines    []wireLine        `json:"lines"`
-	Dels     []wireDel         `json:"dels,omitempty"`
-	Notes    []wireNote        `json:"notes,omitempty"`
-	Err      string            `json:"err,omitempty"` // honest render failure, never a guess
+	Code     *wireCode         `json:"code,omitempty"`
+	Figure   *wireFigure       `json:"figure,omitempty"`
+	Table    *wireTable        `json:"table,omitempty"`
+	Callout  *wireCallout      `json:"callout,omitempty"`
+}
+
+// wireFigure is a picture the board can paint without asking anything of the
+// network. SVG is markup walkthrough.SafeSVG re-composed, and it is the board's
+// second and last injected-HTML field (the first is a code line's chroma spans);
+// Src is always a data: URI by the time it gets here, never a path - the surface
+// learns no filesystem, the same bargain the citations keep.
+type wireFigure struct {
+	SVG     string `json:"svg,omitempty"`
+	Src     string `json:"src,omitempty"`
+	Alt     string `json:"alt,omitempty"`
+	Caption string `json:"caption,omitempty"`
+	Wide    bool   `json:"wide,omitempty"`
+	// Err says why there is no picture, in the reader's words. A figure that
+	// cannot be read renders as a stated absence rather than as a blank.
+	Err string `json:"err,omitempty"`
+}
+
+type wireTable struct {
+	Head    []string   `json:"head"`
+	Rows    [][]string `json:"rows"`
+	Align   []string   `json:"align,omitempty"`
+	Caption string     `json:"caption,omitempty"`
+}
+
+type wireCallout struct {
+	Tone  string      `json:"tone"`
+	Title string      `json:"title,omitempty"`
+	Prose []wireProse `json:"prose"`
+}
+
+type wireCode struct {
+	Path  string     `json:"path,omitempty"`  // repo-relative display; empty for snippets
+	Label string     `json:"label,omitempty"` // stands in for the path header on snippets
+	Lang  string     `json:"lang,omitempty"`
+	Start int        `json:"start"`
+	New   bool       `json:"new,omitempty"` // every line in the range was added
+	Lines []wireLine `json:"lines"`
+	Dels  []wireDel  `json:"dels,omitempty"`
+	Notes []wireNote `json:"notes,omitempty"`
+	Err   string     `json:"err,omitempty"` // honest render failure, never a guess
 	// Pinned means these lines came from the source captured when the review
 	// was written, rather than from the file as it is now. The surface does
 	// not paint it; it is here because "which of the two did the reader see"
@@ -307,19 +349,46 @@ func renderSteps(specJSON, diff, root string, pinned []store.Excerpt, renderMiss
 			}
 		}
 		noteNum := 0
-		allNew := len(st.Code) > 0
-		for bi := range st.Code {
-			wc := renderBlock(&st.Code[bi], manifest, files, &noteNum)
-			if wc.Err != "" {
-				renderMiss(st.ID, st.Code[bi].Path, wc.Err)
+		blocks := st.Blocks()
+		cited := 0
+		allNew := true
+		for bi := range blocks {
+			b := &blocks[bi]
+			wb := wireBlock{Kind: blockKind(b), Lead: b.Lead}
+			wb.LeadRuns = terms.Split(b.Lead, seen)
+			switch wb.Kind {
+			case "code":
+				wc := renderBlock(b, manifest, files, &noteNum)
+				if wc.Err != "" {
+					renderMiss(st.ID, b.Path, wc.Err)
+				}
+				cited++
+				if !wc.New {
+					allNew = false
+				}
+				wb.Code = &wc
+			case "figure":
+				wf := renderFigure(b.Figure, root)
+				if wf.Err != "" {
+					renderMiss(st.ID, b.Figure.Src, wf.Err)
+				}
+				wb.Figure = &wf
+			case "table":
+				wb.Table = &wireTable{
+					Head: b.Table.Head, Rows: b.Table.Rows,
+					Align: b.Table.Align, Caption: b.Table.Caption,
+				}
+			case "callout":
+				wb.Callout = &wireCallout{
+					Tone: b.Callout.Tone, Title: b.Callout.Title,
+					Prose: markSegs(b.Callout.Prose),
+				}
 			}
-			if !wc.New {
-				allNew = false
-			}
-			wc.LeadRuns = terms.Split(wc.Lead, seen)
-			ws.Codes = append(ws.Codes, wc)
+			ws.Body = append(ws.Body, wb)
 		}
-		ws.AllNew = allNew
+		// "all of this is new" is a claim about cited code, so a step with none
+		// never makes it - a figure cannot be new.
+		ws.AllNew = cited > 0 && allNew
 		ws.Close = markSegs(st.Close)
 		steps = append(steps, ws)
 	}
@@ -331,10 +400,74 @@ func renderSteps(specJSON, diff, root string, pinned []store.Excerpt, renderMiss
 	return steps, glossary, &spec, nil
 }
 
+// blockKind names the one form a validated block carries. An unvalidated block
+// (a spec stored before a rule existed) falls through to code, which is what
+// every block was when the field held only citations.
+func blockKind(b *walkthrough.Block) string {
+	switch {
+	case b.Figure != nil:
+		return "figure"
+	case b.Table != nil:
+		return "table"
+	case b.Callout != nil:
+		return "callout"
+	}
+	return "code"
+}
+
+// renderFigure resolves a figure into something the surface can paint with no
+// filesystem and no network: sanitized markup, or a data: URI. A repo-relative
+// src is read here, jailed to the spec's root, and put through the same byte and
+// pixel budgets every other image on the surface passes - the ceiling that
+// stopped a 20000x20000 PNG from decoding to 1.5 GB of RGBA (R-18).
+func renderFigure(f *walkthrough.Figure, root string) wireFigure {
+	wf := wireFigure{Alt: f.Alt, Caption: f.Caption, Wide: f.Wide}
+	if strings.TrimSpace(f.SVG) != "" {
+		safe, err := walkthrough.SafeSVG(f.SVG)
+		if err != nil {
+			wf.Err = err.Error()
+			return wf
+		}
+		wf.SVG = safe
+		return wf
+	}
+	src := strings.TrimSpace(f.Src)
+	if strings.HasPrefix(strings.ToLower(src), "data:") {
+		uri, reason := inlineDataURI(src)
+		if reason != "" {
+			wf.Err = figureReason(reason)
+			return wf
+		}
+		wf.Src = uri
+		return wf
+	}
+	if src == "" || filepath.IsAbs(src) || strings.Contains(src, "..") {
+		wf.Err = "the figure's src is not a repo-relative path"
+		return wf
+	}
+	uri, reason := inlineFile(filepath.Join(root, filepath.FromSlash(src)))
+	if reason != "" {
+		wf.Err = figureReason(reason)
+		return wf
+	}
+	wf.Src = uri
+	return wf
+}
+
+// figureReason turns one of the image pipeline's stable tokens into the sentence
+// the reader gets. Unknown tokens are passed through rather than swallowed: a new
+// refusal reason should read as itself, not as "not shown".
+func figureReason(reason string) string {
+	if why, ok := blockedReasons[reason]; ok {
+		return why
+	}
+	return reason
+}
+
 func renderBlock(b *walkthrough.Block, manifest change.Set, files *fileCache, noteNum *int) wireCode {
 	// Lines is never null on the wire: an errored block still has a shape
 	// the surface can lay out.
-	wc := wireCode{Lines: []wireLine{}, Lead: b.Lead}
+	wc := wireCode{Lines: []wireLine{}}
 	for _, nt := range b.Notes {
 		*noteNum++
 		wc.Notes = append(wc.Notes, wireNote{

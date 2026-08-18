@@ -23,8 +23,9 @@ func (s *Spec) Citations() []Citation {
 	seen := map[Citation]bool{}
 	var out []Citation
 	for i := range s.Steps {
-		for j := range s.Steps[i].Code {
-			b := &s.Steps[i].Code[j]
+		blocks := s.Steps[i].Blocks()
+		for j := range blocks {
+			b := &blocks[j]
 			if b.Path == "" || b.Lines[0] <= 0 || b.Lines[1] < b.Lines[0] {
 				continue
 			}
