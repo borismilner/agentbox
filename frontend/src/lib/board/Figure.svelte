@@ -63,19 +63,23 @@
     width: 100%;
     line-height: 0;
   }
+  /* The defaults a diagram wants when it says nothing, and they are set HERE, on
+     the root, rather than on the elements that use them. fill, font-size and
+     color are all INHERITED in SVG, so a shape or a text element that states its
+     own attribute keeps it and everything silent inherits these. Set as
+     `.draw text { fill: ... }` instead - which is how this was first written -
+     the rule wins over every fill attribute in the drawing, because a
+     presentation attribute loses to any author stylesheet. The visible symptom
+     was one line of a figure that asked for var(--k-warning) and came out the
+     same grey as the caption beside it. */
   .draw :global(svg) {
     display: block;
     width: 100%;
     height: auto;
     max-height: 66vh;
-    /* The two defaults a diagram usually wants, so an author who says nothing
-       still gets a drawing that reads: strokes follow the ink, fills stay out of
-       the way. Anything the markup states wins over these. */
     color: var(--k-ink-2, #c8cdd6);
-    font-family: var(--k-font-ui, system-ui, sans-serif);
-  }
-  .draw :global(text) {
     fill: var(--k-ink, #e6e9ef);
+    font-family: var(--k-font-ui, system-ui, sans-serif);
     font-size: 13px;
   }
   img {
