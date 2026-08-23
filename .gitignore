@@ -27,3 +27,17 @@ __pycache__/
 /docs/history.md
 /docs/07-field-requests.md
 /docs/backlog
+
+# 2026-08-23. ~/.gitignore_global carries `**/CLAUDE.md` and `.claude/`, so the
+# hand-written working agreement and the accumulated permission allowlist here were
+# tracked by nothing and pushed nowhere. The laptop is being wiped, so that meant
+# losing them outright. Versioned now, scoped to the settings files only.
+!**/CLAUDE.md
+!**/.claude/
+**/.claude/*
+!**/.claude/settings.json
+!**/.claude/settings.local.json
+
+# ...except the root CLAUDE.md, which is a symlink into ../logbook by design.
+# The real file is versioned there; logbook/SETUP.md remakes the link.
+/CLAUDE.md
