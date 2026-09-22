@@ -99,7 +99,11 @@ type UI struct {
 	// promptKind records which, because the two cannot be swapped in place.
 	prompt     *application.WebviewWindow
 	promptKind string
-	appWin     *application.WebviewWindow
+	// promptWebkitPIDs is the prompt window's own WebKit-family child pids
+	// (webkitChildren diffed in armCard), so closeCardNow knows exactly what
+	// to reap if wails#2565 leaves them behind (webkitreap.go).
+	promptWebkitPIDs map[int]bool
+	appWin           *application.WebviewWindow
 	// appShow is whether that window is on screen. Separate from appWin != nil
 	// because the tray hides the window rather than closing it, and a hidden
 	// window is still a live one holding its sessions (app.go ToggleApp).
@@ -483,6 +487,12 @@ func (u *UI) showCard(v daemon.View) {
 			u.closeCardNow()
 		}
 
+		// Captured before the window exists, so the diff armCard takes once the
+		// bundle is ready names only the WebKit-family children THIS window
+		// produced - never a sibling window's (control strip, panel, viewer),
+		// which is what makes reapStrayWebkitChildren safe to act on later.
+		beforeWK := webkitChildren()
+
 		win := u.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:          "agentbox-" + kind,
 			Title:         title,
@@ -536,7 +546,7 @@ func (u *UI) showCard(v daemon.View) {
 				} else {
 					u.top.drop("toast")
 				}
-				u.armCard(payload)
+				u.armCard(payload, beforeWK)
 				return
 			}
 			// Still no X11 surface: a Wayland session, where Show() is the
@@ -546,7 +556,7 @@ func (u *UI) showCard(v daemon.View) {
 			u.log.Warn("webui.card_unprepared", "component", "webui", "kind", kind)
 		}
 		win.Show()
-		u.armCard(payload)
+		u.armCard(payload, beforeWK)
 	})
 }
 
@@ -558,7 +568,14 @@ func (u *UI) showCard(v daemon.View) {
 // window exists and its web process is alive. Only the ready path reports - the
 // timeout is precisely the case where the surface did NOT say it was up, and
 // reporting there would hand the daemon the same false confidence it had before.
-func (u *UI) armCard(payload cardView) {
+//
+// beforeWK is the pre-creation snapshot from showCard. Diffing against it here,
+// once the surface has actually reported ready (or the timeout gave up waiting
+// for that), is what pins down THIS window's own WebKit-family children -
+// wails/wails#2565: closing this window later destroys the GtkWindow but the
+// sandboxed WebKitWebProcess underneath can survive it, and closeCardNow needs
+// exactly this set to know what to reap.
+func (u *UI) armCard(payload cardView, beforeWK map[int]bool) {
 	go func() {
 		shown := false
 		select {
@@ -567,6 +584,9 @@ func (u *UI) armCard(payload cardView) {
 		case <-time.After(2 * time.Second):
 			u.log.Warn("webui.card_ready_timeout", "component", "webui")
 		}
+		u.mu.Lock()
+		u.promptWebkitPIDs = diffWebkitChildren(beforeWK, webkitChildren())
+		u.mu.Unlock()
 		u.emit("agentbox:view", payload)
 		// After the emit, so the surface has its view before the clock it is
 		// about to count down starts. The daemon ignores this for every kind
@@ -604,7 +624,8 @@ func (u *UI) closeCard() {
 func (u *UI) closeCardNow() {
 	u.mu.Lock()
 	w := u.prompt
-	u.prompt, u.promptKind = nil, ""
+	wk := u.promptWebkitPIDs
+	u.prompt, u.promptKind, u.promptWebkitPIDs = nil, "", nil
 	u.ready = make(chan struct{})
 	u.once = sync.Once{}
 	u.mu.Unlock()
@@ -615,6 +636,11 @@ func (u *UI) closeCardNow() {
 	// gap open under the hands-off strip (FR75).
 	u.top.drop("toast")
 	w.Close()
+	// wails#2565: w.Close() destroys the GtkWindow but the sandboxed
+	// WebKitWebProcess under it is not guaranteed to go with it. wk is exactly
+	// the set armCard pinned to this window (see showCard), so reaping it can
+	// never touch a sibling window's still-live process.
+	reapStrayWebkitChildren(wk, u.log)
 }
 
 // emit pushes an event to every open window. It tolerates a UI with no
