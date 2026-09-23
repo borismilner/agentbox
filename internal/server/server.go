@@ -29,15 +29,39 @@ var ErrAlreadyRunning = errors.New("another agentbox daemon is already running")
 // RuntimeDir returns the per-user runtime directory for the given instance
 // name ("" = the default instance).
 func RuntimeDir(instance string) string {
-	base := os.Getenv("XDG_RUNTIME_DIR")
-	if base == "" {
-		base = filepath.Join(os.TempDir(), fmt.Sprintf("agentbox-%d", os.Getuid()))
-	}
+	base := runtimeBase(os.Getenv("XDG_RUNTIME_DIR"), os.Getuid(), isDir)
 	name := "agentbox"
 	if instance != "" {
 		name = "agentbox-" + instance
 	}
 	return filepath.Join(base, name)
+}
+
+// runtimeBase is the directory RuntimeDir builds under. XDG_RUNTIME_DIR when
+// the caller has one; otherwise logind's directory for this uid if it exists,
+// and only then the temp dir.
+//
+// The middle step is the fix for a second daemon. A cron job runs with no
+// session environment, so on 2026-09-23 an `agentbox notify` from the crontab
+// looked under $TMPDIR, found no socket, and spawned a daemon of its own: two
+// daemons on one store, and the alarm shown by the one with no board. Every
+// process launched from the desktop session already resolves to
+// /run/user/<uid>, so a process without the variable should land there too.
+func runtimeBase(xdg string, uid int, isDir func(string) bool) string {
+	if xdg != "" {
+		return xdg
+	}
+	if uid >= 0 {
+		if dir := fmt.Sprintf("/run/user/%d", uid); isDir(dir) {
+			return dir
+		}
+	}
+	return filepath.Join(os.TempDir(), fmt.Sprintf("agentbox-%d", uid))
+}
+
+func isDir(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
 }
 
 func SocketPath(dir string) string { return filepath.Join(dir, SocketName) }
