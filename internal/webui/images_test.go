@@ -315,7 +315,11 @@ func TestImageRefusesWebpBecauseNothingCanCheckItsSize(t *testing.T) {
 func TestImageRefusesAPixelBomb(t *testing.T) {
 	img := image.NewGray(image.Rect(0, 0, 20000, 20000))
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
+	// Best compression, not the default: 400 MB of zero pixels has to encode
+	// to a file under the byte ceiling or this tests the wrong refusal. The
+	// default level's output grew past the ceiling with a toolchain update.
+	enc := png.Encoder{CompressionLevel: png.BestCompression}
+	if err := enc.Encode(&buf, img); err != nil {
 		t.Fatalf("encode bomb: %v", err)
 	}
 	if buf.Len() >= maxImageBytes {
