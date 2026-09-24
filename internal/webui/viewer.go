@@ -241,6 +241,7 @@ func (v *viewer) resizeToConfig() {
 func (v *viewer) openWindow() {
 	vw, vh := v.ui.viewerGeom()
 	v.ui.onMain("viewer", func() {
+		wk := v.ui.trackWindow("viewer")
 		w := v.ui.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:      "agentbox-viewer",
 			Title:     docTitle(v.currentReq()),
@@ -264,6 +265,7 @@ func (v *viewer) openWindow() {
 		v.mu.Unlock()
 
 		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			wk.reap()
 			v.mu.Lock()
 			v.win = nil
 			v.mu.Unlock()

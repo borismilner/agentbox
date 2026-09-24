@@ -42,6 +42,9 @@ func (b *Bridge) Theme() Theme {
 // escalation. View() below is the pull every other surface always had.
 func (b *Bridge) Ready(surface string) {
 	b.ui.log.Debug("webui.surface_ready", "component", "webui", "surface", surface)
+	// A mounted bundle means the window's own web process exists: the moment
+	// to name it as this window's, for the reap when the window closes.
+	b.ui.pinWebkit(surface)
 	if surface == "card" || surface == "toast" {
 		b.ui.markReady()
 	}

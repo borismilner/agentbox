@@ -147,6 +147,7 @@ func (u *UI) boardGeom() (w, h int) {
 func (b *boardWin) openWindow() {
 	bw, bh := b.ui.boardGeom()
 	b.ui.onMain("board", func() {
+		wk := b.ui.trackWindow("board")
 		w := b.ui.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:      "agentbox-board",
 			Title:     b.title(),
@@ -167,6 +168,7 @@ func (b *boardWin) openWindow() {
 		b.mu.Unlock()
 
 		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			wk.reap()
 			b.mu.Lock()
 			b.win = nil
 			b.mu.Unlock()

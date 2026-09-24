@@ -305,6 +305,7 @@ func (c *control) snapshot() *daemon.ControlState {
 
 func (c *control) openWindow() {
 	c.ui.onMain("control", func() {
+		wk := c.ui.trackWindow("control")
 		w := c.ui.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:             "agentbox-control",
 			Title:            "agentbox · hands off",
@@ -324,6 +325,7 @@ func (c *control) openWindow() {
 		c.mu.Unlock()
 
 		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			wk.reap()
 			// Only for the window this hook belongs to. FR95 closes and reopens the
 			// strip on every demote and promote, and Wails delivers this event
 			// asynchronously: the old window's hook landed AFTER the new one had
@@ -467,6 +469,7 @@ func (c *control) openMark(m mon, kind markKind) {
 		if already {
 			return
 		}
+		wk := c.ui.trackWindow("mark")
 		w := c.ui.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:             "agentbox-control-mark",
 			Title:            "agentbox · hands off marker",
@@ -484,6 +487,7 @@ func (c *control) openMark(m mon, kind markKind) {
 		c.mu.Unlock()
 
 		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			wk.reap()
 			c.mu.Lock()
 			c.mark, c.markXID, c.kind = nil, 0, markNone
 			c.mu.Unlock()

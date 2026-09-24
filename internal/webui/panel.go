@@ -268,6 +268,7 @@ func (p *panel) resizeToConfig() {
 func (p *panel) openWindow() {
 	ox, oy, w, _ := p.resolve() // the height is the slide's business, not the map's
 	p.ui.onMain("panel", func() {
+		wk := p.ui.trackWindow("panel")
 		win := p.ui.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:        "agentbox-panel",
 			Title:       "agentbox · panel",
@@ -292,6 +293,7 @@ func (p *panel) openWindow() {
 		p.mu.Unlock()
 
 		win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			wk.reap()
 			p.mu.Lock()
 			p.win, p.open = nil, false
 			p.mu.Unlock()

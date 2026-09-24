@@ -109,6 +109,7 @@ func (p *progress) openWindow(rows int) {
 	pw, _ := p.ui.progressGeom()
 	h := p.progressHeight(rows)
 	p.ui.onMain("progress", func() {
+		wk := p.ui.trackWindow("progress")
 		w := p.ui.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:             "agentbox-progress",
 			Title:            "agentbox · progress",
@@ -128,6 +129,7 @@ func (p *progress) openWindow(rows int) {
 		p.mu.Unlock()
 
 		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			wk.reap()
 			p.mu.Lock()
 			p.win = nil
 			p.mu.Unlock()

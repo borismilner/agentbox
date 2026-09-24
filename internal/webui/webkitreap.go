@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,9 +29,11 @@ const webkitReapGrace = 3 * time.Second
 // signal, and for six days that line covered eight renderers that never died.
 const webkitReapVerify = 500 * time.Millisecond
 
-// webkitFamily names the processes WebKitGTK spawns per view: one shared
-// network process, one sandboxed web process, the xdg-dbus-proxy beside it,
-// and the bwrap wrappers the sandbox puts around each of those two.
+// webkitFamily names the processes WebKitGTK spawns: one network process
+// shared by every view, and per view one sandboxed web process, the
+// xdg-dbus-proxy beside it, and the bwrap wrappers the sandbox puts around
+// each of those two. The walk crosses all of them; webkitShared says which
+// one it then refuses to name.
 func webkitFamily(comm string) bool {
 	switch comm {
 	case "WebKitNetworkProcess", "WebKitWebProcess", "bwrap", "xdg-dbus-proxy":
@@ -38,6 +41,16 @@ func webkitFamily(comm string) bool {
 	}
 	return false
 }
+
+// webkitShared is the one WebKit process that is per-daemon, not per-view.
+// WebKitGTK launches a single network process for the whole application on
+// its first view and keeps it for the life of the process, so it belongs to
+// no window and is never a reap candidate: it would land in the set of
+// whichever window happened to be the daemon's first, be killed when that
+// window closed, and take down whatever a still-open sibling was loading -
+// for WebKit to relaunch it on the next request anyway. It holds ~45 MB
+// once; the leak this file exists for is the per-view sandbox.
+func webkitShared(comm string) bool { return comm == "WebKitNetworkProcess" }
 
 // procInfo is one process's parent and command name as /proc reports them.
 type procInfo struct {
@@ -94,6 +107,8 @@ func webkitChildren() map[int]bool {
 // webkitDescendants walks procs downward from root, crossing WebKit-family
 // processes only. A non-family child (a speech engine, a shell) is a wall,
 // not a step: whatever sits under it is somebody else's and is never named.
+// The shared network process is crossed but left out of the result
+// (webkitShared).
 func webkitDescendants(root int, procs map[int]procInfo) map[int]bool {
 	children := map[int][]int{}
 	for pid, p := range procs {
@@ -113,6 +128,11 @@ func webkitDescendants(root int, procs map[int]procInfo) map[int]bool {
 			}
 		}
 	}
+	for pid := range out {
+		if webkitShared(procs[pid].comm) {
+			delete(out, pid)
+		}
+	}
 	return out
 }
 
@@ -125,6 +145,76 @@ func diffWebkitChildren(before, after map[int]bool) map[int]bool {
 		}
 	}
 	return out
+}
+
+// webkitSnapshot and webkitReaper are what a tracker calls; tests swap them.
+var (
+	webkitSnapshot = webkitChildren
+	webkitReaper   = reapStrayWebkitChildren
+)
+
+// webkitTracker pins the WebKit-family processes ONE window's creation
+// produced and reaps them when that window closes. There is one per window,
+// made by UI.trackWindow on the goroutine about to call NewWithOptions, and
+// its reap is registered in that window's WindowClosing hook - which is the
+// path every close takes, the WM's and Close()'s alike (wails emits the same
+// event for both), so no window kind is left out. Before 2026-09-24 only the
+// card did this; the viewer, the board, the progress bar, the strip, the
+// mark, the app and the panel all closed through the same wails#2565 destroy
+// and left the same ~170-300 MB sandbox behind, unreaped.
+//
+// Ownership is by arrival: whatever WebKit-family process appears under the
+// daemon between the snapshot and pin is this window's. Two rules keep that
+// honest. Ready (bridge.go) pins the moment the window's bundle mounts, which
+// is when its own web process certainly exists and before anything else is
+// likely to have spawned. And UI.trackWindow pins every older, still-unpinned
+// tracker BEFORE it snapshots for a new window, so an older window whose
+// surface never mounted cannot claim a newer window's processes. A window
+// closed before either happened is diffed at reap, so nothing escapes for
+// being quick. The gap that remains: two windows created within WebKit's
+// spawn latency of each other, where the older's pin can run before its own
+// processes exist; that window then leaks rather than a sibling being killed.
+type webkitTracker struct {
+	mu     sync.Mutex
+	before map[int]bool
+	pids   map[int]bool // the window's own set; nil until pinned
+	done   bool
+	snap   func() map[int]bool
+	kill   func(map[int]bool, *slog.Logger)
+	log    *slog.Logger
+}
+
+func newWebkitTracker(log *slog.Logger) *webkitTracker {
+	return &webkitTracker{before: webkitSnapshot(), snap: webkitSnapshot, kill: webkitReaper, log: log}
+}
+
+// pin names the window's own processes: whatever WebKit-family process has
+// appeared since the snapshot. The first call wins and later ones are no-ops,
+// so a late Ready cannot widen a set a sibling's creation already closed.
+func (t *webkitTracker) pin() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.pids != nil || t.done {
+		return
+	}
+	t.pids = diffWebkitChildren(t.before, t.snap())
+}
+
+// reap hands the window's processes to the reaper, once. A window closed
+// before it was pinned - its bundle never mounted - is diffed now.
+func (t *webkitTracker) reap() {
+	t.mu.Lock()
+	if t.done {
+		t.mu.Unlock()
+		return
+	}
+	t.done = true
+	pids := t.pids
+	if pids == nil {
+		pids = diffWebkitChildren(t.before, t.snap())
+	}
+	t.mu.Unlock()
+	t.kill(pids, t.log)
 }
 
 // procStat reads a pid's parent pid, command name and state letter out of
@@ -172,8 +262,8 @@ func stillWebkit(pid int) bool {
 }
 
 // reapStrayWebkitChildren waits webkitReapGrace for the pids in family (a
-// window's own webkitChildren diff, captured at creation) to exit on their
-// own, SIGKILLs whichever are still alive and still WebKit-family, then looks
+// window's own set, pinned by its webkitTracker) to exit on their own,
+// SIGKILLs whichever are still alive and still WebKit-family, then looks
 // again and logs what that left. It only ever acts on pids a specific window's
 // own creation produced, so a still-open sibling window's process is never a
 // candidate - there is no sweep of the daemon's whole process tree here.

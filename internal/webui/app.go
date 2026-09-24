@@ -45,6 +45,7 @@ func (u *UI) ShowApp(tab string) {
 
 	aw, ah := u.appGeom()
 	u.onMain("app", func() {
+		wk := u.trackWindow("app")
 		w := u.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name: "agentbox-app",
 			// Not bare "agentbox": that title is the card's, and a driver aiming
@@ -68,6 +69,7 @@ func (u *UI) ShowApp(tab string) {
 		u.mu.Unlock()
 
 		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			wk.reap()
 			u.mu.Lock()
 			u.appWin = nil
 			u.mu.Unlock()

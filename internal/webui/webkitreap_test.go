@@ -3,6 +3,7 @@
 package webui
 
 import (
+	"log/slog"
 	"os"
 	"os/exec"
 	"sort"
@@ -51,7 +52,9 @@ func TestWebkitDescendantsNamesTheWholeSandboxTree(t *testing.T) {
 	procs[9001] = procInfo{9000, "WebKitWebProcess"}
 
 	got := sortedPIDs(webkitDescendants(self, procs))
-	want := []int{7321, 7337, 7338, 7339, 7342, 7343, 7344}
+	// 7321, the network process, is the daemon's and not this window's: it is
+	// walked through and left out (webkitShared).
+	want := []int{7337, 7338, 7339, 7342, 7343, 7344}
 	if len(got) != len(want) {
 		t.Fatalf("descendants = %v, want %v", got, want)
 	}
@@ -59,6 +62,17 @@ func TestWebkitDescendantsNamesTheWholeSandboxTree(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("descendants = %v, want %v", got, want)
 		}
+	}
+}
+
+func TestWebkitDescendantsNeverNamesTheSharedNetworkProcess(t *testing.T) {
+	const self = 7123
+	got := webkitDescendants(self, liveViewTable(self))
+	if got[7321] {
+		t.Fatalf("the network process is shared by every view and must never be a reap candidate: %v", sortedPIDs(got))
+	}
+	if !got[7344] {
+		t.Fatalf("excluding the network process must not lose the web process: %v", sortedPIDs(got))
 	}
 }
 
@@ -87,6 +101,109 @@ func TestDiffWebkitChildrenKeepsOnlyTheNewOnes(t *testing.T) {
 	got := diffWebkitChildren(before, after)
 	if len(got) != 1 || !got[3] {
 		t.Fatalf("diff = %v, want {3}", sortedPIDs(got))
+	}
+}
+
+// fakeTracker is a webkitTracker over a scripted process table, recording
+// what it would have reaped instead of signalling anything.
+type fakeTracker struct {
+	now    map[int]bool
+	reaped []map[int]bool
+}
+
+func (f *fakeTracker) tracker() *webkitTracker {
+	t := &webkitTracker{snap: func() map[int]bool { return f.now }}
+	t.kill = func(pids map[int]bool, _ *slog.Logger) { f.reaped = append(f.reaped, pids) }
+	t.before = t.snap()
+	return t
+}
+
+func pids(ps ...int) map[int]bool {
+	m := map[int]bool{}
+	for _, p := range ps {
+		m[p] = true
+	}
+	return m
+}
+
+func TestWebkitTrackerPinsOnceAndReapsOnce(t *testing.T) {
+	f := &fakeTracker{now: pids(1)}
+	tr := f.tracker()
+	f.now = pids(1, 2, 3) // the window's own sandbox has come up
+	tr.pin()
+	f.now = pids(1, 2, 3, 4) // a sibling window spawns after the pin
+	tr.pin()                 // a late Ready: must not widen the set
+	tr.reap()
+	tr.reap()
+	if len(f.reaped) != 1 {
+		t.Fatalf("reaped %d times, want once", len(f.reaped))
+	}
+	if got := sortedPIDs(f.reaped[0]); len(got) != 2 || got[0] != 2 || got[1] != 3 {
+		t.Fatalf("reaped %v, want [2 3] - the sibling's 4 is not this window's", got)
+	}
+}
+
+func TestWebkitTrackerClosedBeforePinDiffsAtReap(t *testing.T) {
+	// The card race the 2026-09-24 version had: a window replaced before its
+	// bundle reported ready had nil pids and nothing was reaped.
+	f := &fakeTracker{now: pids(1)}
+	tr := f.tracker()
+	f.now = pids(1, 5, 6)
+	tr.reap()
+	if len(f.reaped) != 1 {
+		t.Fatalf("reaped %d times, want once", len(f.reaped))
+	}
+	if got := sortedPIDs(f.reaped[0]); len(got) != 2 || got[0] != 5 || got[1] != 6 {
+		t.Fatalf("reaped %v, want [5 6]", got)
+	}
+	tr.pin() // after reap: a no-op, not a resurrection
+}
+
+func TestTrackWindowPinsOlderTrackersBeforeSnapshotting(t *testing.T) {
+	// Two windows. The older one's bundle never reports ready. Without the
+	// pin-older rule, its reap would diff against a snapshot from before the
+	// newer window existed and kill the newer window's live process.
+	f := &fakeTracker{now: pids(1)}
+	var reaped []map[int]bool
+	oldSnap, oldReap := webkitSnapshot, webkitReaper
+	webkitSnapshot = func() map[int]bool { return f.now }
+	webkitReaper = func(p map[int]bool, _ *slog.Logger) { reaped = append(reaped, p) }
+	t.Cleanup(func() { webkitSnapshot, webkitReaper = oldSnap, oldReap })
+
+	u := &UI{}
+	older := u.trackWindow("viewer")
+	f.now = pids(1, 10, 11) // the viewer's sandbox is up; its Ready never comes
+	newer := u.trackWindow("board")
+	f.now = pids(1, 10, 11, 20, 21) // the board's sandbox is up
+	u.pinWebkit("board")
+	older.reap()
+	if len(reaped) != 1 {
+		t.Fatalf("reaped %d times, want once", len(reaped))
+	}
+	if got := sortedPIDs(reaped[0]); len(got) != 2 || got[0] != 10 || got[1] != 11 {
+		t.Fatalf("the viewer reaped %v, want [10 11] - never the board's 20 and 21", got)
+	}
+	newer.reap()
+	if got := sortedPIDs(reaped[1]); len(got) != 2 || got[0] != 20 || got[1] != 21 {
+		t.Fatalf("the board reaped %v, want [20 21]", got)
+	}
+}
+
+func TestPinWebkitTreatsAToastAsTheCard(t *testing.T) {
+	f := &fakeTracker{now: pids(1)}
+	oldSnap := webkitSnapshot
+	webkitSnapshot = func() map[int]bool { return f.now }
+	t.Cleanup(func() { webkitSnapshot = oldSnap })
+	u := &UI{}
+	tr := u.trackWindow("card")
+	f.now = pids(1, 2)
+	u.pinWebkit("toast")
+	f.now = pids(1, 2, 3)
+	tr.mu.Lock()
+	got := sortedPIDs(tr.pids)
+	tr.mu.Unlock()
+	if len(got) != 1 || got[0] != 2 {
+		t.Fatalf("pinned %v, want [2]: the toast's Ready must pin the card window", got)
 	}
 }
 

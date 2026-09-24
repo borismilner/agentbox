@@ -18,6 +18,9 @@
 
   let run = $state(null);
 
+  // Mounted means this window's web process exists: the daemon pins it as
+  // this window's, to reap when the window closes (webkitreap.go).
+  bridge.ready("mark");
   bridge.control().then((st) => (run = st)).catch(() => {});
   on("agentbox:control", (st) => (run = st));
 

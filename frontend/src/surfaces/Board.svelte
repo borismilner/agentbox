@@ -15,6 +15,10 @@
   import Step from "../lib/board/Step.svelte";
   import SubmitModal from "../lib/board/SubmitModal.svelte";
 
+  // Mounted means this window's web process exists: the daemon pins it as
+  // this window's, to reap when the window closes (webkitreap.go).
+  bridge.ready("board");
+
   let review = $state(null);
   let err = $state("");
   // A render error on a frameless window is otherwise a silent freeze; the
