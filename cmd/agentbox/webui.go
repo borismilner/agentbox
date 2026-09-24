@@ -822,7 +822,7 @@ func demoItems() []proto.Item {
 		{
 			ID: "demo-notify", Kind: proto.KindNotify, Level: proto.LevelSuccess,
 			Title: "Build passed",
-			Body:  "All 412 tests green in 38s.\n\n```go\nok  \tgithub.com/boris-milner/grabbit/internal/dl\t0.412s\n```",
+			Body:  "All 412 tests green in 38s.\n\n```go\nok  \tgithub.com/borismilner/grabbit/internal/dl\t0.412s\n```",
 			Actions: []proto.Action{
 				{Label: "Open report", Exec: "xdg-open ./coverage.html"},
 				{Label: "Tag release", Exec: "git tag -a"},
