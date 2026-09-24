@@ -283,6 +283,9 @@ func stillWebkit(pid int) bool {
 // MB apiece, were found on 2026-09-24 under a daemon that had logged a "reaped"
 // line for every one.
 func reapStrayWebkitChildren(family map[int]bool, log *slog.Logger) {
+	// Every window close comes through here, reaped or not, so this is where
+	// the daemon's own freed memory is asked back (memtrim.go).
+	scheduleRelease()
 	if len(family) == 0 {
 		return
 	}
