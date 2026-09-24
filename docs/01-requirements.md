@@ -268,6 +268,16 @@ Calm and multi-agent refinements (each fills a gap in the features above):
   binds. A failed migration aborts startup losslessly with a teaching
   error; an older binary meeting a newer schema refuses to run. Details in
   ADR-0005.
+- NFR16 No leaks: nothing a window, a card or a call allocates outlives
+  it. Stated by Boris on 2026-09-24 ("we can't allow memory leaks") after
+  a closed card's WebKit renderer, 170-300 MB each, was found to survive
+  the window; eight had piled up under one daemon in a day. The daemon is
+  tray-resident for weeks, so a per-window cost that is not returned is a
+  defect, not a tuning question. Concretely: every WebKit process a window
+  spawns is gone within a few seconds of its close and the reap is logged
+  (`webui.webkit_process_reaped`, with what was left); a demonstration of
+  a UI change that opens windows includes the process tree after they
+  close. The reaper is `internal/webui/webkitreap.go`.
 
 ## Open questions
 
