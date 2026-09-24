@@ -168,8 +168,8 @@ inherits auto-spawn. Tools (descriptions matter - the model reads them):
 | `request_review` | diff (result: approved + optional comment) |
 | `show_document` | viewer (markdown content or file path) |
 
-The shipped set has grown past this design table - `agentbox mcp` serves 30 tools
-today (speech, desktop driving, artifacts, walkthroughs);
+The shipped set has grown past this design table - `agentbox mcp` serves 39 tools (counted from
+`tools/list` on 2026-09-24: speech, desktop driving, artifacts, walkthroughs);
 [agent-manual.md](agent-manual.md) is the current reference.
 
 Registration for Claude Code (`.mcp.json`):

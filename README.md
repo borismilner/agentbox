@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/borismilner/agentbox/releases/latest"><img src="https://img.shields.io/github/v/release/borismilner/agentbox?style=flat-square&color=4fb286&label=download" alt="latest release"></a>
-  <img src="https://img.shields.io/badge/MCP-20%20tools-7c8cf8?style=flat-square" alt="20 MCP tools">
+  <img src="https://img.shields.io/badge/MCP-39%20tools-7c8cf8?style=flat-square" alt="39 MCP tools">
   <img src="https://img.shields.io/badge/Go-1.26-4fa3e3?style=flat-square" alt="Go 1.26">
   <img src="https://img.shields.io/badge/Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-one%20binary-4fb286?style=flat-square" alt="Linux, macOS, Windows">
   <img src="https://img.shields.io/badge/local%20only-no%20telemetry-69717e?style=flat-square" alt="local only, no telemetry">
@@ -270,7 +270,7 @@ For an agent, the whole manual is in the binary: `agentbox docs agent`.
 ## Requirements
 
 **Linux, macOS or Windows.** One source tree, one binary per platform, and no
-message depends on a display server: the daemon, the socket, the CLI, all 20 MCP
+message depends on a display server: the daemon, the socket, the CLI, all 39 MCP
 tools, and every surface that asks a human something work the same everywhere.
 `make check` compiles macOS and Windows on every run, so that is a checked claim
 rather than a hopeful one - and CI adds the half a Linux box cannot reach, building
@@ -305,7 +305,7 @@ Full per-desktop detail, measured rather than assumed:
 | [docs/recipes.md](docs/recipes.md) | copy-paste integration snippets: hooks, scripts, cron |
 | [docs/orientation.md](docs/orientation.md) | start here: everything AgentBox offers and where it lives, on one page |
 | [docs/00-vision.md](docs/00-vision.md) | what AgentBox is for, and what it refuses to be |
-| [docs/02-architecture.md](docs/02-architecture.md) | one binary, a daemon, a socket: how it fits together |
+| [docs/02-architecture.md](docs/02-architecture.md) | one program (a full and a client-only build), a daemon, a socket: how it fits together |
 | [docs/03-ui-ux.md](docs/03-ui-ux.md) | the surfaces, the keyboard map, the sound design |
 | [docs/04-platform.md](docs/04-platform.md) | what each desktop gets: placement, audio, autostart, paths |
 | [docs/06-configuration.md](docs/06-configuration.md) | every knob, and why its default is what it is |
@@ -328,7 +328,7 @@ The daemon knows nothing about any toolkit.\
 `internal/daemon` talks to a `Presenter` interface, which is why the core is
 testable without a display.
 
-Constraints that have not moved: one binary, local only, no network listener.\
+Constraints that have not moved: one program, local only, no network listener.\
 And the agent is never restricted - AgentBox binds the *markup* it renders, never
 the tool that sent it.
 

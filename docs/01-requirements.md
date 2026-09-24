@@ -292,7 +292,12 @@ Calm and multi-agent refinements (each fills a gap in the features above):
   daemon 137 MB PSS, one WebKitNetworkProcess 12 MB PSS kept alive after
   the last window closed, `agentbox mcp` 24 MB PSS per session. Every
   change that moves these numbers records before and after in
-  `docs/STATUS.md`.
+  `docs/STATUS.md`. Done 2026-09-24: the client-only build (21 -> 14 MB
+  per `agentbox mcp`), memory released after window closes, no Vulkan
+  driver probe (`130d183`, `bbff735`). Open: the speech engine held 600 s
+  after use, WebKit and GL state the daemon keeps after its last window,
+  the network process kept with no window, panel and app hidden rather
+  than closed.
 
 ## Open questions
 
