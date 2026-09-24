@@ -97,9 +97,13 @@ underneath it, and every privileged command goes through a `sudo` you can read i
 the recipe rather than being arranged quietly. It ends by running `make doctor` and
 printing what to do next.
 
-`make install` builds first, then writes three things: `~/.local/bin/agentbox`, a
-`.desktop` launcher with an icon, and the unit file at
-`~/.config/systemd/user/agentbox.service`.
+`make install` builds first, then writes three things: the program, a `.desktop`
+launcher with an icon, and the unit file at
+`~/.config/systemd/user/agentbox.service`. The program is two files.
+`~/.local/bin/agentbox` is a client-only build with no GTK or WebKit in it,
+because every agent session keeps one running as its MCP server. The full build
+at `~/.local/lib/agentbox/agentbox` runs the daemon, and `agentbox daemon` hands
+over to it.
 
 The last two lines are yours because both of them change something outside the
 repository. No Makefile target ever runs `systemctl --user enable`, and no

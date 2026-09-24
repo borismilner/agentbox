@@ -1,7 +1,20 @@
 # Architecture
 
-One binary, `agentbox`, in three roles: thin client CLI, resident daemon, MCP
+One program, `agentbox`, in three roles: thin client CLI, resident daemon, MCP
 bridge. The roles share one client library and one wire protocol.
+
+It is built twice from the same source (NFR17). The full build links GTK and
+WebKit and is the only one that can run the daemon. The client build
+(`-tags noui`) leaves out the two files in `cmd/agentbox` that import
+`internal/webui`, so it links nothing but libc. The client build is the one
+every hook and every `agentbox mcp` runs: 14 MB PSS instead of 21, and 3
+shared objects instead of 131. `make deploy` installs it as
+`~/.local/bin/agentbox` and the full build as `~/.local/lib/agentbox/agentbox`.
+`agentbox daemon` (and `webui-demo`) on the client build exec the full build in
+place, so systemd's MainPID, the single-instance flock and the process name
+`agentbox` that `kill-daemons` matches all stay true (`cmd/agentbox/uibinary.go`;
+`AGENTBOX_UI_BINARY` overrides the path). A plain `go build ./cmd/agentbox` and
+`make dist` still produce one full binary that does everything.
 
 ```
   agent / hook / script                Claude Code (or any MCP host)

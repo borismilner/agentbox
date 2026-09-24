@@ -167,7 +167,7 @@ happened; AgentBox runs on its own. Walkthroughs, assignments, artifacts and
 
 | Path | What |
 |---|---|
-| `cmd/agentbox/` | the one binary: CLI dispatch, daemon entry |
+| `cmd/agentbox/` | CLI dispatch and daemon entry; built full and client-only (`-tags noui`), see architecture |
 | `internal/server`, `internal/daemon` | the daemon, the queue, routing |
 | `internal/mcp` | the MCP server and every tool registration |
 | `internal/proto`, `internal/client` | the wire types and the client |
@@ -185,9 +185,9 @@ happened; AgentBox runs on its own. Walkthroughs, assignments, artifacts and
 ## Build, run, test, deploy
 
 ```sh
-make check       # gofmt, vet, race tests, the no-X11 path, macOS and Windows builds
+make check       # gofmt, vet, race tests, the no-X11 path, the client-only build, macOS and Windows builds
 make run         # rebuild and restart the daemon from this tree
-make deploy      # install and restart; takes a lock
+make deploy      # install client + full build and restart; takes a lock
 make deployed    # ask the RUNNING daemon which revision it is
 make webui-demo  # every surface, no daemon
 make doctor      # what is installed and what is missing
