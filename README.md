@@ -303,6 +303,7 @@ Full per-desktop detail, measured rather than assumed:
 | --- | --- |
 | [docs/agent-manual.md](docs/agent-manual.md) | the complete reference for an agent driving AgentBox (`agentbox docs agent`) |
 | [docs/recipes.md](docs/recipes.md) | copy-paste integration snippets: hooks, scripts, cron |
+| [docs/orientation.md](docs/orientation.md) | start here: everything AgentBox offers and where it lives, on one page |
 | [docs/00-vision.md](docs/00-vision.md) | what AgentBox is for, and what it refuses to be |
 | [docs/02-architecture.md](docs/02-architecture.md) | one binary, a daemon, a socket: how it fits together |
 | [docs/03-ui-ux.md](docs/03-ui-ux.md) | the surfaces, the keyboard map, the sound design |
