@@ -278,6 +278,21 @@ Calm and multi-agent refinements (each fills a gap in the features above):
   (`webui.webkit_process_reaped`, with what was left); a demonstration of
   a UI change that opens windows includes the process tree after they
   close. The reaper is `internal/webui/webkitreap.go`.
+- NFR17 Minimal footprint. Boris, 2026-09-24: "We can't afford any
+  unnecessary costs! The footprint of both AgentBox and rig must be
+  absolutely minimal." The daemon is resident for weeks and a copy of the
+  client sits under every agent session, so idle cost is paid all day and
+  multiplied. The bar: nothing stays resident that is not doing work. A
+  closed or hidden surface costs nothing; an engine (speech, WebKit, GTK)
+  is loaded when first asked for and released when idle; a client process
+  is as small as a socket client can be. Measured in PSS (proportional set
+  size, `/proc/<pid>/smaps_rollup`) and the unit's `memory.current`, never
+  in RSS alone, which double-counts shared pages. Baseline on the day the
+  requirement was stated, idle daemon with no window open: unit 115 MB,
+  daemon 137 MB PSS, one WebKitNetworkProcess 12 MB PSS kept alive after
+  the last window closed, `agentbox mcp` 24 MB PSS per session. Every
+  change that moves these numbers records before and after in
+  `docs/STATUS.md`.
 
 ## Open questions
 
