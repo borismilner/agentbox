@@ -1,4 +1,6 @@
 /agentbox
+/agentbox-client
+/agentbox-client.check
 /dist/
 *.test
 *.out

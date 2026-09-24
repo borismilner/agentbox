@@ -2,6 +2,11 @@
 
 BINDIR  ?= $(HOME)/.local/bin
 BIN      = agentbox
+# NFR17: the deployed CLI is a client-only build (-tags noui) that links no GTK
+# or WebKit, because every Claude session holds an `agentbox mcp` of it. The full
+# build lives here and `agentbox daemon` / `webui-demo` exec it (uibinary.go).
+# It keeps the name agentbox on purpose: kill-daemons finds the daemon by name.
+UIDIR   ?= $(HOME)/.local/lib/agentbox
 GOFLAGS ?=
 
 # Desktop integration install locations (XDG user dirs; no root needed).
@@ -9,7 +14,7 @@ DESKTOPDIR ?= $(HOME)/.local/share/applications
 ICONDIR    ?= $(HOME)/.local/share/icons/hicolor/256x256/apps
 UNITDIR    ?= $(HOME)/.config/systemd/user
 
-.PHONY: help build frontend test check fmt vet generate run stop logs deploy deployed \
+.PHONY: help build frontend test test-noui check fmt vet generate run stop logs deploy deployed \
 	test-js test-svelte test-nox11 cross check-dist check-workflows hooks dist release \
 	restart-daemon rollback rollback-check clean install install-bin install-desktop install-service uninstall \
 	bootstrap deps deps-build deps-desktop deps-speech config doctor deck
@@ -150,6 +155,7 @@ doctor: ## report what is present and what is missing, installing nothing
 
 build: frontend ## build ./agentbox (rebuilds the web UI when its sources changed)
 	go build $(GOFLAGS) -o $(BIN) ./cmd/agentbox
+	go build $(GOFLAGS) -tags noui -o $(BIN)-client ./cmd/agentbox
 
 frontend: $(FRONTEND_OUT) ## rebuild frontend/dist if a source is newer
 
@@ -192,6 +198,7 @@ fmt: ## fail when any file is not gofmt-clean
 
 vet: fmt ## gofmt check + go vet
 	go vet ./...
+	go vet -tags noui ./cmd/agentbox
 
 # The desktop with no X11: macOS, Windows, a Wayland session with no Xwayland, or
 # this one built with -tags nox11. It is in the gate rather than in a doc because
@@ -211,6 +218,16 @@ test-nox11: ## the whole suite through the no-X11 placement layer
 # needs clang and is verified by building on a Mac, not here.
 CROSS_DARWIN = $(shell go list ./... | grep -v -e /tools/ -e /internal/webui -e /internal/tray -e /cmd/agentbox)
 
+# The client-only build is what every session and hook actually runs (NFR17), so
+# its own tests run too, and it must link no shared library beyond libc: one GTK
+# import sneaking back in would be ~7 MB PSS per session with nothing failing.
+test-noui: ## the client-only build: its tests, and proof it links no GTK/WebKit
+	go test -tags noui ./cmd/agentbox -count=1
+	@go build -tags noui -o $(BIN)-client.check ./cmd/agentbox
+	@if command -v ldd >/dev/null 2>&1 && ldd $(BIN)-client.check 2>/dev/null | grep -E 'gtk|webkit|glib' ; then \
+		rm -f $(BIN)-client.check; echo "test-noui: the client build links a desktop library (above)"; exit 1; fi
+	@rm -f $(BIN)-client.check; echo "ok: the client build links no GTK, GLib or WebKit"
+
 cross: ## compile for macOS and Windows from here (catches a platform-locked call)
 	@echo "--> windows/amd64, whole tree"
 	@GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /dev/null ./...
@@ -219,7 +236,7 @@ cross: ## compile for macOS and Windows from here (catches a platform-locked cal
 	@GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build $(CROSS_DARWIN)
 	@echo "ok: no platform-locked call outside a tagged file"
 
-check: vet test test-js test-svelte test-nox11 cross check-workflows ## the gate: everything CI runs on every push
+check: vet test test-js test-svelte test-nox11 test-noui cross check-workflows ## the gate: everything CI runs on every push
 
 # A workflow file that does not parse fails in the most confusing way available:
 # GitHub names the run after the file instead of the workflow, reports failure with
@@ -400,6 +417,13 @@ define kill-daemons
 for p in $$(pgrep -x $(BIN) 2>/dev/null); do 	if tr '\0' ' ' < /proc/$$p/cmdline 2>/dev/null | grep -q ' daemon '; then 		kill $$p 2>/dev/null || true; 	fi; done
 endef
 
+# install-pair puts the full build in first, so the client never points at nothing.
+define install-pair
+install -d $(BINDIR) $(UIDIR)
+install -m 0755 $(BIN) $(UIDIR)/$(BIN)
+install -m 0755 $(BIN)-client $(BINDIR)/$(BIN)
+endef
+
 stop: ## stop the daemon gracefully (agentbox quit), force any stragglers
 	-./$(BIN) quit 2>/dev/null || true
 	-@$(kill-daemons)
@@ -442,6 +466,7 @@ deploy-locked: check build ## the deploy itself; take the lock through `make dep
 		echo "replacing $$($(BINDIR)/$(BIN) version 2>/dev/null || echo 'an unreadable build')"; \
 		cp -p $(BINDIR)/$(BIN) $(BINDIR)/$(BIN).prev; \
 	fi
+	@if [ -x $(UIDIR)/$(BIN) ]; then cp -p $(UIDIR)/$(BIN) $(UIDIR)/$(BIN).prev; fi
 	@# R-07: a question with an agent waiting on it comes back UNANSWERED after the
 	@# restart, and its caller is told the daemon is going. That is now what happens
 	@# every time rather than sometimes, so this warns instead of refusing - the deploy
@@ -455,7 +480,7 @@ deploy-locked: check build ## the deploy itself; take the lock through `make dep
 	-$(BINDIR)/$(BIN) quit 2>/dev/null || true
 	@sleep 0.5
 	-@$(kill-daemons)
-	install -m 0755 $(BIN) $(BINDIR)/$(BIN)
+	@$(install-pair)
 	@echo "installed  $$($(BINDIR)/$(BIN) version)"
 	@$(MAKE) --no-print-directory restart-daemon
 	@sleep 1.5; $(MAKE) --no-print-directory deployed
@@ -528,12 +553,13 @@ rollback: rollback-check ## restore the build deploy replaced and restart the da
 	@sleep 0.5
 	-@$(kill-daemons)
 	install -m 0755 $(BINDIR)/$(BIN).prev $(BINDIR)/$(BIN)
+	@# A .prev from before the split is a full build and needs nothing beside it.
+	@if [ -x $(UIDIR)/$(BIN).prev ]; then install -m 0755 $(UIDIR)/$(BIN).prev $(UIDIR)/$(BIN); fi
 	@$(MAKE) --no-print-directory restart-daemon
 	@sleep 1.5; $(MAKE) --no-print-directory deployed
 
-install-bin: build ## install the binary to $(BINDIR) (no daemon restart)
-	install -d $(BINDIR)
-	install -m 0755 $(BIN) $(BINDIR)/$(BIN)
+install-bin: build ## install the client to $(BINDIR) and the full build to $(UIDIR) (no daemon restart)
+	@$(install-pair)
 
 install-desktop: ## install the .desktop launcher and app icon (user, XDG)
 	install -d $(DESKTOPDIR) $(ICONDIR)
@@ -554,7 +580,7 @@ install: install-bin install-desktop install-service ## binary + desktop launche
 
 uninstall: ## remove binary, desktop entry, icon and service unit
 	-systemctl --user disable --now agentbox.service 2>/dev/null || true
-	rm -f $(BINDIR)/$(BIN) $(DESKTOPDIR)/agentbox.desktop $(ICONDIR)/agentbox.png $(UNITDIR)/agentbox.service
+	rm -f $(BINDIR)/$(BIN) $(UIDIR)/$(BIN) $(DESKTOPDIR)/agentbox.desktop $(ICONDIR)/agentbox.png $(UNITDIR)/agentbox.service
 	-systemctl --user daemon-reload 2>/dev/null || true
 	-update-desktop-database $(DESKTOPDIR) 2>/dev/null || true
 	@echo "uninstalled agentbox"

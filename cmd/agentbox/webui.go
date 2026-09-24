@@ -1,3 +1,5 @@
+//go:build !noui
+
 package main
 
 import (
