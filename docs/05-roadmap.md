@@ -143,8 +143,10 @@ sections and the dated entries).
   finds, raises and checks windows through the window-calls GNOME Shell
   extension. Its measured limit: text that switches between Hebrew and Latin
   inside one `type` dropped one character in about one run in eight; text in
-  one script never did. Still X11-only and now live gaps: the global hotkey,
-  the FR29 fullscreen/presence read, and exact card placement.
+  one script never did. The global hotkey is covered by GNOME custom
+  shortcuts running the CLI toggle verbs (the daemon refuses an Xwayland grab,
+  which would only fire over X11 windows). Still X11-only and live gaps: the
+  FR29 fullscreen/presence read, and exact card placement.
 - Accept: same M1/M2 checks pass on a Wayland session (pending the Wayland
   work above).
 

@@ -67,6 +67,7 @@ behave identically; the first client call auto-spawns the daemon.
   other two from here on every run. The second half of this non-goal stands and
   is the reason it could be done at all - Linux quality was never traded, so
   this desktop keeps pop-above-without-focus, the top-centre column and the
-  rolled panel. What crosses is everything that carries a message; what stays
-  X11-only is the global hotkey, and it says so when asked. Pointer driving works
+  rolled panel. What crosses is everything that carries a message; the global
+  hotkey is an X11 grab, and on Wayland a desktop shortcut runs the CLI toggle
+  verbs in its place. Pointer driving works
   on X11 and on GNOME Wayland (mutter's remote-desktop API, since 2026-09-30).
