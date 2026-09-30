@@ -334,7 +334,12 @@ func PlanText(text string, l *Layout, t Typing) (strokes []Stroke, skipped []run
 	}
 	base := time.Duration(60_000/float64(wpm*5)) * time.Millisecond
 	for _, r := range text {
-		code, shift, ok := l.Rune(r)
+		// A nil layout plans pacing only: the caller sends keysyms and lets the
+		// compositor find the key (Wayland).
+		code, shift, ok := byte(0), false, true
+		if l != nil {
+			code, shift, ok = l.Rune(r)
+		}
 		if !ok {
 			skipped = append(skipped, r)
 			continue

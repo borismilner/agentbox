@@ -68,4 +68,5 @@ behave identically; the first client call auto-spawns the daemon.
   is the reason it could be done at all - Linux quality was never traded, so
   this desktop keeps pop-above-without-focus, the top-centre column and the
   rolled panel. What crosses is everything that carries a message; what stays
-  X11-only is the global hotkey and pointer driving, and each says so when asked.
+  X11-only is the global hotkey, and it says so when asked. Pointer driving works
+  on X11 and on GNOME Wayland (mutter's remote-desktop API, since 2026-09-30).

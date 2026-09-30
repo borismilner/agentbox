@@ -485,7 +485,7 @@ func runDaemon() {
 	// has company: it rides back on whatever call it makes next (FR83).
 	lst.SetRider(d.SyncRider)
 	d.SetPresence(presence.New()) // FR29/FR44 presence signals; no-op without X11
-	d.SetDriver(driver{})         // synthetic input (agentbox drive / drive_desktop); refuses itself without X11
+	d.SetDriver(driver{})         // synthetic input (agentbox drive / drive_desktop); XTEST on X11, mutter on Wayland
 	// Assignments (M12/FR82): the daemon owns the schedule, the webui carries a
 	// run out as an ordinary session. Wired here and started here, in that
 	// order - a tick that fired before the runner existed would record a pile of

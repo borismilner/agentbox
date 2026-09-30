@@ -146,7 +146,10 @@ classes.
 Developed on GNOME/mutter on X11, which gets exact placement (card dead centre,
 toasts top centre) above other windows without taking focus. Builds and runs on
 macOS and Windows; `make check` compiles both on every run. X11-only: the
-global hotkey and `drive_desktop`, and each says so when asked. The deployed
+global hotkey, and it says so when asked. `drive_desktop` runs on X11 through
+XTEST and on GNOME Wayland through mutter's remote-desktop API plus the
+window-calls extension (`internal/hand/wayland.go`). The laptop has been
+Wayland-only since the Ubuntu 26.04 upgrade on 2026-09-30. The deployed
 `agentbox` binary is a client build with no GTK or WebKit; the daemon carries
 the webview.
 

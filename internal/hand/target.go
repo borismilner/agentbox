@@ -108,6 +108,9 @@ func describeChain(chain []winInfo, popup bool) string {
 // down first (QueryPointer reports the child of each window that contains the
 // pointer, so it must be repeated to reach the deepest) and then back up.
 func (h *Hand) pointerChain() ([]winInfo, error) {
+	if h.wl != nil {
+		return h.pointerChainWL()
+	}
 	w := h.root
 	for range 32 {
 		r, err := xproto.QueryPointer(h.conn, w).Reply()
@@ -126,6 +129,9 @@ func (h *Hand) pointerChain() ([]winInfo, error) {
 // means the display has no focused window and typing follows the pointer, so
 // that is the question to ask instead.
 func (h *Hand) focusChain() ([]winInfo, error) {
+	if h.wl != nil {
+		return h.focusChainWL()
+	}
 	r, err := xproto.GetInputFocus(h.conn).Reply()
 	if err != nil || r == nil {
 		return nil, fmt.Errorf("cannot read which window has the keyboard: %w", err)
@@ -199,6 +205,9 @@ func (h *Hand) transientFor(win xproto.Window, prop xproto.Atom) uint32 {
 // the indication window managers honour without focus-stealing prevention;
 // source 1 (an application) is the one they second-guess.
 func (h *Hand) Activate(win xproto.Window) error {
+	if h.wl != nil {
+		return h.wl.activate(uint32(win))
+	}
 	active, err := h.atom("_NET_ACTIVE_WINDOW")
 	if err != nil {
 		return err
@@ -331,6 +340,9 @@ func (h *Hand) focusedOn(what string) error {
 // same instant reads the state from before the ask.
 func (h *Hand) settleAfterActivate() error {
 	time.Sleep(220 * time.Millisecond)
+	if h.wl != nil {
+		return nil // every window-calls read is itself a round trip to the shell
+	}
 	// A round trip proves the server has processed the request, rather than
 	// trusting the sleep alone on a loaded machine.
 	if _, err := xproto.GetInputFocus(h.conn).Reply(); err != nil {

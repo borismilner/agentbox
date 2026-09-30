@@ -136,6 +136,15 @@ sections and the dated entries).
   this milestone is the part that was always Wayland-specific rather than
   absence-specific: an activation token for re-focus, the fullscreen signal, and
   fractional scaling.
+- **No longer deferrable, 2026-09-30.** The laptop moved to Ubuntu 26.04
+  (GNOME 50), which has no Xorg session. `drive_desktop` was ported that day:
+  `internal/hand/wayland.go` drives input through org.gnome.Mutter.RemoteDesktop
+  (absolute motion via one screen-cast stream per monitor, keys as keysyms) and
+  finds, raises and checks windows through the window-calls GNOME Shell
+  extension. Its measured limit: text that switches between Hebrew and Latin
+  inside one `type` dropped one character in about one run in eight; text in
+  one script never did. Still X11-only and now live gaps: the global hotkey,
+  the FR29 fullscreen/presence read, and exact card placement.
 - Accept: same M1/M2 checks pass on a Wayland session (pending the Wayland
   work above).
 

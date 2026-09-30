@@ -8,11 +8,11 @@
 // display, the same log, and the same single place to look when something moved
 // that should not have.
 //
-// It is X11 only, through the XTEST extension: the events it synthesises are
+// On X11 it goes through the XTEST extension: the events it synthesises are
 // indistinguishable from a mouse and a keyboard, which is the point (an
-// application that "handles automation" specially cannot tell). Wayland
-// deliberately has no equivalent, so Open reports that it cannot drive the
-// display rather than pretending it did.
+// application that "handles automation" specially cannot tell). On a GNOME
+// Wayland desktop XTEST only reaches XWayland clients, so Open switches to
+// mutter's remote-desktop API instead (wayland.go).
 //
 // Two things learned the hard way and now built in, because both look like "the
 // webview ignores the mouse":
@@ -71,6 +71,9 @@ type Hand struct {
 
 	// park is the pause latch (FR94), or nil for a script nothing can interrupt.
 	park Park
+
+	// wl is the Wayland backend; when set, conn is nil and nothing goes to X.
+	wl *wlSession
 }
 
 // Park is where a running script stops when the human takes his desktop back
@@ -121,6 +124,9 @@ var modKeysyms = []struct {
 // varying seed, so two identical scripts do not trace the identical path;
 // any other value makes the whole session reproducible.
 func Open(seed int64) (*Hand, error) {
+	if onWayland() {
+		return openWayland(seed)
+	}
 	conn, err := xgb.NewConn()
 	if err != nil {
 		return nil, fmt.Errorf("no X11 display to drive: %w", err)
@@ -161,6 +167,10 @@ func Open(seed int64) (*Hand, error) {
 }
 
 func (h *Hand) Close() {
+	if h.wl != nil {
+		h.wl.close()
+		h.wl = nil
+	}
 	if h.conn != nil {
 		h.conn.Close()
 		h.conn = nil
@@ -192,6 +202,9 @@ func (h *Hand) trace(format string, args ...any) {
 
 // Pointer is where the pointer is now, in root coordinates.
 func (h *Hand) Pointer() (Pt, error) {
+	if h.wl != nil {
+		return h.wl.pos, nil
+	}
 	r, err := xproto.QueryPointer(h.conn, h.root).Reply()
 	if err != nil {
 		return Pt{}, fmt.Errorf("cannot read the pointer position: %w", err)
@@ -242,6 +255,9 @@ func (h *Hand) look(title string) (Candidate, error) {
 	if strings.TrimSpace(strings.TrimPrefix(title, "=")) == "" {
 		return Candidate{}, fmt.Errorf("no window title to look for")
 	}
+	if h.wl != nil {
+		return h.lookWL(title)
+	}
 	netName, err := h.atom("_NET_WM_NAME")
 	if err != nil {
 		return Candidate{}, err
@@ -277,6 +293,9 @@ func (h *Hand) look(title string) (Candidate, error) {
 // viewable reports a window's rect if it is actually on screen and big enough to
 // be the thing the caller meant.
 func (h *Hand) viewable(win xproto.Window) (Rect, bool) {
+	if h.wl != nil {
+		return h.viewableWL(uint32(win))
+	}
 	attr, err := xproto.GetWindowAttributes(h.conn, win).Reply()
 	if err != nil || attr.MapState != xproto.MapStateViewable {
 		return Rect{}, false
@@ -322,6 +341,16 @@ func (h *Hand) atom(name string) (xproto.Atom, error) {
 // send is one synthetic event. Checked, because an XTEST error that is only
 // discovered later shows up as "the click did nothing".
 func (h *Hand) send(typ, detail byte, x, y int) error {
+	if h.wl != nil {
+		switch typ {
+		case xproto.MotionNotify:
+			return h.wl.motion(Pt{X: x, Y: y})
+		case xproto.ButtonPress, xproto.ButtonRelease:
+			return h.wl.button(detail, typ == xproto.ButtonPress)
+		default:
+			return fmt.Errorf("event type %d is not sent this way on Wayland", typ)
+		}
+	}
 	return xtest.FakeInputChecked(h.conn, typ, detail, 0, h.root, int16(x), int16(y), 0).Check()
 }
 
@@ -422,6 +451,9 @@ func (h *Hand) Scroll(notches int) error {
 // reports the characters the layout cannot produce rather than dropping them
 // quietly, because a missing character in a typed command is a different command.
 func (h *Hand) Type(text string) error {
+	if h.wl != nil {
+		return h.typeWL(text)
+	}
 	// The strokes below were planned against the first group's keysyms, and the
 	// server resolves them in the active group. Each press re-locks the planned
 	// group first, or a second layout rewrites the text (see xkb.go).
@@ -482,6 +514,9 @@ func (h *Hand) Press(spec string) error {
 	mods, ks, err := hotkey.Parse(spec)
 	if err != nil {
 		return err
+	}
+	if h.wl != nil {
+		return h.pressCombo(spec, mods, uint32(ks))
 	}
 	code, needShift, ok := h.layout.Keysym(uint32(ks))
 	if !ok {

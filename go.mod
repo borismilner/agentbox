@@ -6,6 +6,7 @@ require (
 	fyne.io/systray v1.12.2
 	github.com/BurntSushi/toml v1.6.0
 	github.com/alecthomas/chroma/v2 v2.26.1
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/jezek/xgb v1.3.1
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/wailsapp/wails/v3 v3.0.0-alpha2.117
@@ -20,7 +21,6 @@ require (
 	github.com/dlclark/regexp2/v2 v2.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
