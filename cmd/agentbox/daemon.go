@@ -520,14 +520,8 @@ func runDaemon() {
 	// should not have to remember which of two keys he is in.
 	pauseKey := &grab{
 		name: "pause", log: log, quiet: true,
-		hint: "use `agentbox control pause` instead, or set [control] pause_hotkey",
-		fn: func() {
-			if paused, _ := d.Handover().Paused(); paused {
-				d.Handover().Resume("the hotkey")
-				return
-			}
-			d.Handover().Pause("the hotkey")
-		},
+		hint: "use `agentbox control pause-toggle` instead, or set [control] pause_hotkey",
+		fn:   func() { d.Handover().TogglePause("the hotkey") },
 	}
 	pauseKey.open(strings.TrimSpace(cfg.Control.PauseHotkey))
 
@@ -536,14 +530,8 @@ func runDaemon() {
 	// is no strip left to click, so whatever demoted it has to be able to undo it.
 	quietKey := &grab{
 		name: "quiet", log: log, quiet: true,
-		hint: "use `agentbox control quiet` instead, or set [control] quiet_hotkey",
-		fn: func() {
-			if q, _ := d.Handover().Quieted(); q {
-				d.Handover().Loud("the hotkey")
-				return
-			}
-			d.Handover().Quiet("the hotkey")
-		},
+		hint: "use `agentbox control quiet-toggle` instead, or set [control] quiet_hotkey",
+		fn:   func() { d.Handover().ToggleQuiet("the hotkey") },
 	}
 	quietKey.open(strings.TrimSpace(cfg.Control.QuietHotkey))
 

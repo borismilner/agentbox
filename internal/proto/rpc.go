@@ -240,6 +240,11 @@ const (
 	// quieten the sign it is being watched by would be marking its own homework.
 	ControlQuiet = "quiet"
 	ControlLoud  = "loud"
+	// The one-key forms of both pairs, for a binding that has no state of its
+	// own. On Wayland the daemon cannot grab a key, so the compositor runs the
+	// CLI instead, and a key that toggles needs the daemon to decide which way.
+	ControlPauseToggle = "pause-toggle"
+	ControlQuietToggle = "quiet-toggle"
 )
 
 // The states a live run can be in. There are only two, and that is a rule: the

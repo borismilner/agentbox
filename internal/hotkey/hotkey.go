@@ -9,6 +9,7 @@
 package hotkey
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +20,18 @@ import (
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
 )
+
+// ErrWayland is Open's answer under Xwayland: the grab would succeed and never
+// fire. The caller's fallback is a compositor shortcut running the CLI.
+var ErrWayland = errors.New("hotkey: Wayland session, an X11 grab only sees X11 windows; bind a desktop shortcut to the CLI verb")
+
+// onXwayland reports whether this X server is Xwayland, which advertises itself
+// with an extension of that name.
+func onXwayland(conn *xgb.Conn) bool {
+	const name = "XWAYLAND"
+	r, err := xproto.QueryExtension(conn, uint16(len(name)), name).Reply()
+	return err == nil && r.Present
+}
 
 // Hotkey is a live grab. Close releases it and stops the reader.
 type Hotkey struct {
@@ -130,6 +143,13 @@ func Open(spec string, log *slog.Logger, fn func()) (*Hotkey, error) {
 	conn, err := xgb.NewConn()
 	if err != nil {
 		return nil, fmt.Errorf("hotkey: no X11 display: %w", err)
+	}
+	// Xwayland accepts the grab and then only delivers it while an X11 window has
+	// focus, which on a GNOME desktop is almost never. Taking it would log
+	// "grabbed" for a key that does nothing, so refuse and say what works instead.
+	if onXwayland(conn) {
+		conn.Close()
+		return nil, ErrWayland
 	}
 	h := &Hotkey{conn: conn, root: xproto.Setup(conn).DefaultScreen(conn).Root,
 		log: log, spec: spec, mods: mods}

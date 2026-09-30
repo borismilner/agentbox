@@ -1255,7 +1255,7 @@ func heldPhrase(n int) string {
 // script can gate on it: `agentbox control request "..." || exit`.
 func runControl(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "agentbox control: want request|activity|release|state|pause|resume|quiet|loud")
+		fmt.Fprintln(os.Stderr, "agentbox control: want request|activity|release|state|pause|resume|pause-toggle|quiet|loud|quiet-toggle")
 		return exitError
 	}
 	verb, rest := args[0], args[1:]
@@ -1263,7 +1263,7 @@ func runControl(args []string) int {
 	fs := flag.NewFlagSet("control "+verb, flag.ExitOnError)
 	window := fs.Int("window", 20, "seconds before silence counts as consent (request only)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: agentbox control request REASON [--window N] | activity LINE | release | state | pause | resume | quiet | loud")
+		fmt.Fprintln(os.Stderr, "usage: agentbox control request REASON [--window N] | activity LINE | release | state | pause | resume | pause-toggle | quiet | loud | quiet-toggle")
 		fmt.Fprintln(os.Stderr, "\nOne strip on screen while an agent has the desktop. While it is up, hands off;")
 		fmt.Fprintln(os.Stderr, "when it goes, the desktop is the human's again.")
 		fs.PrintDefaults()
@@ -1311,6 +1311,16 @@ func runControl(args []string) int {
 		action = proto.ControlResume
 		if text == "" {
 			text = "the command line"
+		}
+	case "pause-toggle", "quiet-toggle":
+		// What a compositor shortcut runs where the daemon cannot grab the key
+		// itself (GNOME on Wayland): one key, and the daemon picks the direction.
+		action = proto.ControlPauseToggle
+		if verb == "quiet-toggle" {
+			action = proto.ControlQuietToggle
+		}
+		if text == "" {
+			text = "the shortcut"
 		}
 	case "quiet", "loud":
 		// Recording mode (FR95). Here rather than only on a hotkey because the

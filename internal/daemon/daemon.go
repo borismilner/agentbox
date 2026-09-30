@@ -963,6 +963,10 @@ func (d *Daemon) Handle(ctx context.Context, method string, params json.RawMessa
 			res = d.control.Quiet(req.Reason)
 		case proto.ControlLoud:
 			res = d.control.Loud(req.Reason)
+		case proto.ControlPauseToggle:
+			res = d.control.TogglePause(req.Reason)
+		case proto.ControlQuietToggle:
+			res = d.control.ToggleQuiet(req.Reason)
 		default:
 			res = d.control.State()
 		}

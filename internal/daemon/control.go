@@ -506,6 +506,25 @@ func (c *control) Loud(how string) proto.ControlResult {
 	return c.State()
 }
 
+// TogglePause is the pause key's one-key form: pause when the desktop is being
+// driven, resume when it is latched. The hotkey and the CLI both come here so the
+// two keys cannot disagree about which way a press goes.
+func (c *control) TogglePause(how string) proto.ControlResult {
+	if paused, _ := c.Paused(); paused {
+		return c.Resume(how)
+	}
+	return c.Pause(how)
+}
+
+// ToggleQuiet is the same for recording mode: once the strip is demoted there is
+// nothing left to click, so whatever demoted it has to be able to undo it.
+func (c *control) ToggleQuiet(how string) proto.ControlResult {
+	if q, _ := c.Quieted(); q {
+		return c.Loud(how)
+	}
+	return c.Quiet(how)
+}
+
 // Quieted reports recording mode and what the fuse has left, without blocking.
 // The surface asks this when its window opens, the same way it asks about a run.
 func (c *control) Quieted() (bool, time.Duration) {

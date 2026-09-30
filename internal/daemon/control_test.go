@@ -1062,3 +1062,20 @@ func TestTheHeldCardSaysItsSpokenLineWhenItLands(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+func TestTheToggleVerbsFlipEachWayAndBack(t *testing.T) {
+	// One key, two directions: a GNOME shortcut on Wayland runs the CLI with no
+	// idea which state it is in, so each press has to go the other way.
+	d, _, _, _ := newTestDaemon(t, Config{})
+	h := d.Handover()
+	for i, want := range []bool{true, false, true, false} {
+		h.TogglePause("the shortcut")
+		if got, _ := h.Paused(); got != want {
+			t.Fatalf("pause press %d: paused=%v, want %v", i+1, got, want)
+		}
+		h.ToggleQuiet("the shortcut")
+		if got, _ := h.Quieted(); got != want {
+			t.Fatalf("quiet press %d: quiet=%v, want %v", i+1, got, want)
+		}
+	}
+}
