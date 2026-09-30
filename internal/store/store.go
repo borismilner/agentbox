@@ -368,7 +368,7 @@ func (s *Store) Pending() ([]StoredItem, error) {
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
 		agent, project, session, session_key, speak, diff, stack,
 		state, answer, reply, form_values, missed_while_away, never_shown, created_at, resolved_at
-		FROM items WHERE state = ? ORDER BY created_at ASC`, StatePending)
+		FROM items WHERE state = ? ORDER BY created_at ASC, rowid ASC`, StatePending)
 }
 
 // Item reads one item by ID, whatever its state. Nil and no error means no such
@@ -409,7 +409,7 @@ func (s *Store) Recent(limit int) ([]StoredItem, error) {
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
 		agent, project, session, session_key, speak, diff, stack,
 		state, answer, reply, form_values, missed_while_away, never_shown, created_at, resolved_at
-		FROM items ORDER BY created_at DESC LIMIT ?`, limit)
+		FROM items ORDER BY created_at DESC, rowid DESC LIMIT ?`, limit)
 }
 
 // RecentBySession returns the newest items one session raised, for the Agents
@@ -427,7 +427,7 @@ func (s *Store) RecentBySession(key string, limit int) ([]StoredItem, error) {
 	return s.query(`SELECT id, kind, level, title, body, options, fields, actions, cwd, timeout_s, dflt,
 		agent, project, session, session_key, speak, diff, stack,
 		state, answer, reply, form_values, missed_while_away, never_shown, created_at, resolved_at
-		FROM items WHERE session_key = ? ORDER BY created_at DESC LIMIT ?`, key, limit)
+		FROM items WHERE session_key = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`, key, limit)
 }
 
 func (s *Store) query(q string, args ...any) ([]StoredItem, error) {
@@ -562,7 +562,7 @@ func (s *Store) Prune(maxAge time.Duration, keepAtOrAbove proto.Level) (int, err
 // per calendar day. A zero `since` covers the whole history.
 func (s *Store) Stats(since time.Time) (proto.Stats, error) {
 	rows, err := s.db.Query(`SELECT kind, agent, state, created_at, resolved_at
-		FROM items WHERE created_at >= ? ORDER BY created_at ASC`, since.UnixMilli())
+		FROM items WHERE created_at >= ? ORDER BY created_at ASC, rowid ASC`, since.UnixMilli())
 	if err != nil {
 		return proto.Stats{}, fmt.Errorf("query stats: %w", err)
 	}

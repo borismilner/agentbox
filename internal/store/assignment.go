@@ -152,7 +152,7 @@ func (s *Store) GetAssignment(id string) (*assign.Assignment, error) {
 // no paging: this is a list a person maintains by hand, and if it ever needs
 // paging the design was wrong before the query was.
 func (s *Store) ListAssignments() ([]*assign.Assignment, error) {
-	rows, err := s.db.Query(`SELECT ` + assignmentCols + ` FROM assignments ORDER BY created_ms DESC`)
+	rows, err := s.db.Query(`SELECT ` + assignmentCols + ` FROM assignments ORDER BY created_ms DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}

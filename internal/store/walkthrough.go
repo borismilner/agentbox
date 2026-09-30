@@ -237,7 +237,7 @@ func (s *Store) ListWalkthroughs(query, state string, limit int) ([]proto.Walkth
 		pat := "%" + query + "%"
 		args = append(args, pat, pat, pat)
 	}
-	q += ` ORDER BY w.updated_at DESC LIMIT ?`
+	q += ` ORDER BY w.updated_at DESC, w.rowid DESC LIMIT ?`
 	args = append(args, limit)
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
@@ -442,7 +442,7 @@ func (s *Store) DeleteComment(id string) error {
 // CommentsFor loads a walkthrough's comments, oldest first.
 func (s *Store) CommentsFor(wtID string) ([]Comment, error) {
 	rows, err := s.db.Query(`SELECT id, step_id, path, side, from_line, to_line, exact, body, adrift, created_at, updated_at
-		FROM walkthrough_comments WHERE walkthrough_id = ? ORDER BY created_at ASC`, wtID)
+		FROM walkthrough_comments WHERE walkthrough_id = ? ORDER BY created_at ASC, rowid ASC`, wtID)
 	if err != nil {
 		return nil, err
 	}
