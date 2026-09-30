@@ -527,7 +527,7 @@ func TestPlayerArgsPerPlayer(t *testing.T) {
 		bin  string
 		want []string
 	}{
-		{"pw-play", []string{"--rate=22050", "--channels=1", "--format=s16", "--quality=15", "--volume=0.50", "-"}},
+		{"pw-play", []string{"--raw", "--rate=22050", "--channels=1", "--format=s16", "--quality=15", "--volume=0.50", "-"}},
 		{"paplay", []string{"--raw", "--rate=22050", "--channels=1", "--format=s16le", "--volume=32768"}},
 		{"aplay", []string{"-q", "-t", "raw", "-f", "S16_LE", "-r", "22050", "-c", "1"}},
 	} {

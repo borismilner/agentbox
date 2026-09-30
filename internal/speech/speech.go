@@ -861,7 +861,9 @@ func playerArgs(bin string, opt Options) []string {
 	switch strings.TrimSuffix(name, ".exe") {
 	case "pw-play":
 		return []string{
-			"--rate=" + rate, "--channels=" + channels, "--format=s16",
+			// --raw because PipeWire 1.6 hands stdin to libsndfile otherwise, which
+			// wants a header and rejects bare PCM with "Format not recognised".
+			"--raw", "--rate=" + rate, "--channels=" + channels, "--format=s16",
 			// Max resampler quality, always. A piper voice is 22.05 kHz and a modern
 			// sink runs at 48 kHz, so every utterance is resampled - measured on this
 			// machine, the default sink is s32le 48000Hz. PipeWire's default quality
